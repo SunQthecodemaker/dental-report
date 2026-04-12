@@ -2,19 +2,22 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 
+const TABS = [
+  { id: 'guidelines', label: '작성 지침' },
+  { id: 'terminology', label: '용어 사전' },
+  { id: 'strengths', label: '치과 특장점' },
+  { id: 'staffForm', label: '상담 폼 항목' },
+]
+
 export default function Settings() {
   const navigate = useNavigate()
+  const [tab, setTab] = useState('guidelines')
   const [guidelines, setGuidelines] = useState([])
   const [terms, setTerms] = useState([])
   const [strengths, setStrengths] = useState([])
+  const [formConfig, setFormConfig] = useState(null)
   const [saving, setSaving] = useState(false)
   const [loaded, setLoaded] = useState(false)
-
-  // 신규 입력용
-  const [newGuideline, setNewGuideline] = useState('')
-  const [newTermFrom, setNewTermFrom] = useState('')
-  const [newTermTo, setNewTermTo] = useState('')
-  const [newStrength, setNewStrength] = useState({ title: '', description: '', expressions: '' })
 
   useEffect(() => { loadSettings() }, [])
 
@@ -25,314 +28,346 @@ export default function Settings() {
         if (row.id === 'writing_guidelines') setGuidelines(row.value.items || [])
         if (row.id === 'terminology') setTerms(row.value.items || [])
         if (row.id === 'clinic_strengths') setStrengths(row.value.items || [])
+        if (row.id === 'staff_form_config') setFormConfig(row.value)
       }
     }
     setLoaded(true)
   }
 
-  const save = async (id, items) => {
+  const save = async (id, value) => {
     setSaving(true)
+    const saveValue = id === 'staff_form_config' ? value : { items: value }
     await supabase.from('clinic_settings')
-      .update({ value: { items }, updated_at: new Date().toISOString() })
+      .update({ value: saveValue, updated_at: new Date().toISOString() })
       .eq('id', id)
     setSaving(false)
   }
 
-  // 작성 지침
-  const addGuideline = () => {
-    if (!newGuideline.trim()) return
-    const updated = [...guidelines, newGuideline.trim()]
-    setGuidelines(updated)
-    setNewGuideline('')
-    save('writing_guidelines', updated)
-  }
-  const removeGuideline = (i) => {
-    const updated = guidelines.filter((_, idx) => idx !== i)
-    setGuidelines(updated)
-    save('writing_guidelines', updated)
-  }
-
-  // 용어 사전
-  const addTerm = () => {
-    if (!newTermFrom.trim() || !newTermTo.trim()) return
-    const updated = [...terms, { from: newTermFrom.trim(), to: newTermTo.trim() }]
-    setTerms(updated)
-    setNewTermFrom('')
-    setNewTermTo('')
-    save('terminology', updated)
-  }
-  const removeTerm = (i) => {
-    const updated = terms.filter((_, idx) => idx !== i)
-    setTerms(updated)
-    save('terminology', updated)
-  }
-
-  // 치과 특장점
-  const addStrength = () => {
-    if (!newStrength.title.trim()) return
-    const updated = [...strengths, {
-      title: newStrength.title.trim(),
-      description: newStrength.description.trim(),
-      expressions: newStrength.expressions.trim(),
-    }]
-    setStrengths(updated)
-    setNewStrength({ title: '', description: '', expressions: '' })
-    save('clinic_strengths', updated)
-  }
-  const removeStrength = (i) => {
-    const updated = strengths.filter((_, idx) => idx !== i)
-    setStrengths(updated)
-    save('clinic_strengths', updated)
-  }
-
-  if (!loaded) return <div style={page}>불러오는 중...</div>
+  if (!loaded) return <div style={S.page}><div style={S.container}>불러오는 중...</div></div>
 
   return (
-    <div style={page}>
-      <div style={container}>
-        <div style={header}>
+    <div style={S.page}>
+      <div style={S.container}>
+        {/* 헤더 */}
+        <div style={S.header}>
           <h1 style={{ fontSize: '20px', fontWeight: '700', color: '#1e3a5f', margin: 0 }}>
             진단서 AI 설정
           </h1>
-          <button onClick={() => navigate('/')} style={backBtn}>
-            ← 편집으로 돌아가기
-          </button>
+          <button onClick={() => navigate('/')} style={S.backBtn}>← 편집으로 돌아가기</button>
         </div>
 
-        {saving && <div style={savingBar}>저장 중...</div>}
+        {saving && <div style={S.savingBar}>저장 중...</div>}
 
-        {/* 1. 작성 지침 */}
-        <div style={section}>
-          <h2 style={sectionTitle}>작성 지침</h2>
-          <p style={sectionDesc}>
-            AI가 진단서를 작성할 때 따라야 할 규칙입니다. 톤, 문체, 주의사항 등을 자유롭게 추가하세요.
-          </p>
-
-          {guidelines.map((g, i) => (
-            <div key={i} style={itemRow}>
-              <div style={itemText}>{g}</div>
-              <button onClick={() => removeGuideline(i)} style={removeBtn}>삭제</button>
-            </div>
+        {/* 탭 바 */}
+        <div style={S.tabBar}>
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              style={tab === t.id ? S.tabActive : S.tabInactive}
+            >
+              {t.label}
+            </button>
           ))}
-
-          <div style={addRow}>
-            <input
-              value={newGuideline}
-              onChange={(e) => setNewGuideline(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addGuideline()}
-              placeholder="예: 환자가 불안해하면 반드시 안심 문구를 넣어줘"
-              style={inputFull}
-            />
-            <button onClick={addGuideline} style={addBtn}>추가</button>
-          </div>
         </div>
 
-        {/* 2. 용어/표현 사전 */}
-        <div style={section}>
-          <h2 style={sectionTitle}>용어/표현 사전</h2>
-          <p style={sectionDesc}>
-            특정 용어나 표현을 AI가 항상 원하는 방식으로 변환하도록 등록합니다.
-          </p>
-
-          {terms.map((t, i) => (
-            <div key={i} style={itemRow}>
-              <div style={itemText}>
-                <span style={{ color: '#ef4444' }}>{t.from}</span>
-                <span style={{ color: '#9ca3af', margin: '0 8px' }}>→</span>
-                <span style={{ color: '#059669' }}>{t.to}</span>
-              </div>
-              <button onClick={() => removeTerm(i)} style={removeBtn}>삭제</button>
-            </div>
-          ))}
-
-          <div style={{ ...addRow, gap: '8px' }}>
-            <input
-              value={newTermFrom}
-              onChange={(e) => setNewTermFrom(e.target.value)}
-              placeholder="변환 전 (예: Class II)"
-              style={{ ...inputFull, flex: 1 }}
+        {/* 탭 내용 */}
+        <div style={S.tabContent}>
+          {tab === 'guidelines' && (
+            <GuidelinesTab
+              items={guidelines}
+              onChange={(v) => { setGuidelines(v); save('writing_guidelines', v) }}
             />
-            <span style={{ color: '#9ca3af', fontSize: '18px' }}>→</span>
-            <input
-              value={newTermTo}
-              onChange={(e) => setNewTermTo(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addTerm()}
-              placeholder="변환 후 (예: 윗니가 앞으로 나온 상태)"
-              style={{ ...inputFull, flex: 1 }}
+          )}
+          {tab === 'terminology' && (
+            <TerminologyTab
+              items={terms}
+              onChange={(v) => { setTerms(v); save('terminology', v) }}
             />
-            <button onClick={addTerm} style={addBtn}>추가</button>
-          </div>
-        </div>
-
-        {/* 3. 치과 특장점 */}
-        <div style={section}>
-          <h2 style={sectionTitle}>치과 특장점</h2>
-          <p style={sectionDesc}>
-            우리 치과의 강점을 등록하면, 해당 치료가 언급될 때 AI가 자연스럽게 강조 표현을 넣습니다.
-          </p>
-
-          {strengths.map((s, i) => (
-            <div key={i} style={strengthCard}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: '15px', fontWeight: '700', color: '#1e3a5f' }}>{s.title}</div>
-                <button onClick={() => removeStrength(i)} style={removeBtn}>삭제</button>
-              </div>
-              {s.description && <div style={{ fontSize: '13px', color: '#4b5563', marginTop: '4px' }}>{s.description}</div>}
-              {s.expressions && (
-                <div style={{ fontSize: '12px', color: '#7c3aed', marginTop: '6px', fontStyle: 'italic' }}>
-                  활용 표현: {s.expressions}
-                </div>
-              )}
-            </div>
-          ))}
-
-          <div style={strengthForm}>
-            <input
-              value={newStrength.title}
-              onChange={(e) => setNewStrength({ ...newStrength, title: e.target.value })}
-              placeholder="특장점명 (예: 설측교정 전문)"
-              style={inputFull}
+          )}
+          {tab === 'strengths' && (
+            <StrengthsTab
+              items={strengths}
+              onChange={(v) => { setStrengths(v); save('clinic_strengths', v) }}
             />
-            <textarea
-              value={newStrength.description}
-              onChange={(e) => setNewStrength({ ...newStrength, description: e.target.value })}
-              placeholder="설명 (예: 교정과 전문의가 직접 시행하는 설측교정, 겉으로 보이지 않는 교정)"
-              style={{ ...inputFull, minHeight: '60px', resize: 'vertical' }}
+          )}
+          {tab === 'staffForm' && formConfig && (
+            <StaffFormTab
+              config={formConfig}
+              onChange={(v) => { setFormConfig(v); save('staff_form_config', v) }}
             />
-            <textarea
-              value={newStrength.expressions}
-              onChange={(e) => setNewStrength({ ...newStrength, expressions: e.target.value })}
-              placeholder="AI가 사용할 표현 예시 (예: 교정 장치가 보이지 않아 직장생활이나 대인관계에 전혀 지장이 없습니다)"
-              style={{ ...inputFull, minHeight: '60px', resize: 'vertical' }}
-            />
-            <button onClick={addStrength} style={{ ...addBtn, alignSelf: 'flex-end' }}>추가</button>
-          </div>
+          )}
         </div>
       </div>
     </div>
   )
 }
 
-const page = {
-  minHeight: '100vh',
-  background: '#f0f2f5',
-  fontFamily: "'Pretendard', sans-serif",
-  padding: '24px',
+// ─── 작성 지침 탭 ───
+function GuidelinesTab({ items, onChange }) {
+  const [text, setText] = useState('')
+  const add = () => {
+    if (!text.trim()) return
+    onChange([...items, text.trim()])
+    setText('')
+  }
+  return (
+    <>
+      <p style={S.desc}>AI가 진단서를 작성할 때 따라야 할 규칙입니다.</p>
+      {items.map((g, i) => (
+        <div key={i} style={S.itemRow}>
+          <div style={S.itemText}>{g}</div>
+          <button onClick={() => onChange(items.filter((_, idx) => idx !== i))} style={S.delBtn}>삭제</button>
+        </div>
+      ))}
+      <div style={S.addRow}>
+        <input value={text} onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add()}
+          placeholder="예: 환자가 불안해하면 반드시 안심 문구를 넣어줘" style={S.input} />
+        <button onClick={add} style={S.addBtn}>추가</button>
+      </div>
+    </>
+  )
 }
-const container = {
-  maxWidth: '800px',
-  margin: '0 auto',
+
+// ─── 용어 사전 탭 ───
+function TerminologyTab({ items, onChange }) {
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const add = () => {
+    if (!from.trim() || !to.trim()) return
+    onChange([...items, { from: from.trim(), to: to.trim() }])
+    setFrom(''); setTo('')
+  }
+  return (
+    <>
+      <p style={S.desc}>특정 용어를 AI가 항상 원하는 방식으로 변환합니다.</p>
+      {items.map((t, i) => (
+        <div key={i} style={S.itemRow}>
+          <div style={S.itemText}>
+            <span style={{ color: '#ef4444' }}>{t.from}</span>
+            <span style={{ color: '#9ca3af', margin: '0 8px' }}>→</span>
+            <span style={{ color: '#059669' }}>{t.to}</span>
+          </div>
+          <button onClick={() => onChange(items.filter((_, idx) => idx !== i))} style={S.delBtn}>삭제</button>
+        </div>
+      ))}
+      <div style={{ ...S.addRow, gap: '8px' }}>
+        <input value={from} onChange={(e) => setFrom(e.target.value)}
+          placeholder="변환 전 (예: Class II)" style={{ ...S.input, flex: 1 }} />
+        <span style={{ color: '#9ca3af', fontSize: '18px' }}>→</span>
+        <input value={to} onChange={(e) => setTo(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add()}
+          placeholder="변환 후 (예: 윗니가 앞으로 나온 상태)" style={{ ...S.input, flex: 1 }} />
+        <button onClick={add} style={S.addBtn}>추가</button>
+      </div>
+    </>
+  )
 }
-const header = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  marginBottom: '32px',
+
+// ─── 치과 특장점 탭 ───
+function StrengthsTab({ items, onChange }) {
+  const [form, setForm] = useState({ title: '', description: '', expressions: '' })
+  const add = () => {
+    if (!form.title.trim()) return
+    onChange([...items, { title: form.title.trim(), description: form.description.trim(), expressions: form.expressions.trim() }])
+    setForm({ title: '', description: '', expressions: '' })
+  }
+  return (
+    <>
+      <p style={S.desc}>해당 치료가 차팅에 언급되면 AI가 자연스럽게 강조합니다.</p>
+      {items.map((s, i) => (
+        <div key={i} style={S.strengthCard}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: '15px', fontWeight: '700', color: '#1e3a5f' }}>{s.title}</div>
+            <button onClick={() => onChange(items.filter((_, idx) => idx !== i))} style={S.delBtn}>삭제</button>
+          </div>
+          {s.description && <div style={{ fontSize: '13px', color: '#4b5563', marginTop: '4px' }}>{s.description}</div>}
+          {s.expressions && <div style={{ fontSize: '12px', color: '#7c3aed', marginTop: '6px', fontStyle: 'italic' }}>활용 표현: {s.expressions}</div>}
+        </div>
+      ))}
+      <div style={S.formBox}>
+        <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}
+          placeholder="특장점명 (예: 설측교정 전문)" style={S.input} />
+        <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
+          placeholder="설명 (예: 교정과 전문의가 직접 시행하는 설측교정)" style={{ ...S.input, minHeight: '60px', resize: 'vertical' }} />
+        <textarea value={form.expressions} onChange={(e) => setForm({ ...form, expressions: e.target.value })}
+          placeholder="AI 활용 표현 예시" style={{ ...S.input, minHeight: '60px', resize: 'vertical' }} />
+        <button onClick={add} style={{ ...S.addBtn, alignSelf: 'flex-end' }}>추가</button>
+      </div>
+    </>
+  )
 }
-const backBtn = {
-  padding: '8px 16px',
-  background: '#6b7280',
-  color: '#fff',
-  border: 'none',
-  borderRadius: '8px',
-  fontSize: '13px',
-  fontWeight: '600',
-  cursor: 'pointer',
+
+// ─── 상담 폼 항목 관리 탭 ───
+function StaffFormTab({ config, onChange }) {
+  const [newOptions, setNewOptions] = useState({}) // { categoryKey: '새 항목' }
+  const [newCatKey, setNewCatKey] = useState('')
+  const [newCatLabel, setNewCatLabel] = useState('')
+  const [newSliderKey, setNewSliderKey] = useState('')
+  const [newSliderLabel, setNewSliderLabel] = useState('')
+  const [newSliderMin, setNewSliderMin] = useState('')
+  const [newSliderMax, setNewSliderMax] = useState('')
+
+  const categories = config.categories || {}
+  const sliders = config.sliders || {}
+
+  // 카테고리에 옵션 추가
+  const addOption = (catKey) => {
+    const val = (newOptions[catKey] || '').trim()
+    if (!val) return
+    const updated = { ...config }
+    updated.categories[catKey].options = [...updated.categories[catKey].options, val]
+    onChange(updated)
+    setNewOptions({ ...newOptions, [catKey]: '' })
+  }
+
+  // 카테고리에서 옵션 삭제
+  const removeOption = (catKey, optIdx) => {
+    const updated = { ...config }
+    updated.categories[catKey].options = updated.categories[catKey].options.filter((_, i) => i !== optIdx)
+    onChange(updated)
+  }
+
+  // 카테고리 자체 삭제
+  const removeCategory = (catKey) => {
+    const updated = { ...config }
+    delete updated.categories[catKey]
+    onChange(updated)
+  }
+
+  // 새 카테고리 추가
+  const addCategory = () => {
+    if (!newCatKey.trim() || !newCatLabel.trim()) return
+    const key = newCatKey.trim().replace(/\s+/g, '_')
+    const updated = { ...config }
+    updated.categories[key] = { label: newCatLabel.trim(), options: [] }
+    onChange(updated)
+    setNewCatKey('')
+    setNewCatLabel('')
+  }
+
+  // 슬라이더 삭제
+  const removeSlider = (key) => {
+    const updated = { ...config }
+    delete updated.sliders[key]
+    onChange(updated)
+  }
+
+  // 새 슬라이더 추가
+  const addSlider = () => {
+    if (!newSliderKey.trim() || !newSliderLabel.trim()) return
+    const key = newSliderKey.trim().replace(/\s+/g, '_')
+    const updated = { ...config }
+    updated.sliders[key] = { label: newSliderLabel.trim(), min: newSliderMin.trim() || '1', max: newSliderMax.trim() || '5' }
+    onChange(updated)
+    setNewSliderKey('')
+    setNewSliderLabel('')
+    setNewSliderMin('')
+    setNewSliderMax('')
+  }
+
+  return (
+    <>
+      <p style={S.desc}>상담 정보 입력 폼의 카테고리와 선택 항목을 관리합니다.</p>
+
+      {/* 버튼 선택형 카테고리들 */}
+      <h3 style={S.subTitle}>버튼 선택 항목</h3>
+      {Object.entries(categories).map(([key, cat]) => (
+        <div key={key} style={S.catCard}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <div style={{ fontSize: '15px', fontWeight: '700', color: '#1e3a5f' }}>{cat.label}</div>
+            <button onClick={() => removeCategory(key)} style={S.delBtn}>카테고리 삭제</button>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+            {cat.options.map((opt, i) => (
+              <div key={i} style={S.optionChip}>
+                <span>{opt}</span>
+                <button onClick={() => removeOption(key, i)} style={S.chipDel}>×</button>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input
+              value={newOptions[key] || ''}
+              onChange={(e) => setNewOptions({ ...newOptions, [key]: e.target.value })}
+              onKeyDown={(e) => e.key === 'Enter' && addOption(key)}
+              placeholder="새 항목 입력"
+              style={{ ...S.input, flex: 1 }}
+            />
+            <button onClick={() => addOption(key)} style={S.addBtn}>추가</button>
+          </div>
+        </div>
+      ))}
+
+      {/* 새 카테고리 추가 */}
+      <div style={S.formBox}>
+        <div style={{ fontSize: '13px', fontWeight: '600', color: '#6b7280', marginBottom: '8px' }}>새 카테고리 추가</div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <input value={newCatKey} onChange={(e) => setNewCatKey(e.target.value)}
+            placeholder="키 (영문, 예: painLevel)" style={{ ...S.input, flex: 1 }} />
+          <input value={newCatLabel} onChange={(e) => setNewCatLabel(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addCategory()}
+            placeholder="표시명 (예: 통증 수준)" style={{ ...S.input, flex: 1 }} />
+          <button onClick={addCategory} style={S.addBtn}>추가</button>
+        </div>
+      </div>
+
+      {/* 슬라이더 */}
+      <h3 style={{ ...S.subTitle, marginTop: '28px' }}>슬라이더 항목</h3>
+      {Object.entries(sliders).map(([key, slider]) => (
+        <div key={key} style={S.itemRow}>
+          <div style={S.itemText}>
+            <strong>{slider.label}</strong>
+            <span style={{ color: '#9ca3af', fontSize: '12px', marginLeft: '8px' }}>
+              ({slider.min} ~ {slider.max})
+            </span>
+          </div>
+          <button onClick={() => removeSlider(key)} style={S.delBtn}>삭제</button>
+        </div>
+      ))}
+
+      <div style={S.formBox}>
+        <div style={{ fontSize: '13px', fontWeight: '600', color: '#6b7280', marginBottom: '8px' }}>새 슬라이더 추가</div>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <input value={newSliderKey} onChange={(e) => setNewSliderKey(e.target.value)}
+            placeholder="키 (영문)" style={{ ...S.input, flex: 1, minWidth: '120px' }} />
+          <input value={newSliderLabel} onChange={(e) => setNewSliderLabel(e.target.value)}
+            placeholder="표시명" style={{ ...S.input, flex: 1, minWidth: '120px' }} />
+          <input value={newSliderMin} onChange={(e) => setNewSliderMin(e.target.value)}
+            placeholder="최소 라벨" style={{ ...S.input, flex: 1, minWidth: '100px' }} />
+          <input value={newSliderMax} onChange={(e) => setNewSliderMax(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addSlider()}
+            placeholder="최대 라벨" style={{ ...S.input, flex: 1, minWidth: '100px' }} />
+          <button onClick={addSlider} style={S.addBtn}>추가</button>
+        </div>
+      </div>
+    </>
+  )
 }
-const savingBar = {
-  background: '#dbeafe',
-  color: '#1d4ed8',
-  padding: '8px 16px',
-  borderRadius: '8px',
-  fontSize: '13px',
-  marginBottom: '16px',
-  textAlign: 'center',
-}
-const section = {
-  background: '#fff',
-  borderRadius: '12px',
-  padding: '24px',
-  marginBottom: '20px',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-}
-const sectionTitle = {
-  fontSize: '17px',
-  fontWeight: '700',
-  color: '#1e3a5f',
-  margin: '0 0 4px',
-}
-const sectionDesc = {
-  fontSize: '13px',
-  color: '#9ca3af',
-  margin: '0 0 16px',
-}
-const itemRow = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  padding: '10px 14px',
-  background: '#f9fafb',
-  borderRadius: '8px',
-  marginBottom: '8px',
-  border: '1px solid #e5e7eb',
-}
-const itemText = {
-  fontSize: '14px',
-  color: '#374151',
-  flex: 1,
-}
-const removeBtn = {
-  padding: '4px 10px',
-  background: 'none',
-  color: '#ef4444',
-  border: '1px solid #fecaca',
-  borderRadius: '6px',
-  fontSize: '12px',
-  cursor: 'pointer',
-  marginLeft: '8px',
-  flexShrink: 0,
-}
-const addRow = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '8px',
-  marginTop: '8px',
-}
-const inputFull = {
-  flex: 1,
-  padding: '10px 12px',
-  border: '1px solid #d1d5db',
-  borderRadius: '8px',
-  fontSize: '14px',
-  fontFamily: 'inherit',
-  boxSizing: 'border-box',
-  width: '100%',
-}
-const addBtn = {
-  padding: '10px 20px',
-  background: '#7c3aed',
-  color: '#fff',
-  border: 'none',
-  borderRadius: '8px',
-  fontSize: '14px',
-  fontWeight: '600',
-  cursor: 'pointer',
-  flexShrink: 0,
-}
-const strengthCard = {
-  padding: '14px 16px',
-  background: '#f0f7ff',
-  borderRadius: '10px',
-  marginBottom: '10px',
-  border: '1px solid #bfdbfe',
-}
-const strengthForm = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '8px',
-  marginTop: '12px',
-  padding: '16px',
-  background: '#fafafa',
-  borderRadius: '10px',
-  border: '1px dashed #d1d5db',
+
+// ─── 스타일 ───
+const S = {
+  page: { minHeight: '100vh', background: '#f0f2f5', fontFamily: "'Pretendard', sans-serif", padding: '24px' },
+  container: { maxWidth: '800px', margin: '0 auto' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' },
+  backBtn: { padding: '8px 16px', background: '#6b7280', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' },
+  savingBar: { background: '#dbeafe', color: '#1d4ed8', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px', textAlign: 'center' },
+  tabBar: { display: 'flex', gap: '4px', marginBottom: '0', background: '#fff', borderRadius: '12px 12px 0 0', padding: '8px 8px 0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' },
+  tabActive: { flex: 1, padding: '12px 16px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '8px 8px 0 0', fontSize: '14px', fontWeight: '700', cursor: 'pointer' },
+  tabInactive: { flex: 1, padding: '12px 16px', background: 'transparent', color: '#6b7280', border: 'none', borderRadius: '8px 8px 0 0', fontSize: '14px', fontWeight: '500', cursor: 'pointer' },
+  tabContent: { background: '#fff', borderRadius: '0 0 12px 12px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', minHeight: '400px' },
+  desc: { fontSize: '13px', color: '#9ca3af', margin: '0 0 16px' },
+  subTitle: { fontSize: '15px', fontWeight: '700', color: '#374151', margin: '0 0 12px' },
+  itemRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: '#f9fafb', borderRadius: '8px', marginBottom: '8px', border: '1px solid #e5e7eb' },
+  itemText: { fontSize: '14px', color: '#374151', flex: 1 },
+  delBtn: { padding: '4px 10px', background: 'none', color: '#ef4444', border: '1px solid #fecaca', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', marginLeft: '8px', flexShrink: 0 },
+  addRow: { display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' },
+  input: { flex: 1, padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', fontFamily: 'inherit', boxSizing: 'border-box', width: '100%' },
+  addBtn: { padding: '10px 20px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', flexShrink: 0 },
+  strengthCard: { padding: '14px 16px', background: '#f0f7ff', borderRadius: '10px', marginBottom: '10px', border: '1px solid #bfdbfe' },
+  formBox: { marginTop: '12px', padding: '16px', background: '#fafafa', borderRadius: '10px', border: '1px dashed #d1d5db' },
+  catCard: { padding: '16px', background: '#f9fafb', borderRadius: '10px', marginBottom: '12px', border: '1px solid #e5e7eb' },
+  optionChip: { display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 12px', background: '#ede9fe', borderRadius: '16px', fontSize: '13px', color: '#7c3aed', fontWeight: '500' },
+  chipDel: { background: 'none', border: 'none', color: '#a78bfa', fontSize: '14px', cursor: 'pointer', padding: '0 2px', fontWeight: '700' },
 }
