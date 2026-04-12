@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY
-const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`
+const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`
 
 // 저장된 교정 사례를 불러와서 프롬프트에 포함
 async function loadCorrections() {
