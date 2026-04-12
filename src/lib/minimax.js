@@ -1,8 +1,7 @@
 import { supabase } from './supabase'
 
-const API_KEY = import.meta.env.VITE_MINIMAX_API_KEY
-const TOKEN_PLAN_KEY = import.meta.env.VITE_MINIMAX_TOKEN_PLAN_KEY
-const API_URL = 'https://api.minimaxi.chat/v1/text/chatcompletion_v2'
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY
+const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`
 
 // 저장된 교정 사례를 불러와서 프롬프트에 포함
 async function loadCorrections() {
@@ -18,7 +17,6 @@ async function loadCorrections() {
 export async function saveCorrections(originalText, editedText) {
   if (!originalText || !editedText || originalText === editedText) return
 
-  // 문장 단위로 비교해서 달라진 부분만 저장
   const origSentences = originalText.split(/[.。]\s*/).filter(Boolean)
   const editSentences = editedText.split(/[.。]\s*/).filter(Boolean)
 
@@ -49,6 +47,7 @@ ${corrections.map((c) => `- "${c.original_term}" → "${c.corrected_term}"`).joi
   }
 
   const systemPrompt = `당신은 치과 진단서를 작성하는 전문 의료 커뮤니케이션 AI입니다.
+모든 출력은 반드시 한글과 영어만 사용합니다.
 
 규칙:
 1. 의학 약어와 전문 용어를 환자가 이해할 수 있는 쉬운 한국어로 변환합니다.
@@ -57,7 +56,7 @@ ${corrections.map((c) => `- "${c.original_term}" → "${c.corrected_term}"`).joi
    - 적극적 + 이해도 높음 → 상세하고 구체적인 설명
    - 감성적 → 따뜻하고 배려하는 톤
    - 바쁜 분 → 핵심만 간결하게
-3. 출력 형식은 JSON으로:
+3. 출력 형식은 반드시 아래 JSON으로:
    {
      "diagnosis": "오늘의 진단 내용 (2~4문장)",
      "treatmentOptions": [
@@ -67,8 +66,7 @@ ${corrections.map((c) => `- "${c.original_term}" → "${c.corrected_term}"`).joi
    }
 4. 환자에게 직접 말하는 2인칭("~님") 톤을 사용합니다.
 5. 각 섹션은 2-4문장으로 간결하게 작성합니다.
-6. 과거 교정 사례가 있으면 그 표현 스타일을 참고해서 더 정확하게 변환합니다.
-7. **절대 한자(漢字)나 중국어를 사용하지 마세요.** 모든 텍스트는 100% 순수 한글과 영어만 사용합니다. 예: "齒" → "치아", "矯正" → "교정".`
+6. 과거 교정 사례가 있으면 그 표현 스타일을 참고합니다.`
 
   const userMessage = `## 차팅 원문 (의사 기록)
 ${chartingText}
@@ -87,60 +85,36 @@ ${correctionsBlock}
 
   const response = await fetch(API_URL, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${API_KEY}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'MiniMax-M1',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage },
-      ],
-      token_plan_key: TOKEN_PLAN_KEY,
-      temperature: 0.7,
-      max_tokens: 2000,
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ parts: [{ text: userMessage }] }],
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 2000,
+        responseMimeType: 'application/json',
+      },
     }),
   })
 
   const data = await response.json()
 
-  if (data.base_resp?.status_code !== 0) {
-    throw new Error(data.base_resp?.status_msg || 'API 호출 실패')
+  if (data.error) {
+    throw new Error(data.error.message || 'Gemini API 호출 실패')
   }
 
-  const content = data.choices[0].message.content
-
-  const jsonMatch = content.match(/\{[\s\S]*\}/)
-  if (jsonMatch) {
-    const parsed = JSON.parse(jsonMatch[0])
-    return sanitizeChinese(parsed)
+  const content = data.candidates?.[0]?.content?.parts?.[0]?.text
+  if (!content) {
+    throw new Error('AI 응답이 비어있습니다.')
   }
 
-  return { diagnosis: stripChinese(content), treatmentOptions: [], additionalNotes: '' }
-}
-
-// 중국어/한자 문자를 제거하는 후처리
-// CJK Unified Ideographs (U+4E00~U+9FFF), CJK Extension A/B 등
-function stripChinese(text) {
-  if (!text || typeof text !== 'string') return text
-  // 한자 범위를 빈 문자열로 치환 (앞뒤 공백 정리)
-  return text
-    .replace(/[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF]+/g, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim()
-}
-
-// JSON 객체 내 모든 문자열 값에서 한자 제거
-function sanitizeChinese(obj) {
-  if (typeof obj === 'string') return stripChinese(obj)
-  if (Array.isArray(obj)) return obj.map(sanitizeChinese)
-  if (obj && typeof obj === 'object') {
-    const result = {}
-    for (const [key, value] of Object.entries(obj)) {
-      result[key] = sanitizeChinese(value)
-    }
-    return result
+  // responseMimeType: 'application/json' 이므로 바로 파싱 가능
+  try {
+    return JSON.parse(content)
+  } catch {
+    // 혹시 JSON 블록이 감싸져 있을 경우
+    const jsonMatch = content.match(/\{[\s\S]*\}/)
+    if (jsonMatch) return JSON.parse(jsonMatch[0])
+    return { diagnosis: content, treatmentOptions: [], additionalNotes: '' }
   }
-  return obj
 }
