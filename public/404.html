@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>리다이렉트</title>
+  <script>
+    // GitHub Pages SPA 라우팅 핵
+    const path = window.location.pathname;
+    const repo = '/dental-report';
+    if (path.startsWith(repo)) {
+      const route = path.slice(repo.length);
+      sessionStorage.setItem('spa-redirect', route);
+      window.location.replace(repo + '/');
+    }
+  </script>
+</head>
+<body></body>
+</html>

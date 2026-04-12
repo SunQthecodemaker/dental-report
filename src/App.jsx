@@ -4,7 +4,7 @@ import ReportView from './pages/ReportView'
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/dental-report">
       <Routes>
         <Route path="/" element={<Editor />} />
         <Route path="/report/:reportId" element={<ReportView />} />

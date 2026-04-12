@@ -99,7 +99,7 @@ export default function Editor() {
 
       if (error) throw error
 
-      const link = `${window.location.origin}/report/${reportId}`
+      const link = `${window.location.origin}/dental-report/report/${reportId}`
       setSavedLink(link)
       alert('저장 완료! 링크가 생성되었습니다.')
     } catch (err) {
