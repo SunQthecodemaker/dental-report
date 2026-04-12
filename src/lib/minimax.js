@@ -113,8 +113,34 @@ ${correctionsBlock}
 
   const jsonMatch = content.match(/\{[\s\S]*\}/)
   if (jsonMatch) {
-    return JSON.parse(jsonMatch[0])
+    const parsed = JSON.parse(jsonMatch[0])
+    return sanitizeChinese(parsed)
   }
 
-  return { diagnosis: content, treatmentOptions: [], additionalNotes: '' }
+  return { diagnosis: stripChinese(content), treatmentOptions: [], additionalNotes: '' }
+}
+
+// 중국어/한자 문자를 제거하는 후처리
+// CJK Unified Ideographs (U+4E00~U+9FFF), CJK Extension A/B 등
+function stripChinese(text) {
+  if (!text || typeof text !== 'string') return text
+  // 한자 범위를 빈 문자열로 치환 (앞뒤 공백 정리)
+  return text
+    .replace(/[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF]+/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+// JSON 객체 내 모든 문자열 값에서 한자 제거
+function sanitizeChinese(obj) {
+  if (typeof obj === 'string') return stripChinese(obj)
+  if (Array.isArray(obj)) return obj.map(sanitizeChinese)
+  if (obj && typeof obj === 'object') {
+    const result = {}
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = sanitizeChinese(value)
+    }
+    return result
+  }
+  return obj
 }
