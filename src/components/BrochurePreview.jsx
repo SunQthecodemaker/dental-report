@@ -1,5 +1,5 @@
-export default function BrochurePreview({ patientName, consultDate, content, photos, modules }) {
-  if (!content) {
+export default function BrochurePreview({ patientName, consultDate, blocks, modules }) {
+  if (!blocks || blocks.length === 0) {
     return (
       <div style={{
         display: 'flex',
@@ -26,25 +26,13 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
         padding: '28px 20px',
         textAlign: 'center',
       }}>
-        <div style={{
-          fontSize: '11px',
-          letterSpacing: '3px',
-          opacity: 0.8,
-          marginBottom: '4px',
-        }}>
+        <div style={{ fontSize: '11px', letterSpacing: '3px', opacity: 0.8, marginBottom: '4px' }}>
           PRIME S DENTAL
         </div>
-        <div style={{
-          fontSize: '18px',
-          fontWeight: '700',
-          marginBottom: '4px',
-        }}>
+        <div style={{ fontSize: '18px', fontWeight: '700', marginBottom: '4px' }}>
           프라임S치과교정과
         </div>
-        <div style={{
-          fontSize: '11px',
-          opacity: 0.7,
-        }}>
+        <div style={{ fontSize: '11px', opacity: 0.7 }}>
           교정과 · 치주과 · 구강내과 전문의 협진
         </div>
         <div style={{
@@ -62,65 +50,101 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
         </div>
       </div>
 
-      {/* 본문: 오늘의 진단 */}
+      {/* 본문: 블록 순서대로 렌더링 */}
       <div style={{ padding: '20px' }}>
-        <SectionCard title="오늘의 진단" icon="🔍">
-          <p style={{ margin: 0 }}>{content.diagnosis}</p>
-          {/* 진단 관련 사진 */}
-          {photos.filter((_, i) => i === 0).map((photo, i) => (
-            <PhotoBlock key={i} photo={photo} />
-          ))}
-        </SectionCard>
+        {blocks.map((block) => {
+          if (block.type === 'heading') {
+            const icon = block.content.includes('진단') ? '🔍' :
+              block.content.includes('옵션') ? '💊' : '📋'
+            return (
+              <div key={block.id} style={{
+                fontSize: '15px',
+                fontWeight: '700',
+                color: '#1e3a5f',
+                marginTop: '16px',
+                marginBottom: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}>
+                <span>{icon}</span> {block.content}
+              </div>
+            )
+          }
 
-        {/* 치료 옵션 */}
-        {content.treatmentOptions?.length > 0 && (
-          <SectionCard title="치료 옵션" icon="💊">
-            {content.treatmentOptions.map((opt, i) => (
-              <div
-                key={i}
-                style={{
-                  padding: '12px',
-                  background: i === 0 ? '#eff6ff' : '#f9fafb',
-                  borderRadius: '8px',
-                  marginBottom: '8px',
-                  border: i === 0 ? '1px solid #bfdbfe' : '1px solid #e5e7eb',
-                }}
-              >
-                <div style={{
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  color: '#1e3a5f',
-                  marginBottom: '4px',
-                }}>
-                  {opt.name}
+          if (block.type === 'text') {
+            return (
+              <div key={block.id} style={{
+                padding: '14px 16px',
+                background: '#fff',
+                borderRadius: '10px',
+                border: '1px solid #e5e7eb',
+                fontSize: '13px',
+                color: '#374151',
+                lineHeight: '1.8',
+                marginBottom: '8px',
+                whiteSpace: 'pre-wrap',
+              }}>
+                {block.content}
+              </div>
+            )
+          }
+
+          if (block.type === 'option') {
+            return (
+              <div key={block.id} style={{
+                padding: '12px',
+                background: '#eff6ff',
+                borderRadius: '8px',
+                marginBottom: '8px',
+                border: '1px solid #bfdbfe',
+              }}>
+                <div style={{ fontSize: '14px', fontWeight: '600', color: '#1e3a5f', marginBottom: '4px' }}>
+                  {block.name}
                 </div>
                 <div style={{ fontSize: '13px', color: '#4b5563' }}>
-                  {opt.description}
+                  {block.description}
                 </div>
-                {opt.duration && (
-                  <div style={{
-                    fontSize: '12px',
-                    color: '#6b7280',
-                    marginTop: '4px',
-                  }}>
-                    예상 기간: {opt.duration}
+                {block.duration && (
+                  <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
+                    예상 기간: {block.duration}
                   </div>
                 )}
               </div>
-            ))}
-            {/* 치료 관련 사진 */}
-            {photos.filter((_, i) => i >= 1).map((photo, i) => (
-              <PhotoBlock key={i} photo={photo} />
-            ))}
-          </SectionCard>
-        )}
+            )
+          }
 
-        {/* 함께 알아두실 사항 */}
-        {content.additionalNotes && (
-          <SectionCard title="함께 알아두실 사항" icon="📋">
-            <p style={{ margin: 0 }}>{content.additionalNotes}</p>
-          </SectionCard>
-        )}
+          if (block.type === 'photo') {
+            const src = block.preview || block.url
+            if (!src) return null
+            return (
+              <div key={block.id} style={{ marginBottom: '10px', textAlign: 'center' }}>
+                <img
+                  src={src}
+                  alt={block.memo || '진료 사진'}
+                  style={{
+                    width: '100%',
+                    borderRadius: '8px',
+                    maxHeight: block.ratio > 1.5 ? '160px' : '220px',
+                    objectFit: 'cover',
+                  }}
+                />
+                {block.memo && (
+                  <div style={{
+                    fontSize: '12px',
+                    color: '#6b7280',
+                    marginTop: '6px',
+                    fontStyle: 'italic',
+                  }}>
+                    {block.memo}
+                  </div>
+                )}
+              </div>
+            )
+          }
+
+          return null
+        })}
       </div>
 
       {/* 푸터 */}
@@ -146,6 +170,7 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
             color: '#fff',
             fontSize: '20px',
             fontWeight: '700',
+            flexShrink: 0,
           }}>
             Dr
           </div>
@@ -170,78 +195,14 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
           borderRadius: '8px',
           border: '1px solid #e5e7eb',
         }}>
-          📍 부평역 지하상가 15번 출구 앞
+          부평역 지하상가 15번 출구 앞
         </div>
 
-        <div style={{
-          display: 'flex',
-          gap: '8px',
-          marginTop: '12px',
-        }}>
+        <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
           <ActionButton label="카카오톡 상담" color="#fee500" textColor="#3c1e1e" />
           <ActionButton label="네이버 예약" color="#03c75a" textColor="#fff" />
         </div>
       </div>
-    </div>
-  )
-}
-
-function SectionCard({ title, icon, children }) {
-  return (
-    <div style={{
-      marginBottom: '16px',
-    }}>
-      <div style={{
-        fontSize: '15px',
-        fontWeight: '700',
-        color: '#1e3a5f',
-        marginBottom: '10px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '6px',
-      }}>
-        <span>{icon}</span> {title}
-      </div>
-      <div style={{
-        padding: '16px',
-        background: '#fff',
-        borderRadius: '12px',
-        border: '1px solid #e5e7eb',
-        fontSize: '13px',
-        color: '#374151',
-        lineHeight: '1.8',
-      }}>
-        {children}
-      </div>
-    </div>
-  )
-}
-
-function PhotoBlock({ photo }) {
-  const isWide = photo.ratio > 1.5
-  return (
-    <div style={{ marginTop: '12px' }}>
-      <img
-        src={photo.preview || photo.url}
-        alt={photo.memo || '진료 사진'}
-        style={{
-          width: '100%',
-          borderRadius: '8px',
-          maxHeight: isWide ? '160px' : '200px',
-          objectFit: 'cover',
-        }}
-      />
-      {photo.memo && (
-        <div style={{
-          fontSize: '12px',
-          color: '#6b7280',
-          marginTop: '6px',
-          textAlign: 'center',
-          fontStyle: 'italic',
-        }}>
-          {photo.memo}
-        </div>
-      )}
     </div>
   )
 }

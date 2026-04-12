@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import BrochurePreview from '../components/BrochurePreview'
+import { contentToBlocks } from '../components/BlockEditor'
 
 export default function ReportView() {
   const { reportId } = useParams()
@@ -23,7 +24,6 @@ export default function ReportView() {
 
       if (fetchError) throw fetchError
 
-      // 만료 확인
       if (new Date(data.expires_at) < new Date()) {
         setError('이 진단서 링크는 만료되었습니다.')
         return
@@ -48,7 +48,7 @@ export default function ReportView() {
         fontFamily: "'Pretendard', sans-serif",
       }}>
         <div style={{ textAlign: 'center', color: '#6b7280' }}>
-          <div style={{ fontSize: '24px', marginBottom: '8px' }}>⏳</div>
+          <div style={{ fontSize: '24px', marginBottom: '8px' }}>...</div>
           불러오는 중...
         </div>
       </div>
@@ -73,13 +73,7 @@ export default function ReportView() {
           boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
           maxWidth: '320px',
         }}>
-          <div style={{ fontSize: '48px', marginBottom: '12px' }}>🏥</div>
-          <div style={{
-            fontSize: '16px',
-            fontWeight: '600',
-            color: '#374151',
-            marginBottom: '8px',
-          }}>
+          <div style={{ fontSize: '16px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
             프라임S치과교정과
           </div>
           <div style={{ fontSize: '14px', color: '#6b7280' }}>{error}</div>
@@ -87,6 +81,11 @@ export default function ReportView() {
       </div>
     )
   }
+
+  // sections.blocks가 있으면 새 블록 형식, 없으면 구형식 호환
+  const blocks = report.sections?.blocks
+    ? report.sections.blocks
+    : contentToBlocks(report.sections)
 
   return (
     <div style={{
@@ -99,12 +98,7 @@ export default function ReportView() {
       <BrochurePreview
         patientName={report.patient_name}
         consultDate={report.consult_date}
-        content={report.sections}
-        photos={(report.photos || []).map(p => ({
-          ...p,
-          preview: p.url,
-          ratio: p.ratio || 1,
-        }))}
+        blocks={blocks}
         modules={report.modules || []}
       />
     </div>
