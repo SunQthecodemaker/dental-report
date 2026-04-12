@@ -167,33 +167,30 @@ function TerminologyTab({ items, onChange }) {
 
 // ─── 치과 특장점 탭 ───
 function StrengthsTab({ items, onChange }) {
-  const [form, setForm] = useState({ title: '', description: '', expressions: '' })
+  const [text, setText] = useState('')
   const add = () => {
-    if (!form.title.trim()) return
-    onChange([...items, { title: form.title.trim(), description: form.description.trim(), expressions: form.expressions.trim() }])
-    setForm({ title: '', description: '', expressions: '' })
+    if (!text.trim()) return
+    onChange([...items, text.trim()])
+    setText('')
   }
   return (
     <>
-      <p style={S.desc}>해당 치료가 차팅에 언급되면 AI가 자연스럽게 강조합니다.</p>
+      <p style={S.desc}>
+        우리 치과의 강점, AI가 활용할 표현, 강조할 포인트 등을 자유롭게 한 줄씩 추가하세요.<br />
+        등록된 내용은 AI가 진단서 작성 시 참고합니다.
+      </p>
       {items.map((s, i) => (
-        <div key={i} style={S.strengthCard}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontSize: '15px', fontWeight: '700', color: '#1e3a5f' }}>{s.title}</div>
-            <button onClick={() => onChange(items.filter((_, idx) => idx !== i))} style={S.delBtn}>삭제</button>
-          </div>
-          {s.description && <div style={{ fontSize: '13px', color: '#4b5563', marginTop: '4px' }}>{s.description}</div>}
-          {s.expressions && <div style={{ fontSize: '12px', color: '#7c3aed', marginTop: '6px', fontStyle: 'italic' }}>활용 표현: {s.expressions}</div>}
+        <div key={i} style={S.itemRow}>
+          <div style={S.itemText}>{typeof s === 'string' ? s : s.title || JSON.stringify(s)}</div>
+          <button onClick={() => onChange(items.filter((_, idx) => idx !== i))} style={S.delBtn}>삭제</button>
         </div>
       ))}
-      <div style={S.formBox}>
-        <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}
-          placeholder="특장점명 (예: 설측교정 전문)" style={S.input} />
-        <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
-          placeholder="설명 (예: 교정과 전문의가 직접 시행하는 설측교정)" style={{ ...S.input, minHeight: '60px', resize: 'vertical' }} />
-        <textarea value={form.expressions} onChange={(e) => setForm({ ...form, expressions: e.target.value })}
-          placeholder="AI 활용 표현 예시" style={{ ...S.input, minHeight: '60px', resize: 'vertical' }} />
-        <button onClick={add} style={{ ...S.addBtn, alignSelf: 'flex-end' }}>추가</button>
+      <div style={S.addRow}>
+        <input value={text} onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add()}
+          placeholder="예: 설측교정 전문 — 교정과 전문의가 직접 시행, 겉으로 보이지 않는 교정"
+          style={S.input} />
+        <button onClick={add} style={S.addBtn}>추가</button>
       </div>
     </>
   )

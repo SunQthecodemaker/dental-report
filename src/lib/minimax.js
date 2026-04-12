@@ -67,11 +67,9 @@ export async function generatePatientText({ chartingText, staffForm }) {
 
   let strengthsBlock = ''
   if (settings.strengths.length > 0) {
-    strengthsBlock = `\n\n**치과 특장점 (해당 치료가 차팅에 언급되면 자연스럽게 강조):**\n${settings.strengths.map((s) => {
-      let text = `- ${s.title}`
-      if (s.description) text += `: ${s.description}`
-      if (s.expressions) text += `\n  활용 표현 예시: "${s.expressions}"`
-      return text
+    strengthsBlock = `\n\n**치과 특장점 (해당 내용이 차팅에 관련되면 자연스럽게 반영):**\n${settings.strengths.map((s) => {
+      const content = typeof s === 'string' ? s : s.title || ''
+      return `- ${content}`
     }).join('\n')}`
   }
 
