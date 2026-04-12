@@ -46,32 +46,33 @@ export async function generatePatientText({ chartingText, staffForm }) {
 ${corrections.map((c) => `- "${c.original_term}" → "${c.corrected_term}"`).join('\n')}`
   }
 
-  const systemPrompt = `당신은 치과 진단서를 작성하는 전문 의료 커뮤니케이션 AI입니다.
-모든 출력은 반드시 한글과 영어만 사용합니다.
+  const systemPrompt = `당신은 한국 치과에서 환자용 진단서를 작성하는 AI입니다.
 
-핵심 원칙:
-- **차팅 원문에 있는 내용만 변환합니다. 차팅에 없는 내용을 절대 추가하지 마세요.**
+**언어 규칙 (최우선):**
+- 모든 출력은 100% 한국어로만 작성합니다.
+- 영어 병기 금지. 예: "설측교정 (Lingual Orthodontics)" → "설측교정"만 적습니다.
+- 영어 의학 용어는 반드시 한국어로 번역합니다.
+- 괄호 안 영어 설명, 영어 부제목, 영어 주석 모두 금지합니다.
+
+**내용 규칙:**
+- 차팅 원문에 있는 내용만 변환합니다. 차팅에 없는 내용을 절대 추가하지 마세요.
 - 치료 기간, 비용, 예후 등 차팅에 언급되지 않은 정보는 생략합니다.
 - duration, note 필드는 차팅에 해당 정보가 있을 때만 채우고, 없으면 빈 문자열("")로 둡니다.
 
-규칙:
-1. 의학 약어와 전문 용어를 환자가 이해할 수 있는 쉬운 한국어로 변환합니다.
-2. 환자 성향에 따라 톤을 조절합니다:
-   - 불안 높음 + 이해도 낮음 → 공감 중심, 매우 쉬운 용어, 안심 표현
-   - 적극적 + 이해도 높음 → 상세하고 구체적인 설명
-   - 감성적 → 따뜻하고 배려하는 톤
-   - 바쁜 분 → 핵심만 간결하게
-3. 출력 형식은 반드시 아래 JSON으로:
-   {
-     "diagnosis": "오늘의 진단 내용 (2~4문장, 차팅 내용 기반만)",
-     "treatmentOptions": [
-       { "name": "옵션명", "description": "설명 (2~3문장, 차팅 기반만)", "duration": "", "note": "" }
-     ],
-     "additionalNotes": "함께 알아두실 사항 (차팅에 관련 내용 있을 때만, 없으면 빈 문자열)"
-   }
-4. 환자에게 직접 말하는 2인칭("~님") 톤을 사용합니다.
-5. 각 섹션은 2-4문장으로 간결하게 작성합니다.
-6. 과거 교정 사례가 있으면 그 표현 스타일을 참고합니다.`
+**톤 규칙:**
+- 환자에게 직접 말하는 2인칭("~님") 톤
+- 환자 성향에 따라 조절: 불안 높으면 공감+안심, 적극적이면 상세하게, 바쁜 분이면 간결하게
+
+**출력 형식 (JSON):**
+{
+  "diagnosis": "진단 내용 (2~4문장, 한국어만)",
+  "treatmentOptions": [
+    { "name": "옵션명 (한국어만)", "description": "설명 (2~3문장, 한국어만)", "duration": "", "note": "" }
+  ],
+  "additionalNotes": "추가 사항 (없으면 빈 문자열)"
+}
+
+과거 교정 사례가 있으면 표현 스타일을 참고합니다.`
 
   const userMessage = `## 차팅 원문 (의사 기록)
 ${chartingText}
@@ -114,13 +115,34 @@ ${correctionsBlock}
     throw new Error('AI 응답이 비어있습니다.')
   }
 
-  // responseMimeType: 'application/json' 이므로 바로 파싱 가능
   try {
-    return JSON.parse(content)
+    return sanitize(JSON.parse(content))
   } catch {
-    // 혹시 JSON 블록이 감싸져 있을 경우
     const jsonMatch = content.match(/\{[\s\S]*\}/)
-    if (jsonMatch) return JSON.parse(jsonMatch[0])
+    if (jsonMatch) return sanitize(JSON.parse(jsonMatch[0]))
     return { diagnosis: content, treatmentOptions: [], additionalNotes: '' }
   }
+}
+
+// 괄호 안 영어 제거: "설측교정 (Lingual Orthodontics)" → "설측교정"
+function stripEnglishParens(text) {
+  if (!text || typeof text !== 'string') return text
+  return text
+    .replace(/\s*\([A-Za-z][A-Za-z\s,.\-/]*\)/g, '')
+    .replace(/\s*\[[A-Za-z][A-Za-z\s,.\-/]*\]/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+function sanitize(obj) {
+  if (typeof obj === 'string') return stripEnglishParens(obj)
+  if (Array.isArray(obj)) return obj.map(sanitize)
+  if (obj && typeof obj === 'object') {
+    const result = {}
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = sanitize(value)
+    }
+    return result
+  }
+  return obj
 }
