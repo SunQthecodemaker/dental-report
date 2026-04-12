@@ -48,7 +48,6 @@ export default function ReportView() {
         fontFamily: "'Pretendard', sans-serif",
       }}>
         <div style={{ textAlign: 'center', color: '#6b7280' }}>
-          <div style={{ fontSize: '24px', marginBottom: '8px' }}>...</div>
           불러오는 중...
         </div>
       </div>
@@ -82,25 +81,32 @@ export default function ReportView() {
     )
   }
 
-  // sections.blocks가 있으면 새 블록 형식, 없으면 구형식 호환
   const blocks = report.sections?.blocks
     ? report.sections.blocks
     : contentToBlocks(report.sections)
 
   return (
     <div style={{
-      maxWidth: '480px',
-      margin: '0 auto',
-      background: '#fff',
+      background: '#f0f2f5',
       minHeight: '100vh',
       fontFamily: "'Pretendard', sans-serif",
     }}>
-      <BrochurePreview
-        patientName={report.patient_name}
-        consultDate={report.consult_date}
-        blocks={blocks}
-        modules={report.modules || []}
-      />
+      {/* 반응형 컨테이너: 모바일은 꽉 차게, PC는 중앙 정렬 + 그림자 */}
+      <div style={{
+        maxWidth: '960px',
+        margin: '0 auto',
+        background: '#fff',
+        minHeight: '100vh',
+        boxShadow: '0 0 40px rgba(0,0,0,0.08)',
+      }}>
+        <BrochurePreview
+          patientName={report.patient_name}
+          consultDate={report.consult_date}
+          blocks={blocks}
+          modules={report.modules || []}
+          mode="view"
+        />
+      </div>
     </div>
   )
 }
