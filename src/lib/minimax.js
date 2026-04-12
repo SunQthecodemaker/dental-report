@@ -94,9 +94,19 @@ export async function generatePatientText({ chartingText, staffForm }) {
 - 치료 기간, 비용, 예후 등 차팅에 언급되지 않은 정보는 생략합니다.
 - duration, note 필드는 차팅에 해당 정보가 있을 때만 채우고, 없으면 빈 문자열("")로 둡니다.
 
-**톤 규칙:**
+**톤 규칙 (상담 정보를 반드시 반영해서 톤을 조절):**
 - 환자에게 직접 말하는 2인칭("~님") 톤
-- 환자 성향에 따라 조절: 불안 높으면 공감+안심, 적극적이면 상세하게, 바쁜 분이면 간결하게
+- 상담 정보에 따라 문장의 톤과 내용을 확실히 다르게 작성해야 합니다:
+  - 성향이 "감성적"이면 → 따뜻하고 공감하는 표현 사용 ("걱정되셨을 거예요", "함께 천천히")
+  - 성향이 "바쁜 분"이면 → 핵심만 짧고 명확하게
+  - 성향이 "꼼꼼한 편"이면 → 근거와 이유를 포함한 상세 설명
+  - 불안 요소가 있으면 → 해당 불안에 대한 안심 문구를 반드시 포함
+  - 비용 부담이 있으면 → 가치 중심 표현 ("투자", "장기적 효과")
+  - 치료 의지가 낮으면(1~2) → 강요하지 않고 부드럽게 권유
+  - 치료 의지가 높으면(4~5) → 구체적 다음 단계 안내
+  - 이해도가 낮으면(1~2) → 비유와 쉬운 표현
+  - 이해도가 높으면(4~5) → 전문적이고 구체적 설명
+  - 관심사가 있으면 → 해당 관심사와 연결된 치료 장점 강조
 - 단순 나열이 아니라, 환자가 읽고 신뢰감을 느끼는 전문적이면서 따뜻한 문장을 작성합니다.
 
 **출력 형식 (JSON):**
@@ -108,19 +118,26 @@ export async function generatePatientText({ chartingText, staffForm }) {
   "additionalNotes": "추가 사항 (없으면 빈 문자열)"
 }${guidelinesBlock}${terminologyBlock}${strengthsBlock}${correctionsBlock}`
 
+  // 상담 정보를 동적으로 조립 (설정에서 추가한 카테고리도 포함)
+  const staffLines = []
+  for (const [key, val] of Object.entries(staffForm)) {
+    if (key === 'memo') continue
+    if (Array.isArray(val) && val.length > 0) {
+      staffLines.push(`- ${key}: ${val.join(', ')}`)
+    } else if (typeof val === 'number') {
+      staffLines.push(`- ${key}: ${val}/5`)
+    }
+  }
+  if (staffForm.memo) staffLines.push(`- 추가 메모: ${staffForm.memo}`)
+
   const userMessage = `## 차팅 원문 (의사 기록)
 ${chartingText}
 
-## 상담 정보 (실장 입력)
-- 환자 성향: ${staffForm.personality?.join(', ') || '미입력'}
-- 불안 요소: ${staffForm.anxiety?.join(', ') || '없음'}
-- 비용 반응: ${staffForm.costReaction?.join(', ') || '미입력'}
-- 치료 의지: ${staffForm.willingness || 3}/5
-- 이해도: ${staffForm.understanding || 3}/5
-- 관심사: ${staffForm.interests?.join(', ') || '미입력'}
-- 추가 메모: ${staffForm.memo || '없음'}
+## 상담 정보 (실장 입력) — 이 정보에 따라 톤과 표현을 반드시 다르게 작성하세요
+${staffLines.length > 0 ? staffLines.join('\n') : '입력 없음'}
 
-위 정보를 바탕으로 환자 친화적인 진단서 내용을 JSON 형식으로 작성해주세요.`
+위 정보를 바탕으로 환자 친화적인 진단서 내용을 JSON 형식으로 작성해주세요.
+특히 상담 정보의 환자 성향, 불안 요소, 이해도에 맞춘 톤으로 작성하는 것이 중요합니다.`
 
   const response = await fetch(API_URL, {
     method: 'POST',
