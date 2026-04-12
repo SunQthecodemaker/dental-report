@@ -11,8 +11,11 @@
     <script>
       // GitHub Pages SPA redirect 복원
       (function(){
-        var r = sessionStorage.getItem('spa-redirect');
-        if (r) { sessionStorage.removeItem('spa-redirect'); history.replaceState(null, '', r); }
+        var q = new URLSearchParams(window.location.search);
+        var p = q.get('p');
+        if (p) {
+          history.replaceState(null, '', '/dental-report' + decodeURIComponent(p));
+        }
       })();
     </script>
     <script type="module" src="/src/main.jsx"></script>

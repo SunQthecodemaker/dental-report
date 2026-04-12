@@ -4,14 +4,11 @@
   <meta charset="utf-8">
   <title>리다이렉트</title>
   <script>
-    // GitHub Pages SPA 라우팅 핵
-    const path = window.location.pathname;
-    const repo = '/dental-report';
-    if (path.startsWith(repo)) {
-      const route = path.slice(repo.length);
-      sessionStorage.setItem('spa-redirect', route);
-      window.location.replace(repo + '/');
-    }
+    // GitHub Pages SPA 라우팅: 전체 경로를 쿼리로 넘겨서 index.html에서 복원
+    var l = window.location;
+    l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+      '/dental-report/?p=' + encodeURIComponent(l.pathname.replace('/dental-report', '') + l.search) +
+      (l.hash || ''));
   </script>
 </head>
 <body></body>
