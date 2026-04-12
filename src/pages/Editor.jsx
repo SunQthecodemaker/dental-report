@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import StaffForm from '../components/StaffForm'
 import BlockEditor, { contentToBlocks, blocksToContent } from '../components/BlockEditor'
 import BrochurePreview from '../components/BrochurePreview'
@@ -29,6 +30,7 @@ export default function Editor() {
   const [savedLink, setSavedLink] = useState(null)
   const [step, setStep] = useState(1) // 1: 입력, 2: 편집(워드형), 3: 브로셔 미리보기
 
+  const navigate = useNavigate()
   const originalContentRef = useRef(null)
 
   // Step 1 → 2: AI 텍스트 생성
@@ -159,6 +161,9 @@ export default function Editor() {
             </>
           )}
           <div style={{ flex: 1 }} />
+          <button onClick={() => navigate('/settings')} style={{ ...btnStyle('#374151'), fontSize: '13px', padding: '8px 14px' }}>
+            AI 설정
+          </button>
           {step > 1 && (
             <button onClick={() => setStep(step - 1)} style={btnStyle('#6b7280')}>
               ← 이전
