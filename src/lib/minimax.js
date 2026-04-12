@@ -91,8 +91,9 @@ ${correctionsBlock}
       contents: [{ parts: [{ text: userMessage }] }],
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 2000,
+        maxOutputTokens: 8000,
         responseMimeType: 'application/json',
+        thinkingConfig: { thinkingBudget: 0 },
       },
     }),
   })
