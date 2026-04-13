@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY
-const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/generate-text`
 
 async function loadCorrections() {
   const { data } = await supabase
@@ -137,7 +137,7 @@ ${staffLines.length > 0 ? staffLines.join('\n') : '입력 없음'}
 위 정보를 바탕으로 환자 친화적인 진단서 내용을 JSON 형식으로 작성해주세요.
 특히 상담 정보의 환자 성향, 불안 요소, 이해도에 맞춘 톤으로 작성하는 것이 중요합니다.`
 
-  const response = await fetch(API_URL, {
+  const response = await fetch(EDGE_FUNCTION_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

@@ -1,9 +1,9 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import StaffForm from '../components/StaffForm'
 import BlockEditor, { contentToBlocks, blocksToContent } from '../components/BlockEditor'
 import BrochurePreview from '../components/BrochurePreview'
-import { generatePatientText, saveCorrections } from '../lib/minimax'
+import { generatePatientText, saveCorrections } from '../lib/gemini'
 import { supabase } from '../lib/supabase'
 
 const INITIAL_STAFF_FORM = {
@@ -16,22 +16,54 @@ const INITIAL_STAFF_FORM = {
   memo: '',
 }
 
+const DRAFT_KEY = 'dental-report-draft'
+
+function loadDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function clearDraft() {
+  localStorage.removeItem(DRAFT_KEY)
+}
+
 export default function Editor() {
-  const [patientName, setPatientName] = useState('')
+  const draft = useRef(loadDraft()).current
+
+  const [patientName, setPatientName] = useState(draft?.patientName || '')
   const [consultDate, setConsultDate] = useState(
-    new Date().toISOString().split('T')[0]
+    draft?.consultDate || new Date().toISOString().split('T')[0]
   )
-  const [chartingText, setChartingText] = useState('')
-  const [staffForm, setStaffForm] = useState(INITIAL_STAFF_FORM)
-  const [blocks, setBlocks] = useState([])
-  const [selectedModules, setSelectedModules] = useState([])
+  const [chartingText, setChartingText] = useState(draft?.chartingText || '')
+  const [staffForm, setStaffForm] = useState(draft?.staffForm || INITIAL_STAFF_FORM)
+  const [blocks, setBlocks] = useState(draft?.blocks || [])
+  const [selectedModules, setSelectedModules] = useState(draft?.selectedModules || [])
   const [isGenerating, setIsGenerating] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [savedLink, setSavedLink] = useState(null)
-  const [step, setStep] = useState(1) // 1: 입력, 2: 편집(워드형), 3: 브로셔 미리보기
+  const [step, setStep] = useState(draft?.step || 1)
 
   const navigate = useNavigate()
   const originalContentRef = useRef(null)
+
+  // 자동 임시저장 (2초 디바운스)
+  const saveDraft = useCallback(() => {
+    const data = {
+      patientName, consultDate, chartingText, staffForm,
+      blocks: blocks.map(b => ({ ...b, file: undefined, preview: undefined })),
+      selectedModules, step,
+    }
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(data))
+  }, [patientName, consultDate, chartingText, staffForm, blocks, selectedModules, step])
+
+  useEffect(() => {
+    const timer = setTimeout(saveDraft, 2000)
+    return () => clearTimeout(timer)
+  }, [saveDraft])
 
   // Step 1 → 2: AI 텍스트 생성
   const handleGenerate = async () => {
@@ -110,6 +142,7 @@ export default function Editor() {
 
       const link = `${window.location.origin}/dental-report/report/${reportId}`
       setSavedLink(link)
+      clearDraft()
       alert('저장 완료! 링크가 생성되었습니다.')
     } catch (err) {
       alert('저장 실패: ' + err.message)
