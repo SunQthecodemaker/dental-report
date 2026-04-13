@@ -1,445 +1,371 @@
 /**
- * ContentEditor — Step 2: 내용 편집 (배치/용어 수정)
+ * ContentEditor — Step 2: 초안 내용 편집
  * 좌측: AI 초안 (읽기전용 참조)
- * 우측: 편집 가능한 내용
+ * 우측: 섹션별 편집 (골격관계, 치성관계, 문제목록, 치료목표, 치료계획, 추가사항)
  */
 export default function ContentEditor({ original, edited, onChange }) {
-  const updateField = (field, value) => {
-    onChange({ ...edited, [field]: value })
+  const update = (field, value) => onChange({ ...edited, [field]: value })
+
+  const isChanged = (a, b) => JSON.stringify(a) !== JSON.stringify(b)
+  const revert = (field) => onChange({ ...edited, [field]: original[field] })
+
+  // 문제 목록
+  const updateProblem = (idx, field, value) => {
+    const list = [...edited.problemList]
+    list[idx] = { ...list[idx], [field]: value }
+    onChange({ ...edited, problemList: list })
+  }
+  const addProblem = () => {
+    onChange({ ...edited, problemList: [...edited.problemList, { text: '', severity: 'mid' }] })
+  }
+  const removeProblem = (idx) => {
+    const list = edited.problemList.filter((_, i) => i !== idx)
+    // treatmentGoals의 problemRef도 조정
+    const goals = edited.treatmentGoals
+      .filter(g => g.problemRef !== idx + 1)
+      .map(g => ({ ...g, problemRef: g.problemRef > idx + 1 ? g.problemRef - 1 : g.problemRef }))
+    onChange({ ...edited, problemList: list, treatmentGoals: goals })
   }
 
+  // 치료 목표
+  const updateGoal = (idx, field, value) => {
+    const goals = [...edited.treatmentGoals]
+    goals[idx] = { ...goals[idx], [field]: value }
+    onChange({ ...edited, treatmentGoals: goals })
+  }
+  const addGoal = () => {
+    onChange({ ...edited, treatmentGoals: [...edited.treatmentGoals, { problemRef: 1, goal: '', detail: '' }] })
+  }
+  const removeGoal = (idx) => {
+    onChange({ ...edited, treatmentGoals: edited.treatmentGoals.filter((_, i) => i !== idx) })
+  }
+
+  // 치료 옵션
   const updateOption = (idx, field, value) => {
     const opts = [...edited.treatmentOptions]
     opts[idx] = { ...opts[idx], [field]: value }
     onChange({ ...edited, treatmentOptions: opts })
   }
-
   const moveOption = (idx, dir) => {
     const opts = [...edited.treatmentOptions]
-    const target = idx + dir
-    if (target < 0 || target >= opts.length) return
-    ;[opts[idx], opts[target]] = [opts[target], opts[idx]]
+    const t = idx + dir
+    if (t < 0 || t >= opts.length) return
+    ;[opts[idx], opts[t]] = [opts[t], opts[idx]]
     onChange({ ...edited, treatmentOptions: opts })
   }
-
-  const removeOption = (idx) => {
-    onChange({
-      ...edited,
-      treatmentOptions: edited.treatmentOptions.filter((_, i) => i !== idx),
-    })
-  }
-
   const addOption = () => {
-    onChange({
-      ...edited,
-      treatmentOptions: [
-        ...edited.treatmentOptions,
-        { name: '', description: '', duration: '', note: '' },
-      ],
-    })
+    onChange({ ...edited, treatmentOptions: [...edited.treatmentOptions, { name: '', description: '', expectedEffect: '', duration: '', appliance: '' }] })
   }
-
-  // 개별 섹션 원래대로
-  const revertField = (field) => {
-    onChange({ ...edited, [field]: original[field] })
-  }
-
-  const revertOption = (idx) => {
-    if (original.treatmentOptions[idx]) {
-      const opts = [...edited.treatmentOptions]
-      opts[idx] = { ...original.treatmentOptions[idx] }
-      onChange({ ...edited, treatmentOptions: opts })
-    }
-  }
-
-  const isChanged = (a, b) => {
-    if (typeof a === 'string' && typeof b === 'string') return a.trim() !== b.trim()
-    return JSON.stringify(a) !== JSON.stringify(b)
+  const removeOption = (idx) => {
+    onChange({ ...edited, treatmentOptions: edited.treatmentOptions.filter((_, i) => i !== idx) })
   }
 
   return (
-    <div style={styles.container}>
-      {/* 좌측: AI 초안 (읽기전용) */}
-      <div style={styles.leftPanel}>
-        <div style={styles.panelHeader}>
-          <div style={styles.panelBadge}>AI 초안</div>
-          <span style={styles.panelHint}>참조용 (수정 불가)</span>
+    <div style={S.container}>
+      {/* ── 좌측: AI 초안 (읽기전용) ── */}
+      <div style={S.left}>
+        <div style={S.panelHead}>
+          <span style={S.badge}>AI 초안</span>
+          <span style={S.hint}>참조용 (수정 불가)</span>
         </div>
 
-        <ReadOnlySection title="진단 내용" content={original.diagnosis} />
-
+        {original.skeletalRelationship && (
+          <RO title="골격 관계" content={original.skeletalRelationship} />
+        )}
+        {original.dentalRelationship && (
+          <RO title="치성 관계" content={original.dentalRelationship} />
+        )}
+        {original.problemList?.length > 0 && (
+          <div style={S.roSection}>
+            <div style={S.roTitle}>문제 목록</div>
+            {original.problemList.map((p, i) => (
+              <div key={i} style={S.roItem}>
+                <span style={{ ...S.roBadge, background: p.severity === 'high' ? '#fecaca' : '#fef3c7', color: p.severity === 'high' ? '#dc2626' : '#92400e' }}>
+                  {i + 1}
+                </span>
+                {p.text}
+                <span style={{ fontSize: '10px', color: '#9ca3af', marginLeft: '4px' }}>
+                  ({p.severity === 'high' ? '주요' : '보조'})
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {original.treatmentGoals?.length > 0 && (
+          <div style={S.roSection}>
+            <div style={S.roTitle}>치료 목표</div>
+            {original.treatmentGoals.map((g, i) => (
+              <div key={i} style={S.roItem}>
+                <span style={{ ...S.roBadge, background: '#dcfce7', color: '#16a34a' }}>{g.problemRef}</span>
+                {g.goal}
+                {g.detail && <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>{g.detail}</div>}
+              </div>
+            ))}
+          </div>
+        )}
         {original.treatmentOptions?.map((opt, i) => (
-          <div key={i} style={styles.readOnlyOption}>
-            <div style={styles.readOnlyOptionName}>{opt.name}</div>
-            <div style={styles.readOnlyText}>{opt.description}</div>
-            {opt.duration && (
-              <div style={styles.readOnlyMeta}>기간: {opt.duration}</div>
-            )}
-            {opt.note && (
-              <div style={styles.readOnlyMeta}>참고: {opt.note}</div>
-            )}
+          <div key={i} style={S.roOption}>
+            <div style={S.roOptName}>{opt.name}</div>
+            <div style={S.roText}>{opt.description}</div>
+            {opt.expectedEffect && <div style={S.roMeta}>기대 효과: {opt.expectedEffect}</div>}
+            {opt.duration && <div style={S.roMeta}>기간: {opt.duration}</div>}
+            {opt.appliance && <div style={S.roMeta}>장치: {opt.appliance}</div>}
           </div>
         ))}
-
         {original.additionalNotes && (
-          <ReadOnlySection title="추가 사항" content={original.additionalNotes} />
+          <RO title="추가 사항" content={original.additionalNotes} />
         )}
       </div>
 
-      {/* 우측: 편집창 */}
-      <div style={styles.rightPanel}>
-        <div style={styles.panelHeader}>
-          <div style={{ ...styles.panelBadge, background: '#7c3aed', color: '#fff' }}>
-            내용 편집
-          </div>
-          <span style={styles.panelHint}>배치 변경 · 용어 수정</span>
+      {/* ── 우측: 편집창 ── */}
+      <div style={S.right}>
+        <div style={S.panelHead}>
+          <span style={{ ...S.badge, background: '#7c3aed', color: '#fff' }}>내용 편집</span>
+          <span style={S.hint}>배치 변경 · 용어 수정</span>
         </div>
 
-        {/* 진단 */}
-        <EditSection
-          title="진단 내용"
-          changed={isChanged(original.diagnosis, edited.diagnosis)}
-          onRevert={() => revertField('diagnosis')}
+        {/* 골격 관계 */}
+        <EditSec
+          title="골격 관계"
+          changed={isChanged(original.skeletalRelationship, edited.skeletalRelationship)}
+          onRevert={() => revert('skeletalRelationship')}
         >
           <textarea
-            value={edited.diagnosis}
-            onChange={(e) => updateField('diagnosis', e.target.value)}
-            style={styles.textarea}
-            rows={Math.max(3, edited.diagnosis.split('\n').length + 1)}
+            value={edited.skeletalRelationship || ''}
+            onChange={e => update('skeletalRelationship', e.target.value)}
+            placeholder="골격(뼈, 악골) 관련 분석 내용"
+            style={S.ta}
+            rows={3}
           />
-        </EditSection>
+        </EditSec>
+
+        {/* 치성 관계 */}
+        <EditSec
+          title="치성 관계"
+          changed={isChanged(original.dentalRelationship, edited.dentalRelationship)}
+          onRevert={() => revert('dentalRelationship')}
+        >
+          <textarea
+            value={edited.dentalRelationship || ''}
+            onChange={e => update('dentalRelationship', e.target.value)}
+            placeholder="치아 배열, 교합, 총생 등"
+            style={S.ta}
+            rows={4}
+          />
+        </EditSec>
+
+        {/* 문제 목록 */}
+        <div style={S.secWrap}>
+          <div style={S.secHead}>
+            <span style={S.secTitle}>문제 목록</span>
+            <button onClick={addProblem} style={S.addBtn}>+ 문제 추가</button>
+          </div>
+          {edited.problemList.map((p, idx) => (
+            <div key={idx} style={S.problemRow}>
+              <span style={{ ...S.problemNum, background: p.severity === 'high' ? '#dc2626' : '#b5976a' }}>{idx + 1}</span>
+              <input
+                value={p.text}
+                onChange={e => updateProblem(idx, 'text', e.target.value)}
+                placeholder="문제 설명"
+                style={S.problemInput}
+              />
+              <select
+                value={p.severity}
+                onChange={e => updateProblem(idx, 'severity', e.target.value)}
+                style={S.severitySelect}
+              >
+                <option value="high">주요</option>
+                <option value="mid">보조</option>
+              </select>
+              <button onClick={() => removeProblem(idx)} style={S.delBtn}>×</button>
+            </div>
+          ))}
+        </div>
+
+        {/* 치료 목표 */}
+        <div style={S.secWrap}>
+          <div style={S.secHead}>
+            <span style={S.secTitle}>치료 목표</span>
+            <button onClick={addGoal} style={S.addBtn}>+ 목표 추가</button>
+          </div>
+          {edited.treatmentGoals.map((g, idx) => (
+            <div key={idx} style={S.goalRow}>
+              <select
+                value={g.problemRef}
+                onChange={e => updateGoal(idx, 'problemRef', Number(e.target.value))}
+                style={S.goalRefSelect}
+                title="연결 문제 번호"
+              >
+                {edited.problemList.map((_, pi) => (
+                  <option key={pi} value={pi + 1}>#{pi + 1}</option>
+                ))}
+              </select>
+              <input
+                value={g.goal}
+                onChange={e => updateGoal(idx, 'goal', e.target.value)}
+                placeholder="치료 목표"
+                style={{ ...S.problemInput, flex: 2 }}
+              />
+              <input
+                value={g.detail || ''}
+                onChange={e => updateGoal(idx, 'detail', e.target.value)}
+                placeholder="상세 (선택)"
+                style={{ ...S.problemInput, flex: 1 }}
+              />
+              <button onClick={() => removeGoal(idx)} style={S.delBtn}>×</button>
+            </div>
+          ))}
+        </div>
 
         {/* 치료 옵션 */}
-        <div style={styles.sectionWrap}>
-          <div style={styles.sectionHeader}>
-            <span style={styles.sectionTitle}>치료 옵션</span>
-            <button onClick={addOption} style={styles.addBtn}>+ 옵션 추가</button>
+        <div style={S.secWrap}>
+          <div style={S.secHead}>
+            <span style={S.secTitle}>치료 계획</span>
+            <button onClick={addOption} style={S.addBtn}>+ 옵션 추가</button>
           </div>
-
           {edited.treatmentOptions.map((opt, idx) => {
-            const origOpt = original.treatmentOptions[idx]
-            const changed = origOpt ? isChanged(opt, origOpt) : true
-
+            const orig = original.treatmentOptions[idx]
+            const changed = orig ? isChanged(opt, orig) : true
             return (
-              <div key={idx} style={styles.optionCard}>
-                <div style={styles.optionTop}>
-                  <span style={styles.optionNum}>옵션 {idx + 1}</span>
-                  <div style={styles.optionActions}>
-                    {changed && origOpt && (
-                      <button onClick={() => revertOption(idx)} style={styles.revertBtn} title="원래대로">↺</button>
-                    )}
-                    <button
-                      onClick={() => moveOption(idx, -1)}
-                      disabled={idx === 0}
-                      style={styles.moveBtn}
-                      title="위로"
-                    >↑</button>
-                    <button
-                      onClick={() => moveOption(idx, 1)}
-                      disabled={idx === edited.treatmentOptions.length - 1}
-                      style={styles.moveBtn}
-                      title="아래로"
-                    >↓</button>
-                    <button onClick={() => removeOption(idx)} style={styles.deleteBtn} title="삭제">×</button>
+              <div key={idx} style={S.optCard}>
+                <div style={S.optTop}>
+                  <span style={S.optNum}>Option {String.fromCharCode(65 + idx)}</span>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button onClick={() => moveOption(idx, -1)} disabled={idx === 0} style={S.moveBtn}>↑</button>
+                    <button onClick={() => moveOption(idx, 1)} disabled={idx === edited.treatmentOptions.length - 1} style={S.moveBtn}>↓</button>
+                    <button onClick={() => removeOption(idx)} style={S.delBtn}>×</button>
                   </div>
                 </div>
                 <input
                   value={opt.name}
-                  onChange={(e) => updateOption(idx, 'name', e.target.value)}
-                  placeholder="옵션명"
-                  style={styles.optionNameInput}
+                  onChange={e => updateOption(idx, 'name', e.target.value)}
+                  placeholder="옵션명 (예: 상악 소구치 발치 + 고정식 교정)"
+                  style={S.optNameInput}
                 />
                 <textarea
                   value={opt.description}
-                  onChange={(e) => updateOption(idx, 'description', e.target.value)}
+                  onChange={e => updateOption(idx, 'description', e.target.value)}
                   placeholder="설명"
-                  style={styles.textarea}
-                  rows={Math.max(2, (opt.description || '').split('\n').length + 1)}
+                  style={S.ta}
+                  rows={3}
                 />
-                <div style={styles.optionMetaRow}>
+                <textarea
+                  value={opt.expectedEffect || ''}
+                  onChange={e => updateOption(idx, 'expectedEffect', e.target.value)}
+                  placeholder="기대 효과 (선택)"
+                  style={{ ...S.ta, background: '#f0fdf4', borderColor: '#bbf7d0' }}
+                  rows={2}
+                />
+                <div style={S.optMetaRow}>
                   <input
                     value={opt.duration || ''}
-                    onChange={(e) => updateOption(idx, 'duration', e.target.value)}
-                    placeholder="예상 기간 (선택)"
-                    style={styles.metaInput}
+                    onChange={e => updateOption(idx, 'duration', e.target.value)}
+                    placeholder="예상 기간"
+                    style={S.metaInput}
                   />
                   <input
-                    value={opt.note || ''}
-                    onChange={(e) => updateOption(idx, 'note', e.target.value)}
-                    placeholder="참고사항 (선택)"
-                    style={{ ...styles.metaInput, flex: 2 }}
+                    value={opt.appliance || ''}
+                    onChange={e => updateOption(idx, 'appliance', e.target.value)}
+                    placeholder="장치 종류"
+                    style={S.metaInput}
                   />
                 </div>
-                {changed && (
-                  <div style={styles.changedIndicator} />
-                )}
+                {changed && <div style={S.changeBar} />}
               </div>
             )
           })}
         </div>
 
         {/* 추가 사항 */}
-        <EditSection
+        <EditSec
           title="추가 사항"
           changed={isChanged(original.additionalNotes, edited.additionalNotes)}
-          onRevert={() => revertField('additionalNotes')}
+          onRevert={() => revert('additionalNotes')}
         >
           <textarea
             value={edited.additionalNotes || ''}
-            onChange={(e) => updateField('additionalNotes', e.target.value)}
+            onChange={e => update('additionalNotes', e.target.value)}
             placeholder="추가로 알려드릴 사항 (선택)"
-            style={styles.textarea}
-            rows={Math.max(2, (edited.additionalNotes || '').split('\n').length + 1)}
+            style={S.ta}
+            rows={2}
           />
-        </EditSection>
+        </EditSec>
       </div>
     </div>
   )
 }
 
-function ReadOnlySection({ title, content }) {
+function RO({ title, content }) {
   return (
-    <div style={styles.readOnlySection}>
-      <div style={styles.readOnlySectionTitle}>{title}</div>
-      <div style={styles.readOnlyText}>{content}</div>
+    <div style={S.roSection}>
+      <div style={S.roTitle}>{title}</div>
+      <div style={S.roText}>{content}</div>
     </div>
   )
 }
 
-function EditSection({ title, changed, onRevert, children }) {
+function EditSec({ title, changed, onRevert, children }) {
   return (
-    <div style={styles.sectionWrap}>
-      <div style={styles.sectionHeader}>
-        <span style={styles.sectionTitle}>{title}</span>
-        {changed && (
-          <button onClick={onRevert} style={styles.revertBtn} title="원래대로">
-            ↺ 원래대로
-          </button>
-        )}
+    <div style={S.secWrap}>
+      <div style={S.secHead}>
+        <span style={S.secTitle}>{title}</span>
+        {changed && <button onClick={onRevert} style={S.revertBtn}>↺ 원래대로</button>}
       </div>
       {children}
-      {changed && <div style={styles.changedIndicator} />}
+      {changed && <div style={S.changeBar} />}
     </div>
   )
 }
 
-const styles = {
-  container: {
-    display: 'flex',
-    gap: '0',
-    height: 'calc(100vh - 140px)',
-    border: '1px solid #e5e7eb',
-    borderRadius: '12px',
-    overflow: 'hidden',
-    background: '#fff',
-  },
+const S = {
+  container: { display: 'flex', gap: 0, height: 'calc(100vh - 140px)', border: '1px solid #e5e7eb', borderRadius: '12px', overflow: 'hidden', background: '#fff' },
 
-  // 좌측 패널
-  leftPanel: {
-    flex: '0 0 38%',
-    overflow: 'auto',
-    padding: '20px',
-    background: '#f8f9fa',
-    borderRight: '1px solid #e5e7eb',
-  },
-  panelHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    marginBottom: '20px',
-    paddingBottom: '12px',
-    borderBottom: '1px solid #e5e7eb',
-  },
-  panelBadge: {
-    padding: '4px 12px',
-    borderRadius: '20px',
-    fontSize: '13px',
-    fontWeight: '600',
-    background: '#e5e7eb',
-    color: '#374151',
-  },
-  panelHint: {
-    fontSize: '12px',
-    color: '#9ca3af',
-  },
+  left: { flex: '0 0 36%', overflow: 'auto', padding: '20px', background: '#f8f9fa', borderRight: '1px solid #e5e7eb' },
+  right: { flex: 1, overflow: 'auto', padding: '20px' },
 
-  // 읽기전용 스타일
-  readOnlySection: {
-    marginBottom: '16px',
-  },
-  readOnlySectionTitle: {
-    fontSize: '13px',
-    fontWeight: '700',
-    color: '#6b7280',
-    marginBottom: '6px',
-    textTransform: 'uppercase',
-    letterSpacing: '0.5px',
-  },
-  readOnlyText: {
-    fontSize: '13px',
-    lineHeight: '1.8',
-    color: '#4b5563',
-    whiteSpace: 'pre-wrap',
-  },
-  readOnlyOption: {
-    padding: '12px',
-    background: '#fff',
-    borderRadius: '8px',
-    border: '1px solid #e5e7eb',
-    marginBottom: '8px',
-  },
-  readOnlyOptionName: {
-    fontSize: '14px',
-    fontWeight: '600',
-    color: '#1e3a5f',
-    marginBottom: '4px',
-  },
-  readOnlyMeta: {
-    fontSize: '12px',
-    color: '#9ca3af',
-    marginTop: '4px',
-  },
+  panelHead: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', paddingBottom: '12px', borderBottom: '1px solid #e5e7eb' },
+  badge: { padding: '4px 12px', borderRadius: '20px', fontSize: '13px', fontWeight: '600', background: '#e5e7eb', color: '#374151' },
+  hint: { fontSize: '12px', color: '#9ca3af' },
 
-  // 우측 패널
-  rightPanel: {
-    flex: 1,
-    overflow: 'auto',
-    padding: '20px',
-  },
+  // 읽기전용
+  roSection: { marginBottom: '16px' },
+  roTitle: { fontSize: '12px', fontWeight: '700', color: '#b5976a', marginBottom: '6px', letterSpacing: '0.5px', textTransform: 'uppercase' },
+  roText: { fontSize: '13px', lineHeight: '1.8', color: '#4b5563', whiteSpace: 'pre-wrap' },
+  roItem: { fontSize: '13px', color: '#4b5563', padding: '4px 0', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' },
+  roBadge: { display: 'inline-flex', width: '18px', height: '18px', borderRadius: '50%', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: '700', flexShrink: 0 },
+  roOption: { padding: '12px', background: '#fff', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '8px' },
+  roOptName: { fontSize: '14px', fontWeight: '600', color: '#1a1a18', marginBottom: '4px' },
+  roMeta: { fontSize: '11px', color: '#9ca3af', marginTop: '3px' },
 
-  // 편집 섹션
-  sectionWrap: {
-    marginBottom: '20px',
-    position: 'relative',
-  },
-  sectionHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: '8px',
-  },
-  sectionTitle: {
-    fontSize: '14px',
-    fontWeight: '700',
-    color: '#1e3a5f',
-  },
-  textarea: {
-    width: '100%',
-    padding: '10px 12px',
-    border: '1px solid #d1d5db',
-    borderRadius: '8px',
-    fontSize: '14px',
-    lineHeight: '1.8',
-    resize: 'vertical',
-    fontFamily: 'inherit',
-    color: '#1f2937',
-    background: '#fff',
-    boxSizing: 'border-box',
-    outline: 'none',
-    transition: 'border-color 0.15s',
-  },
+  // 편집
+  secWrap: { marginBottom: '20px', position: 'relative' },
+  secHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' },
+  secTitle: { fontSize: '14px', fontWeight: '700', color: '#1a1a18' },
+  ta: { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', lineHeight: '1.8', resize: 'vertical', fontFamily: 'inherit', color: '#1f2937', background: '#fff', boxSizing: 'border-box', outline: 'none' },
 
-  // 옵션 카드
-  optionCard: {
-    padding: '14px',
-    background: '#f0f7ff',
-    borderRadius: '10px',
-    border: '1px solid #bfdbfe',
-    marginBottom: '10px',
-    position: 'relative',
-  },
-  optionTop: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '8px',
-  },
-  optionNum: {
-    fontSize: '11px',
-    fontWeight: '600',
-    color: '#3b82f6',
-    textTransform: 'uppercase',
-  },
-  optionActions: {
-    display: 'flex',
-    gap: '4px',
-  },
-  optionNameInput: {
-    width: '100%',
-    padding: '8px 10px',
-    border: '1px solid #93c5fd',
-    borderRadius: '6px',
-    fontSize: '15px',
-    fontWeight: '600',
-    color: '#1e3a5f',
-    background: '#fff',
-    marginBottom: '8px',
-    boxSizing: 'border-box',
-    outline: 'none',
-  },
-  optionMetaRow: {
-    display: 'flex',
-    gap: '8px',
-    marginTop: '8px',
-  },
-  metaInput: {
-    flex: 1,
-    padding: '6px 10px',
-    border: '1px solid #bfdbfe',
-    borderRadius: '6px',
-    fontSize: '12px',
-    background: '#fff',
-    outline: 'none',
-  },
+  // 문제 목록
+  problemRow: { display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '6px' },
+  problemNum: { width: '22px', height: '22px', borderRadius: '50%', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '700', flexShrink: 0 },
+  problemInput: { flex: 3, padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' },
+  severitySelect: { padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '12px', background: '#fff', cursor: 'pointer' },
+
+  // 치료 목표
+  goalRow: { display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '6px' },
+  goalRefSelect: { width: '50px', padding: '6px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '12px', background: '#f0fdf4', textAlign: 'center' },
+
+  // 치료 옵션
+  optCard: { padding: '14px', background: '#f5f2ed', borderRadius: '10px', border: '1px solid #e5e0d5', marginBottom: '10px', position: 'relative' },
+  optTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' },
+  optNum: { fontSize: '11px', fontWeight: '600', color: '#b5976a', letterSpacing: '0.5px' },
+  optNameInput: { width: '100%', padding: '8px 10px', border: '1px solid #d4c8b4', borderRadius: '6px', fontSize: '15px', fontWeight: '600', color: '#1a1a18', background: '#fff', marginBottom: '8px', boxSizing: 'border-box', outline: 'none' },
+  optMetaRow: { display: 'flex', gap: '8px', marginTop: '8px' },
+  metaInput: { flex: 1, padding: '6px 10px', border: '1px solid #d4c8b4', borderRadius: '6px', fontSize: '12px', background: '#fff', outline: 'none' },
 
   // 버튼
-  addBtn: {
-    padding: '4px 12px',
-    background: '#eff6ff',
-    color: '#3b82f6',
-    border: '1px solid #93c5fd',
-    borderRadius: '6px',
-    fontSize: '12px',
-    fontWeight: '600',
-    cursor: 'pointer',
-  },
-  revertBtn: {
-    padding: '3px 8px',
-    background: '#fef3c7',
-    color: '#92400e',
-    border: '1px solid #fde68a',
-    borderRadius: '4px',
-    fontSize: '11px',
-    cursor: 'pointer',
-  },
-  moveBtn: {
-    padding: '2px 6px',
-    background: '#f3f4f6',
-    color: '#6b7280',
-    border: '1px solid #d1d5db',
-    borderRadius: '4px',
-    fontSize: '12px',
-    cursor: 'pointer',
-  },
-  deleteBtn: {
-    padding: '2px 8px',
-    background: '#fef2f2',
-    color: '#ef4444',
-    border: '1px solid #fecaca',
-    borderRadius: '4px',
-    fontSize: '14px',
-    fontWeight: '600',
-    cursor: 'pointer',
-  },
+  addBtn: { padding: '4px 12px', background: '#f5f2ed', color: '#b5976a', border: '1px solid #d4c8b4', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' },
+  revertBtn: { padding: '3px 8px', background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' },
+  moveBtn: { padding: '2px 6px', background: '#f3f4f6', color: '#6b7280', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' },
+  delBtn: { padding: '2px 8px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', borderRadius: '4px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' },
 
-  // 변경 표시
-  changedIndicator: {
-    position: 'absolute',
-    left: '-4px',
-    top: '0',
-    bottom: '0',
-    width: '3px',
-    background: '#f59e0b',
-    borderRadius: '2px',
-  },
+  changeBar: { position: 'absolute', left: '-4px', top: 0, bottom: 0, width: '3px', background: '#f59e0b', borderRadius: '2px' },
 }

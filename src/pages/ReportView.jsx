@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import BrochurePreview from '../components/BrochurePreview'
-import { contentToBlocks } from '../components/BlockEditor'
 
 export default function ReportView() {
   const { reportId } = useParams()
@@ -30,7 +29,7 @@ export default function ReportView() {
       }
 
       setReport(data)
-    } catch (err) {
+    } catch {
       setError('진단서를 찾을 수 없습니다.')
     } finally {
       setLoading(false)
@@ -39,71 +38,36 @@ export default function ReportView() {
 
   if (loading) {
     return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100vh',
-        background: '#f8fafc',
-        fontFamily: "'Pretendard', sans-serif",
-      }}>
-        <div style={{ textAlign: 'center', color: '#6b7280' }}>
-          불러오는 중...
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#f5f2ed', fontFamily: "'Nanum Myeongjo', serif" }}>
+        <div style={{ textAlign: 'center', color: '#5a5a55' }}>불러오는 중...</div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: '100vh',
-        background: '#f8fafc',
-        fontFamily: "'Pretendard', sans-serif",
-      }}>
-        <div style={{
-          textAlign: 'center',
-          padding: '40px',
-          background: '#fff',
-          borderRadius: '16px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-          maxWidth: '320px',
-        }}>
-          <div style={{ fontSize: '16px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
-            프라임S치과교정과
-          </div>
-          <div style={{ fontSize: '14px', color: '#6b7280' }}>{error}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#f5f2ed', fontFamily: "'Nanum Myeongjo', serif" }}>
+        <div style={{ textAlign: 'center', padding: '40px', background: '#fff', borderRadius: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxWidth: '320px' }}>
+          <div style={{ fontSize: '16px', fontWeight: 600, color: '#1a1a18', marginBottom: '8px' }}>프라임에스 치과교정과</div>
+          <div style={{ fontSize: '14px', color: '#5a5a55' }}>{error}</div>
         </div>
       </div>
     )
   }
 
-  const blocks = report.sections?.blocks
-    ? report.sections.blocks
-    : contentToBlocks(report.sections)
+  // sections가 새 형식(skeletalRelationship 등)이면 그대로, 이전 형식(blocks)이면 빈 content
+  const content = report.sections?.skeletalRelationship !== undefined
+    ? report.sections
+    : report.sections || {}
 
   return (
-    <div style={{
-      background: '#f0f2f5',
-      minHeight: '100vh',
-      fontFamily: "'Pretendard', sans-serif",
-    }}>
-      {/* 반응형 컨테이너: 모바일은 꽉 차게, PC는 중앙 정렬 + 그림자 */}
-      <div style={{
-        maxWidth: '960px',
-        margin: '0 auto',
-        background: '#fff',
-        minHeight: '100vh',
-        boxShadow: '0 0 40px rgba(0,0,0,0.08)',
-      }}>
+    <div style={{ background: '#e8e4de', minHeight: '100vh', fontFamily: "'Nanum Myeongjo', serif" }}>
+      <div style={{ maxWidth: '960px', margin: '0 auto', background: '#fff', minHeight: '100vh', boxShadow: '0 0 40px rgba(0,0,0,0.08)' }}>
         <BrochurePreview
           patientName={report.patient_name}
           consultDate={report.consult_date}
-          blocks={blocks}
-          modules={report.modules || []}
+          content={content}
+          photos={report.photos || []}
           mode="view"
         />
       </div>
