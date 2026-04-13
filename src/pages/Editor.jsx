@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import StaffForm from '../components/StaffForm'
+import ContentEditor from '../components/ContentEditor'
 import BlockEditor, { contentToBlocks, blocksToContent } from '../components/BlockEditor'
 import BrochurePreview from '../components/BrochurePreview'
-import { generatePatientText, saveCorrections } from '../lib/gemini'
+import { generateDraft, refineContent, saveCorrections } from '../lib/gemini'
 import { supabase } from '../lib/supabase'
 
 const INITIAL_STAFF_FORM = {
@@ -31,6 +32,13 @@ function clearDraft() {
   localStorage.removeItem(DRAFT_KEY)
 }
 
+const STEP_LABELS = [
+  { num: 1, label: '입력' },
+  { num: 2, label: '내용 편집' },
+  { num: 3, label: '톤 변환' },
+  { num: 4, label: '브로셔' },
+]
+
 export default function Editor() {
   const draft = useRef(loadDraft()).current
 
@@ -43,9 +51,14 @@ export default function Editor() {
   const [blocks, setBlocks] = useState(draft?.blocks || [])
   const [selectedModules, setSelectedModules] = useState(draft?.selectedModules || [])
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isRefining, setIsRefining] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [savedLink, setSavedLink] = useState(null)
   const [step, setStep] = useState(draft?.step || 1)
+
+  // Step 2용: AI 초안 원본 + 편집본
+  const [draftContent, setDraftContent] = useState(draft?.draftContent || null)
+  const [editedContent, setEditedContent] = useState(draft?.editedContent || null)
 
   const navigate = useNavigate()
   const originalContentRef = useRef(null)
@@ -55,27 +68,27 @@ export default function Editor() {
     const data = {
       patientName, consultDate, chartingText, staffForm,
       blocks: blocks.map(b => ({ ...b, file: undefined, preview: undefined })),
-      selectedModules, step,
+      selectedModules, step, draftContent, editedContent,
     }
     localStorage.setItem(DRAFT_KEY, JSON.stringify(data))
-  }, [patientName, consultDate, chartingText, staffForm, blocks, selectedModules, step])
+  }, [patientName, consultDate, chartingText, staffForm, blocks, selectedModules, step, draftContent, editedContent])
 
   useEffect(() => {
     const timer = setTimeout(saveDraft, 2000)
     return () => clearTimeout(timer)
   }, [saveDraft])
 
-  // Step 1 → 2: AI 텍스트 생성
-  const handleGenerate = async () => {
+  // Step 1 → 2: AI 초안 생성 (톤 중립, 내용 중심)
+  const handleGenerateDraft = async () => {
     if (!chartingText.trim()) {
       alert('차팅 내용을 입력해주세요.')
       return
     }
     setIsGenerating(true)
     try {
-      const result = await generatePatientText({ chartingText, staffForm })
-      originalContentRef.current = result
-      setBlocks(contentToBlocks(result))
+      const result = await generateDraft({ chartingText })
+      setDraftContent(result)
+      setEditedContent(JSON.parse(JSON.stringify(result))) // deep copy
       setStep(2)
     } catch (err) {
       alert('AI 생성 실패: ' + err.message)
@@ -84,7 +97,23 @@ export default function Editor() {
     }
   }
 
-  // Step 2 → 3: 브로셔 변환 + 교정 사례 저장
+  // Step 2 → 3: AI 톤 변환 (환자 성향 반영)
+  const handleRefine = async () => {
+    if (!editedContent) return
+    setIsRefining(true)
+    try {
+      const refined = await refineContent({ content: editedContent, staffForm })
+      originalContentRef.current = editedContent // 교정 비교용
+      setBlocks(contentToBlocks(refined))
+      setStep(3)
+    } catch (err) {
+      alert('AI 톤 변환 실패: ' + err.message)
+    } finally {
+      setIsRefining(false)
+    }
+  }
+
+  // Step 3 → 4: 브로셔 변환 + 교정 사례 저장
   const handleMakeBrochure = async () => {
     if (originalContentRef.current) {
       const edited = blocksToContent(blocks)
@@ -95,7 +124,7 @@ export default function Editor() {
         await saveCorrections(orig.treatmentOptions[i].description, edited.treatmentOptions[i].description)
       }
     }
-    setStep(3)
+    setStep(4)
   }
 
   // 저장 + 링크 생성
@@ -159,24 +188,11 @@ export default function Editor() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', fontFamily: "'Pretendard', sans-serif" }}>
-      {/* 좌측 (Step 1,2: 편집 / Step 3: 브로셔 확인) */}
-      <div style={{
-        flex: 1,
-        overflow: 'auto',
-        padding: '24px',
-        background: step === 3 ? '#1f2937' : '#fafafa',
-        ...(step === 2 ? {} : { borderRight: '1px solid #e5e7eb' }),
-      }}>
-        {/* 상단 바 */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          marginBottom: '24px',
-          flexWrap: 'wrap',
-        }}>
-          {step < 3 && (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: "'Pretendard', sans-serif" }}>
+      {/* 상단 헤더 바 */}
+      <div style={headerStyles.bar}>
+        <div style={headerStyles.left}>
+          {step < 4 && (
             <>
               <input
                 type="text"
@@ -193,7 +209,42 @@ export default function Editor() {
               />
             </>
           )}
-          <div style={{ flex: 1 }} />
+        </div>
+
+        {/* 스텝 인디케이터 */}
+        <div style={headerStyles.steps}>
+          {STEP_LABELS.map(({ num, label }) => (
+            <div key={num} style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              opacity: num === step ? 1 : 0.4,
+            }}>
+              <div style={{
+                width: '24px',
+                height: '24px',
+                borderRadius: '50%',
+                background: num === step ? '#7c3aed' : num < step ? '#10b981' : '#d1d5db',
+                color: '#fff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '12px',
+                fontWeight: '700',
+              }}>
+                {num < step ? '✓' : num}
+              </div>
+              <span style={{
+                fontSize: '13px',
+                fontWeight: num === step ? '600' : '400',
+                color: num === step ? '#1f2937' : '#9ca3af',
+              }}>{label}</span>
+              {num < 4 && <span style={{ color: '#d1d5db', margin: '0 4px' }}>→</span>}
+            </div>
+          ))}
+        </div>
+
+        <div style={headerStyles.right}>
           <button onClick={() => navigate('/settings')} style={{ ...btnStyle('#374151'), fontSize: '13px', padding: '8px 14px' }}>
             AI 설정
           </button>
@@ -202,21 +253,25 @@ export default function Editor() {
               ← 이전
             </button>
           )}
-          {step === 3 && savedLink && (
+          {step === 4 && savedLink && (
             <button onClick={handleCopyLink} style={btnStyle('#10b981')}>
               링크 복사
             </button>
           )}
-          {step === 3 && (
+          {step === 4 && (
             <button onClick={handleSave} disabled={isSaving} style={btnStyle('#2563eb')}>
               {isSaving ? '저장 중...' : '저장 + 링크 생성'}
             </button>
           )}
         </div>
+      </div>
+
+      {/* 메인 콘텐츠 */}
+      <div style={{ flex: 1, overflow: 'auto', background: step === 4 ? '#1f2937' : '#fafafa' }}>
 
         {/* Step 1: 입력 */}
         {step === 1 && (
-          <>
+          <div style={{ maxWidth: '800px', margin: '0 auto', padding: '24px' }}>
             <Section title="1. 차팅 입력 (EMR 복사붙여넣기)">
               <textarea
                 placeholder="EMR에서 차팅 내용을 복사해서 붙여넣으세요..."
@@ -234,39 +289,102 @@ export default function Editor() {
               <StaffForm value={staffForm} onChange={setStaffForm} />
             </Section>
             <button
-              onClick={handleGenerate}
+              onClick={handleGenerateDraft}
               disabled={isGenerating}
               style={{ ...btnStyle('#7c3aed'), width: '100%', padding: '14px', fontSize: '16px' }}
             >
-              {isGenerating ? 'AI 생성 중...' : 'AI 텍스트 생성'}
+              {isGenerating ? 'AI 초안 생성 중...' : 'AI 초안 생성'}
             </button>
-          </>
+          </div>
         )}
 
-        {/* Step 2: 워드형 편집 (전체 너비) */}
-        {step === 2 && (
-          <>
+        {/* Step 2: 내용 편집 (좌: 원본 초안, 우: 편집창) */}
+        {step === 2 && draftContent && editedContent && (
+          <div style={{ padding: '16px 24px', height: 'calc(100vh - 120px)' }}>
             <div style={{
               background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px',
-              padding: '10px 14px', fontSize: '13px', color: '#92400e', marginBottom: '16px',
+              padding: '10px 14px', fontSize: '13px', color: '#92400e', marginBottom: '12px',
+              display: 'flex', alignItems: 'center', gap: '8px',
             }}>
-              텍스트를 수정하고, 원하는 위치에 사진을 삽입하세요. (커서 놓고 Ctrl+V 또는 상단 버튼)
+              <span style={{ fontSize: '16px' }}>&#9998;</span>
+              좌측 초안을 참조하면서 우측에서 내용 배치와 용어를 수정하세요. 말투/톤은 다음 단계에서 AI가 조절합니다.
             </div>
-            <BlockEditor blocks={blocks} onChange={setBlocks} />
+            <ContentEditor
+              original={draftContent}
+              edited={editedContent}
+              onChange={setEditedContent}
+            />
             <button
-              onClick={handleMakeBrochure}
+              onClick={handleRefine}
+              disabled={isRefining}
               style={{
-                ...btnStyle('#dc2626'), width: '100%', padding: '16px',
-                fontSize: '18px', fontWeight: '700', marginTop: '16px',
+                ...btnStyle('#7c3aed'), width: '100%', padding: '16px',
+                fontSize: '16px', fontWeight: '700', marginTop: '12px',
               }}
             >
-              브로셔 만들기
+              {isRefining ? 'AI 톤 변환 중...' : 'AI 톤 변환 (환자 맞춤)'}
             </button>
-          </>
+          </div>
         )}
 
-        {/* Step 3: 브로셔 완성 미리보기 (환자에게 보이는 그대로) */}
+        {/* Step 3: 톤 변환 결과 + 사진 삽입 + 최종 편집 */}
         {step === 3 && (
+          <div style={{ display: 'flex', height: 'calc(100vh - 60px)' }}>
+            <div style={{
+              flex: 1, overflow: 'auto', padding: '24px',
+              borderRight: '1px solid #e5e7eb',
+            }}>
+              <div style={{
+                background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: '8px',
+                padding: '10px 14px', fontSize: '13px', color: '#065f46', marginBottom: '16px',
+              }}>
+                환자 성향이 반영된 톤으로 변환되었습니다. 최종 수정 후 사진을 삽입하세요.
+              </div>
+              <BlockEditor blocks={blocks} onChange={setBlocks} />
+              <button
+                onClick={handleMakeBrochure}
+                style={{
+                  ...btnStyle('#dc2626'), width: '100%', padding: '16px',
+                  fontSize: '18px', fontWeight: '700', marginTop: '16px',
+                }}
+              >
+                브로셔 만들기
+              </button>
+            </div>
+
+            {/* 우측 모바일 미리보기 */}
+            <div style={{
+              width: '420px',
+              background: '#1f2937',
+              display: 'flex',
+              alignItems: 'flex-start',
+              justifyContent: 'center',
+              padding: '24px',
+              overflow: 'auto',
+              flexShrink: 0,
+            }}>
+              <div style={{
+                width: '375px',
+                minHeight: '667px',
+                background: '#fff',
+                borderRadius: '24px',
+                overflow: 'hidden',
+                boxShadow: '0 25px 50px rgba(0,0,0,0.3)',
+              }}>
+                <BrochurePreview
+                  patientName={patientName}
+                  consultDate={consultDate}
+                  blocks={blocks}
+                  modules={selectedModules}
+                  mode="preview"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: 브로셔 완성 미리보기 */}
+        {step === 4 && (
           <div style={{
             display: 'flex',
             justifyContent: 'center',
@@ -291,37 +409,6 @@ export default function Editor() {
           </div>
         )}
       </div>
-
-      {/* 우측: Step 1에서만 안내, Step 2에서 간단 미리보기, Step 3에서는 숨김 */}
-      {step < 3 && (
-        <div style={{
-          width: '420px',
-          background: '#1f2937',
-          display: 'flex',
-          alignItems: 'flex-start',
-          justifyContent: 'center',
-          padding: '24px',
-          overflow: 'auto',
-          flexShrink: 0,
-        }}>
-          <div style={{
-            width: '375px',
-            minHeight: '667px',
-            background: '#fff',
-            borderRadius: '24px',
-            overflow: 'hidden',
-            boxShadow: '0 25px 50px rgba(0,0,0,0.3)',
-          }}>
-            <BrochurePreview
-              patientName={patientName}
-              consultDate={consultDate}
-              blocks={blocks}
-              modules={selectedModules}
-              mode="preview"
-            />
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -354,3 +441,33 @@ const btnStyle = (color) => ({
   fontWeight: '600',
   cursor: 'pointer',
 })
+
+const headerStyles = {
+  bar: {
+    display: 'flex',
+    alignItems: 'center',
+    padding: '10px 20px',
+    background: '#fff',
+    borderBottom: '1px solid #e5e7eb',
+    gap: '16px',
+    flexShrink: 0,
+    zIndex: 10,
+  },
+  left: {
+    display: 'flex',
+    gap: '8px',
+    alignItems: 'center',
+  },
+  steps: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  right: {
+    display: 'flex',
+    gap: '8px',
+    alignItems: 'center',
+  },
+}
