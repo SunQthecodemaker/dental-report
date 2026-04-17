@@ -48,6 +48,28 @@ const DIAGNOSIS_SECTIONS = [
   { key: 'etc', label: '기타', items: ETC_ITEMS, color: '#059669' },
 ]
 
+function getEmptyTxOption() {
+  return {
+    name: '',
+    scope: '',        // '전체' | '부분'
+    phase: '',        // '1차' | '2차'
+    // 1차
+    primary: [],      // ['근기능치료', '악궁확장', '앞니배열']
+    // 2차 비발치
+    expansion: false,  // 악궁확장
+    expansionType: '', // RPE, MSE, SARPE 등
+    distalization: false,
+    distalExtraction: '', // #7/#8 발치 여부
+    stripping: false,
+    // 발치 사분면 ('' = 비발치, '4' | '5' | '기타')
+    ext_UR: '', ext_UL: '', ext_LR: '', ext_LL: '',
+    // 기타
+    txEtc: [],        // ['매복치', '잇몸수술', '악교정 수술']
+    description: '',
+    duration: '',
+  }
+}
+
 export function getEmptyClinicalForm() {
   return {
     // page 1: 환자정보
@@ -59,7 +81,7 @@ export function getEmptyClinicalForm() {
     dental: { memo: '' },
     etc: { memo: '' },
     // page 3: 치료계획
-    treatmentOptions: [{ name: '', description: '', duration: '' }],
+    treatmentOptions: [getEmptyTxOption()],
     treatmentGoal: '',
     treatmentMemo: '',
   }
@@ -111,8 +133,17 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
     opts[idx] = { ...opts[idx], [field]: val }
     updateTopLevel('treatmentOptions', opts)
   }
+  const toggleOptionArray = (idx, field, val) => {
+    const opts = [...(value.treatmentOptions || [])]
+    const current = opts[idx][field] || []
+    opts[idx] = {
+      ...opts[idx],
+      [field]: current.includes(val) ? current.filter(v => v !== val) : [...current, val],
+    }
+    updateTopLevel('treatmentOptions', opts)
+  }
   const addOption = () => {
-    updateTopLevel('treatmentOptions', [...(value.treatmentOptions || []), { name: '', description: '', duration: '' }])
+    updateTopLevel('treatmentOptions', [...(value.treatmentOptions || []), getEmptyTxOption()])
   }
   const removeOption = (idx) => {
     updateTopLevel('treatmentOptions', (value.treatmentOptions || []).filter((_, i) => i !== idx))
@@ -275,33 +306,139 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
       {/* Page 3: 치료계획 */}
       {page === 3 && (
         <div style={pageStyle}>
-          <div style={sectionStyle}>
-            <SectionHeader label="치료 계획" color="#b5976a" />
-
-            {(value.treatmentOptions || []).map((opt, idx) => (
-              <div key={idx} style={optionCardStyle}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: '700', color: '#b5976a' }}>옵션 #{idx + 1}</span>
-                  {(value.treatmentOptions || []).length > 1 && (
-                    <button onClick={() => removeOption(idx)} style={removeBtn}>삭제</button>
-                  )}
+          {(value.treatmentOptions || []).map((opt, idx) => (
+            <div key={idx} style={sectionStyle}>
+              {/* 옵션 헤더 */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '10px', borderBottom: '2px solid #b5976a20' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ width: '4px', height: '20px', borderRadius: '2px', background: '#b5976a' }} />
+                  <span style={{ fontSize: '15px', fontWeight: '700', color: '#b5976a' }}>치료 옵션 #{idx + 1}</span>
                 </div>
-                <FieldRow label="치료명">
-                  <input
-                    type="text"
-                    value={opt.name || ''}
-                    onChange={e => updateOption(idx, 'name', e.target.value)}
-                    placeholder="예: 전체 교정 — 설측 브라켓"
-                    style={fieldInputStyle}
-                  />
-                </FieldRow>
-                <FieldRow label="개요">
+                {(value.treatmentOptions || []).length > 1 && (
+                  <button onClick={() => removeOption(idx)} style={removeBtn}>삭제</button>
+                )}
+              </div>
+
+              {/* 치료명 */}
+              <FieldRow label="치료명">
+                <input
+                  type="text"
+                  value={opt.name || ''}
+                  onChange={e => updateOption(idx, 'name', e.target.value)}
+                  placeholder="예: 전체 교정 — 설측 브라켓"
+                  style={fieldInputStyle}
+                />
+              </FieldRow>
+
+              {/* 교정 범위 */}
+              <div style={itemRowStyle}>
+                <div style={labelStyle}>교정 범위</div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {['전체', '부분'].map(s => (
+                    <button key={s} onClick={() => updateOption(idx, 'scope', opt.scope === s ? '' : s)} style={chipStyle(opt.scope === s, '#b5976a')}>{s} 교정</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 전체 교정 → 1차/2차 선택 */}
+              {opt.scope === '전체' && (
+                <>
+                  <div style={itemRowStyle}>
+                    <div style={labelStyle}>교정 단계</div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      {['1차', '2차'].map(p => (
+                        <button key={p} onClick={() => updateOption(idx, 'phase', opt.phase === p ? '' : p)} style={chipStyle(opt.phase === p, '#b5976a')}>{p} 교정</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 1차 교정 하위 */}
+                  {opt.phase === '1차' && (
+                    <div style={subSectionStyle}>
+                      <div style={subLabel}>1차 교정 항목</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {['근기능치료 (프리올소)', '악궁확장', '앞니배열'].map(item => (
+                          <button key={item} onClick={() => toggleOptionArray(idx, 'primary', item)} style={chipStyle((opt.primary || []).includes(item), '#7c3aed')}>{item}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2차 교정 하위 */}
+                  {opt.phase === '2차' && (
+                    <div style={subSectionStyle}>
+                      <div style={subLabel}>공간 확보 방법</div>
+
+                      {/* 악궁 확장 */}
+                      <div style={itemRowStyle}>
+                        <div style={{ ...labelStyle, width: '120px' }}>악궁 확장</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                          <button onClick={() => updateOption(idx, 'expansion', !opt.expansion)} style={chipStyle(opt.expansion, '#2563eb')}>필요</button>
+                          {opt.expansion && (
+                            <input
+                              type="text"
+                              value={opt.expansionType || ''}
+                              onChange={e => updateOption(idx, 'expansionType', e.target.value)}
+                              placeholder="RPE, MSE, SARPE 등"
+                              style={{ ...textInputStyle, minWidth: '140px', maxWidth: '200px' }}
+                            />
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 후방이동 */}
+                      <div style={itemRowStyle}>
+                        <div style={{ ...labelStyle, width: '120px' }}>후방이동</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+                          <button onClick={() => updateOption(idx, 'distalization', !opt.distalization)} style={chipStyle(opt.distalization, '#2563eb')}>필요</button>
+                          {opt.distalization && (
+                            <input
+                              type="text"
+                              value={opt.distalExtraction || ''}
+                              onChange={e => updateOption(idx, 'distalExtraction', e.target.value)}
+                              placeholder="#7/#8 발치 여부"
+                              style={{ ...textInputStyle, minWidth: '140px', maxWidth: '200px' }}
+                            />
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 치간삭제 */}
+                      <div style={itemRowStyle}>
+                        <div style={{ ...labelStyle, width: '120px' }}>치간삭제</div>
+                        <button onClick={() => updateOption(idx, 'stripping', !opt.stripping)} style={chipStyle(opt.stripping, '#2563eb')}>필요</button>
+                      </div>
+
+                      {/* 발치 사분면 */}
+                      <div style={{ marginTop: '16px' }}>
+                        <div style={subLabel}>발치 부위</div>
+                        <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>선택하지 않은 부위 = 비발치</div>
+                        <ExtractionQuadrant opt={opt} idx={idx} updateOption={updateOption} />
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* 기타 */}
+              <div style={{ ...itemRowStyle, marginTop: '12px' }}>
+                <div style={labelStyle}>기타</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {['매복치', '잇몸수술', '악교정 수술'].map(item => (
+                    <button key={item} onClick={() => toggleOptionArray(idx, 'txEtc', item)} style={chipStyle((opt.txEtc || []).includes(item), '#059669')}>{item}</button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 개요 + 기간 */}
+              <div style={{ marginTop: '12px' }}>
+                <FieldRow label="치료 개요">
                   <textarea
                     value={opt.description || ''}
                     onChange={e => updateOption(idx, 'description', e.target.value)}
                     placeholder="치료 개요를 입력하세요"
-                    style={{ ...fieldInputStyle, minHeight: '70px', resize: 'vertical' }}
-                    rows={3}
+                    style={{ ...fieldInputStyle, minHeight: '60px', resize: 'vertical' }}
+                    rows={2}
                   />
                 </FieldRow>
                 <FieldRow label="예상 기간">
@@ -314,22 +451,21 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
                   />
                 </FieldRow>
               </div>
-            ))}
-
-            <button onClick={addOption} style={addOptionBtn}>+ 옵션 추가</button>
-
-            <div style={{ marginTop: '20px' }}>
-              <FieldRow label="치료 목표">
-                <textarea
-                  value={value.treatmentGoal || ''}
-                  onChange={e => updateTopLevel('treatmentGoal', e.target.value)}
-                  placeholder="교정 치료의 목표를 입력하세요"
-                  style={{ ...fieldInputStyle, minHeight: '70px', resize: 'vertical' }}
-                  rows={3}
-                />
-              </FieldRow>
             </div>
+          ))}
 
+          <button onClick={addOption} style={addOptionBtn}>+ 옵션 추가</button>
+
+          {/* 치료 목표 + 추가 정보 */}
+          <div style={sectionStyle}>
+            <SectionHeader label="치료 목표" color="#374151" />
+            <textarea
+              value={value.treatmentGoal || ''}
+              onChange={e => updateTopLevel('treatmentGoal', e.target.value)}
+              placeholder="교정 치료의 목표를 입력하세요"
+              style={{ ...fieldInputStyle, minHeight: '70px', resize: 'vertical' }}
+              rows={3}
+            />
             <div style={{ marginTop: '16px' }}>
               <textarea
                 value={value.treatmentMemo || ''}
@@ -367,6 +503,64 @@ function FieldRow({ label, children }) {
     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '12px' }}>
       <div style={{ ...labelStyle, paddingTop: '9px' }}>{label}</div>
       <div style={{ flex: 1 }}>{children}</div>
+    </div>
+  )
+}
+
+function ExtractionQuadrant({ opt, idx, updateOption }) {
+  const quadrants = [
+    { key: 'ext_UR', label: '#1 상우' },
+    { key: 'ext_UL', label: '#2 상좌' },
+    { key: 'ext_LR', label: '#4 하우' },
+    { key: 'ext_LL', label: '#3 하좌' },
+  ]
+  const options = ['', '4번', '5번', '기타']
+
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: '1fr auto 1fr',
+      gridTemplateRows: 'auto auto',
+      gap: '0',
+      maxWidth: '340px',
+      margin: '0 auto',
+    }}>
+      {/* 상우 #1 */}
+      <div style={quadCellStyle('right', 'bottom')}>
+        <div style={quadLabel}>#1 상우</div>
+        <select value={opt.ext_UR || ''} onChange={e => updateOption(idx, 'ext_UR', e.target.value)} style={quadSelect(opt.ext_UR)}>
+          <option value="">비발치</option>
+          {['4번', '5번', '기타'].map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </div>
+      {/* 중앙선 상 */}
+      <div style={{ borderBottom: '2px solid #9ca3af', width: '2px', background: '#9ca3af' }} />
+      {/* 상좌 #2 */}
+      <div style={quadCellStyle('left', 'bottom')}>
+        <div style={quadLabel}>#2 상좌</div>
+        <select value={opt.ext_UL || ''} onChange={e => updateOption(idx, 'ext_UL', e.target.value)} style={quadSelect(opt.ext_UL)}>
+          <option value="">비발치</option>
+          {['4번', '5번', '기타'].map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </div>
+      {/* 하우 #4 */}
+      <div style={quadCellStyle('right', 'top')}>
+        <div style={quadLabel}>#4 하우</div>
+        <select value={opt.ext_LR || ''} onChange={e => updateOption(idx, 'ext_LR', e.target.value)} style={quadSelect(opt.ext_LR)}>
+          <option value="">비발치</option>
+          {['4번', '5번', '기타'].map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </div>
+      {/* 중앙선 하 */}
+      <div style={{ borderTop: '2px solid #9ca3af', width: '2px', background: '#9ca3af' }} />
+      {/* 하좌 #3 */}
+      <div style={quadCellStyle('left', 'top')}>
+        <div style={quadLabel}>#3 하좌</div>
+        <select value={opt.ext_LL || ''} onChange={e => updateOption(idx, 'ext_LL', e.target.value)} style={quadSelect(opt.ext_LL)}>
+          <option value="">비발치</option>
+          {['4번', '5번', '기타'].map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </div>
     </div>
   )
 }
@@ -521,6 +715,48 @@ const memoStyle = {
   outline: 'none',
   boxSizing: 'border-box',
 }
+
+const subSectionStyle = {
+  marginLeft: '20px',
+  paddingLeft: '16px',
+  borderLeft: '3px solid #e5e7eb',
+  marginBottom: '12px',
+}
+
+const subLabel = {
+  fontSize: '13px',
+  fontWeight: '600',
+  color: '#6b7280',
+  marginBottom: '10px',
+}
+
+const quadCellStyle = (alignH, borderSide) => ({
+  padding: '10px 14px',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: alignH === 'right' ? 'flex-end' : 'flex-start',
+  gap: '4px',
+  [`border${borderSide === 'bottom' ? 'Bottom' : 'Top'}`]: '2px solid #9ca3af',
+  [`border${alignH === 'right' ? 'Right' : 'Left'}`]: '2px solid #9ca3af',
+})
+
+const quadLabel = {
+  fontSize: '11px',
+  color: '#6b7280',
+  fontWeight: '600',
+}
+
+const quadSelect = (val) => ({
+  padding: '4px 8px',
+  borderRadius: '6px',
+  border: val ? '2px solid #dc2626' : '1px solid #d1d5db',
+  background: val ? '#fef2f2' : '#fff',
+  color: val ? '#dc2626' : '#374151',
+  fontSize: '13px',
+  fontWeight: val ? '600' : '400',
+  cursor: 'pointer',
+  outline: 'none',
+})
 
 const optionCardStyle = {
   background: '#faf8f5',
