@@ -46,6 +46,7 @@ export default function Editor() {
   )
   const [chartingText, setChartingText] = useState(draft?.chartingText || '')
   const [clinicalForm, setClinicalForm] = useState(draft?.clinicalForm || getEmptyClinicalForm())
+  const [clinicalPage, setClinicalPage] = useState(draft?.clinicalPage || 1)
   const [staffForm, setStaffForm] = useState(draft?.staffForm || INITIAL_STAFF_FORM)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isRefining, setIsRefining] = useState(false)
@@ -66,12 +67,12 @@ export default function Editor() {
   // 자동 임시저장
   const saveDraft = useCallback(() => {
     const data = {
-      patientName, consultDate, chartingText, clinicalForm, staffForm, step,
+      patientName, consultDate, chartingText, clinicalForm, clinicalPage, staffForm, step,
       draftContent, editedContent, refinedContent,
       photos: photos.map(p => ({ ...p, file: undefined, preview: undefined })),
     }
     localStorage.setItem(DRAFT_KEY, JSON.stringify(data))
-  }, [patientName, consultDate, chartingText, clinicalForm, staffForm, step, draftContent, editedContent, refinedContent, photos])
+  }, [patientName, consultDate, chartingText, clinicalForm, clinicalPage, staffForm, step, draftContent, editedContent, refinedContent, photos])
 
   useEffect(() => {
     const timer = setTimeout(saveDraft, 2000)
@@ -174,7 +175,9 @@ export default function Editor() {
         <div style={headerS.left}>
           {step < 4 && (
             <>
-              <input type="text" placeholder="환자명" value={patientName} onChange={e => setPatientName(e.target.value)} style={inputStyle} />
+              <span style={{ fontSize: '15px', fontWeight: '600', color: '#1f2937' }}>
+                {clinicalForm.patientName || '환자명 미입력'}
+              </span>
               <input type="date" value={consultDate} onChange={e => setConsultDate(e.target.value)} style={inputStyle} />
             </>
           )}
@@ -205,13 +208,20 @@ export default function Editor() {
       {/* 메인 */}
       <div style={{ flex: 1, overflow: 'auto', background: step === 4 ? '#1a1a18' : '#fafafa' }}>
 
-        {/* Step 1: 의사 입력 (문제목록) */}
+        {/* Step 1: 의사 입력 (3페이지) */}
         {step === 1 && (
           <div style={{ maxWidth: '860px', margin: '0 auto', padding: '24px' }}>
-            <ClinicalForm value={clinicalForm} onChange={setClinicalForm} />
-            <button onClick={handleGenerateDraft} disabled={isGenerating} style={{ ...btnStyle('#b5976a'), width: '100%', padding: '14px', fontSize: '16px', marginTop: '24px' }}>
-              {isGenerating ? 'AI 초안 생성 중...' : 'AI 초안 생성 →'}
-            </button>
+            <ClinicalForm
+              value={clinicalForm}
+              onChange={setClinicalForm}
+              page={clinicalPage}
+              onPageChange={setClinicalPage}
+            />
+            {clinicalPage === 3 && (
+              <button onClick={handleGenerateDraft} disabled={isGenerating} style={{ ...btnStyle('#b5976a'), width: '100%', padding: '14px', fontSize: '16px', marginTop: '24px' }}>
+                {isGenerating ? 'AI 초안 생성 중...' : 'AI 초안 생성 →'}
+              </button>
+            )}
           </div>
         )}
 
