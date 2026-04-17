@@ -355,9 +355,50 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
                   {/* 1차 */}
                   {plan.phase === '1차' && (
                     <div style={subSectionStyle}>
-                      <div style={subLabel}>1차 교정 항목</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {['근기능치료 (프리올소)', '악궁확장', '앞니배열'].map(item => (
+                      {/* 근기능치료 */}
+                      <div style={subLabel}>근기능치료</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
+                        {['프리올소'].map(item => (
+                          <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
+                        ))}
+                      </div>
+
+                      {/* 골격 성장치료 */}
+                      <div style={subLabel}>골격 성장치료</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
+                        {['구내 고정식 장치', '착탈식 장치', '구외 장치'].map(item => (
+                          <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
+                        ))}
+                      </div>
+
+                      {/* 악궁확장 */}
+                      <div style={subLabel}>악궁확장</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
+                        {['악궁확장 — 고정식', '악궁확장 — 착탈식'].map(item => (
+                          <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
+                        ))}
+                      </div>
+
+                      {/* 치아 배열/조절 */}
+                      <div style={subLabel}>치아 배열 / 조절</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
+                        {['앞니 배열', '어금니 조절'].map(item => (
+                          <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
+                        ))}
+                      </div>
+
+                      {/* 공간 관리 */}
+                      <div style={subLabel}>공간 관리</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
+                        {['연속 발치술', '공간 만들기', '공간 유지'].map(item => (
+                          <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
+                        ))}
+                      </div>
+
+                      {/* 기타 */}
+                      <div style={subLabel}>기타</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
+                        {['기타 장치 (Halterman, Nance 등)', '잇몸 수술', '성장 검사 및 재평가'].map(item => (
                           <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
                         ))}
                       </div>
