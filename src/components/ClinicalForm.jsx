@@ -355,52 +355,54 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
                   {/* 1차 */}
                   {plan.phase === '1차' && (
                     <div style={subSectionStyle}>
-                      {/* 근기능치료 */}
-                      <div style={subLabel}>근기능치료</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
-                        {['프리올소'].map(item => (
-                          <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
-                        ))}
-                      </div>
-
-                      {/* 골격 성장치료 */}
-                      <div style={subLabel}>골격 성장치료</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
-                        {['구내 고정식 장치', '착탈식 장치', '구외 장치'].map(item => (
-                          <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
-                        ))}
+                      {/* 근기능 / 골격 성장치료 */}
+                      <div style={itemRowStyle}>
+                        <div style={{ ...labelStyle, width: '160px' }}>근기능 / 골격 성장치료</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', flex: 1 }}>
+                          {['프리올소', '구내 고정식 장치', '착탈식 장치', '구외 장치'].map(item => (
+                            <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
+                          ))}
+                        </div>
                       </div>
 
                       {/* 악궁확장 */}
-                      <div style={subLabel}>악궁확장</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
-                        {['악궁확장 — 고정식', '악궁확장 — 착탈식'].map(item => (
-                          <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
-                        ))}
+                      <div style={itemRowStyle}>
+                        <div style={{ ...labelStyle, width: '160px' }}>악궁확장</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', flex: 1 }}>
+                          {['고정식', '착탈식'].map(item => (
+                            <button key={item} onClick={() => togglePlanArray(idx, 'primary', `악궁확장 — ${item}`)} style={chipStyle((plan.primary || []).includes(`악궁확장 — ${item}`), '#7c3aed')}>{item}</button>
+                          ))}
+                        </div>
                       </div>
 
                       {/* 치아 배열/조절 */}
-                      <div style={subLabel}>치아 배열 / 조절</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
-                        {['앞니 배열', '어금니 조절'].map(item => (
-                          <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
-                        ))}
+                      <div style={itemRowStyle}>
+                        <div style={{ ...labelStyle, width: '160px' }}>치아 배열 / 조절</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', flex: 1 }}>
+                          {['앞니 배열', '어금니 조절'].map(item => (
+                            <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
+                          ))}
+                        </div>
                       </div>
 
                       {/* 공간 관리 */}
-                      <div style={subLabel}>공간 관리</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
-                        {['연속 발치술', '공간 만들기', '공간 유지'].map(item => (
-                          <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
-                        ))}
+                      <div style={itemRowStyle}>
+                        <div style={{ ...labelStyle, width: '160px' }}>공간 관리</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', flex: 1 }}>
+                          {['연속 발치술', '공간 만들기', '공간 유지'].map(item => (
+                            <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
+                          ))}
+                        </div>
                       </div>
 
-                      {/* 기타 */}
-                      <div style={subLabel}>기타</div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
-                        {['기타 장치 (Halterman, Nance 등)', '잇몸 수술', '성장 검사 및 재평가'].map(item => (
-                          <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
-                        ))}
+                      {/* 1차 기타 */}
+                      <div style={itemRowStyle}>
+                        <div style={{ ...labelStyle, width: '160px' }}>기타</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', flex: 1 }}>
+                          {['기타 장치 (Halterman, Nance 등)', '잇몸 수술', '성장 검사 및 재평가'].map(item => (
+                            <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   )}
@@ -449,24 +451,24 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
                         <div style={{ ...labelStyle, width: '120px' }}>치간삭제</div>
                         <button onClick={() => updatePlan(idx, 'stripping', !plan.stripping)} style={chipStyle(plan.stripping, '#2563eb')}>필요</button>
                       </div>
+
+                      {/* 2차 기타 */}
+                      <div style={itemRowStyle}>
+                        <div style={{ ...labelStyle, width: '120px' }}>기타</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {(value.txEtcItems || DEFAULT_TX_ETC_ITEMS).map(item => (
+                            <button key={item} onClick={() => togglePlanArray(idx, 'txEtc', item)} style={chipStyle((plan.txEtc || []).includes(item), '#059669')}>{item}</button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </>
               )}
 
-              {/* 기타 (설정에서 관리) */}
-              <div style={{ ...itemRowStyle, marginTop: '12px' }}>
-                <div style={labelStyle}>기타</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {(value.txEtcItems || DEFAULT_TX_ETC_ITEMS).map(item => (
-                    <button key={item} onClick={() => togglePlanArray(idx, 'txEtc', item)} style={chipStyle((plan.txEtc || []).includes(item), '#059669')}>{item}</button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 기타 메모 + 기간 */}
+              {/* 추가사항 + 기간 */}
               <div style={{ marginTop: '12px' }}>
-                <FieldRow label="기타">
+                <FieldRow label="추가사항">
                   <textarea
                     value={plan.memo || ''}
                     onChange={e => updatePlan(idx, 'memo', e.target.value)}
@@ -490,13 +492,13 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
 
           <button onClick={addPlan} style={addOptionBtn}>+ 치료 계획 추가</button>
 
-          {/* 전체 추가 정보 */}
+          {/* 전체 추가사항 */}
           <div style={sectionStyle}>
-            <SectionHeader label="추가 정보" color="#374151" />
+            <SectionHeader label="추가사항" color="#374151" />
             <textarea
               value={value.treatmentMemo || ''}
               onChange={e => updateTopLevel('treatmentMemo', e.target.value)}
-              placeholder="전체 치료에 대한 추가 정보 (주의사항, 동반 치료 등)"
+              placeholder="전체 치료에 대한 추가사항 (주의사항, 동반 치료 등)"
               style={memoStyle}
               rows={3}
             />
