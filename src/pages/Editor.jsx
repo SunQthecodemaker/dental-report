@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import StaffForm from '../components/StaffForm'
+import ClinicalForm, { getEmptyClinicalForm } from '../components/ClinicalForm'
 import ContentEditor from '../components/ContentEditor'
 import BrochurePreview from '../components/BrochurePreview'
 import { generateDraft, refineContent, saveCorrections, getEmptyDraft } from '../lib/gemini'
@@ -44,6 +45,7 @@ export default function Editor() {
     draft?.consultDate || new Date().toISOString().split('T')[0]
   )
   const [chartingText, setChartingText] = useState(draft?.chartingText || '')
+  const [clinicalForm, setClinicalForm] = useState(draft?.clinicalForm || getEmptyClinicalForm())
   const [staffForm, setStaffForm] = useState(draft?.staffForm || INITIAL_STAFF_FORM)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isRefining, setIsRefining] = useState(false)
@@ -64,12 +66,12 @@ export default function Editor() {
   // 자동 임시저장
   const saveDraft = useCallback(() => {
     const data = {
-      patientName, consultDate, chartingText, staffForm, step,
+      patientName, consultDate, chartingText, clinicalForm, staffForm, step,
       draftContent, editedContent, refinedContent,
       photos: photos.map(p => ({ ...p, file: undefined, preview: undefined })),
     }
     localStorage.setItem(DRAFT_KEY, JSON.stringify(data))
-  }, [patientName, consultDate, chartingText, staffForm, step, draftContent, editedContent, refinedContent, photos])
+  }, [patientName, consultDate, chartingText, clinicalForm, staffForm, step, draftContent, editedContent, refinedContent, photos])
 
   useEffect(() => {
     const timer = setTimeout(saveDraft, 2000)
@@ -203,22 +205,12 @@ export default function Editor() {
       {/* 메인 */}
       <div style={{ flex: 1, overflow: 'auto', background: step === 4 ? '#1a1a18' : '#fafafa' }}>
 
-        {/* Step 1: 입력 */}
+        {/* Step 1: 의사 입력 (문제목록) */}
         {step === 1 && (
-          <div style={{ maxWidth: '800px', margin: '0 auto', padding: '24px' }}>
-            <Section title="1. 차팅 입력 (EMR 복사붙여넣기)">
-              <textarea
-                placeholder="EMR에서 차팅 내용을 복사해서 붙여넣으세요..."
-                value={chartingText}
-                onChange={e => setChartingText(e.target.value)}
-                style={{ width: '100%', minHeight: '150px', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }}
-              />
-            </Section>
-            <Section title="2. 상담 정보 입력 (실장/팀장)">
-              <StaffForm value={staffForm} onChange={setStaffForm} />
-            </Section>
-            <button onClick={handleGenerateDraft} disabled={isGenerating} style={{ ...btnStyle('#b5976a'), width: '100%', padding: '14px', fontSize: '16px' }}>
-              {isGenerating ? 'AI 초안 생성 중...' : 'AI 초안 생성'}
+          <div style={{ maxWidth: '860px', margin: '0 auto', padding: '24px' }}>
+            <ClinicalForm value={clinicalForm} onChange={setClinicalForm} />
+            <button onClick={handleGenerateDraft} disabled={isGenerating} style={{ ...btnStyle('#b5976a'), width: '100%', padding: '14px', fontSize: '16px', marginTop: '24px' }}>
+              {isGenerating ? 'AI 초안 생성 중...' : 'AI 초안 생성 →'}
             </button>
           </div>
         )}
