@@ -89,7 +89,11 @@ export default function Dashboard() {
       })
       setForm({ name: '', birth: '', chartNumber: '', cc: '', phone: '' })
       setChartManual(false)
-      if (goToEditor) navigate(`/editor/${encodeURIComponent(created.chart_number)}`)
+      if (goToEditor) {
+        navigate(`/editor/${encodeURIComponent(created.chart_number)}`)
+      } else {
+        reload()
+      }
     } catch (err) {
       setFormError(err.message || '등록 실패')
     } finally { setCreating(false) }
