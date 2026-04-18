@@ -15,7 +15,7 @@ export default function Dashboard() {
   const [dateRange, setDateRange] = useState('all')
   const [hideCompleted, setHideCompleted] = useState(false)
 
-  const [form, setForm] = useState({ name: '', birth: '', chartNumber: '', cc: '', phone: '' })
+  const [form, setForm] = useState({ name: '', birth: '', chartNumber: '', cc: '' })
   const [chartManual, setChartManual] = useState(false)
   const [creating, setCreating] = useState(false)
   const [chartLookup, setChartLookup] = useState(false)
@@ -85,9 +85,8 @@ export default function Dashboard() {
         birth,
         chartNumber,
         cc: form.cc.trim(),
-        phone: form.phone.trim(),
       })
-      setForm({ name: '', birth: '', chartNumber: '', cc: '', phone: '' })
+      setForm({ name: '', birth: '', chartNumber: '', cc: '' })
       setChartManual(false)
       if (goToEditor) {
         navigate(`/editor/${encodeURIComponent(created.chart_number)}`)
@@ -149,66 +148,53 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 우측: 신규 등록 */}
+        {/* 우측: 신규 등록 (메인) */}
         <div style={styles.right}>
           <h2 style={styles.sectionTitle}>➕ 신규 환자 등록</h2>
 
-          <div style={styles.formGroup}>
-            <label style={styles.label}>이름 *</label>
-            <input
-              value={form.name}
-              onChange={e => setForm({ ...form, name: e.target.value })}
-              style={styles.input}
-              placeholder="홍길동"
-            />
-          </div>
-
-          <div style={styles.formGroup}>
-            <label style={styles.label}>생년월일 * (YYMMDD 6자리)</label>
-            <input
-              value={form.birth}
-              onChange={e => setForm({ ...form, birth: e.target.value.replace(/\D/g, '').slice(0, 8) })}
-              style={styles.input}
-              placeholder="810108"
-              maxLength={8}
-            />
-          </div>
-
-          <div style={styles.formGroup}>
-            <label style={styles.label}>
-              차트번호 {chartLookup && <span style={{ color: '#9ca3af', fontSize: '12px' }}>확인 중…</span>}
-              {!chartManual && form.chartNumber && (
-                <span style={styles.autoBadge}>자동</span>
-              )}
-            </label>
-            <input
-              value={form.chartNumber}
-              onChange={e => { setChartManual(true); setForm({ ...form, chartNumber: e.target.value }) }}
-              style={styles.input}
-              placeholder="이름+생일로 자동 생성됩니다"
-            />
-            <div style={styles.hint}>
-              💡 전자차트와 다르면 직접 수정하세요 (예: {form.chartNumber || '박선규810108A'})
+          <div style={styles.inlineRow}>
+            <div style={{ flex: 2 }}>
+              <label style={styles.label}>이름</label>
+              <input
+                value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })}
+                style={styles.input}
+                placeholder="홍길동"
+                autoFocus
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={styles.label}>생년월일</label>
+              <input
+                value={form.birth}
+                onChange={e => setForm({ ...form, birth: e.target.value.replace(/\D/g, '').slice(0, 8) })}
+                style={styles.input}
+                placeholder="810108"
+                maxLength={8}
+                inputMode="numeric"
+              />
+            </div>
+            <div style={{ flex: 2 }}>
+              <label style={styles.label}>
+                차트번호 {!chartManual && form.chartNumber && <span style={styles.autoBadge}>자동</span>}
+              </label>
+              <input
+                value={form.chartNumber}
+                onChange={e => { setChartManual(true); setForm({ ...form, chartNumber: e.target.value }) }}
+                style={styles.input}
+                placeholder="이름+생일 자동"
+              />
             </div>
           </div>
 
-          <div style={styles.formGroup}>
-            <label style={styles.label}>C.C (주호소)</label>
-            <input
+          <div style={styles.ccGroup}>
+            <label style={styles.label}>주호소 (C.C)</label>
+            <textarea
               value={form.cc}
               onChange={e => setForm({ ...form, cc: e.target.value })}
-              style={styles.input}
-              placeholder="예: 치아 교정 상담"
-            />
-          </div>
-
-          <div style={styles.formGroup}>
-            <label style={styles.label}>연락처 (선택)</label>
-            <input
-              value={form.phone}
-              onChange={e => setForm({ ...form, phone: e.target.value })}
-              style={styles.input}
-              placeholder="010-0000-0000"
+              style={styles.ccTextarea}
+              placeholder="환자 주호소 / 상담 내용을 자유롭게 기재하세요"
+              rows={10}
             />
           </div>
 
@@ -221,10 +207,6 @@ export default function Dashboard() {
             <button onClick={() => handleCreate(false)} disabled={creating} style={{ ...styles.secondaryBtn, flex: 1 }}>
               등록만
             </button>
-          </div>
-
-          <div style={styles.infoBox}>
-            등록 즉시 Supabase에 저장되어 다른 PC에서도 바로 보입니다.
           </div>
         </div>
       </div>
@@ -248,15 +230,13 @@ function ReportCard({ report, onOpen }) {
   return (
     <button onClick={onOpen} style={styles.card}>
       <div style={styles.cardLine1}>
-        <strong style={{ fontSize: '15px' }}>{report.chart_number}</strong>
-        <span style={{ color: '#6b7280', marginLeft: '8px', fontSize: '14px' }}>{report.patient_name}</span>
+        <strong style={{ fontSize: '13px' }}>{report.patient_name}</strong>
+        <span style={{ color: '#9ca3af', fontSize: '11px', marginLeft: '6px' }}>{report.chart_number}</span>
       </div>
-      <div style={{ ...styles.stageBadge, background: stage.color }}>{stage.label}</div>
-      <div style={styles.cardMeta}>
-        {updatedAgo}
-        {otherPc && <span style={styles.liveDot}> · 🔴 편집중</span>}
+      <div style={styles.cardLine2}>
+        <span style={{ ...styles.stageBadge, background: stage.color }}>{stage.label}</span>
+        <span style={styles.cardMeta}>{updatedAgo}{otherPc && ' · 🔴'}</span>
       </div>
-      {report.cc && <div style={styles.cardCc}>{report.cc}</div>}
     </button>
   )
 }
@@ -297,33 +277,33 @@ const styles = {
   headerRight: { display: 'flex', gap: '8px', alignItems: 'center' },
   pcBadge: { padding: '8px 14px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(181,151,106,0.4)', color: '#fff', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' },
   settingsBtn: { padding: '8px 14px', background: '#374151', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', cursor: 'pointer' },
-  body: { flex: 1, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 420px', gap: '16px', padding: '16px', overflow: 'hidden' },
-  left: { display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: '12px', padding: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', overflow: 'hidden' },
-  right: { display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: '12px', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', overflowY: 'auto' },
-  sectionTitle: { margin: 0, fontSize: '16px', fontWeight: 600, marginBottom: '16px', color: '#1f2937' },
-  searchRow: { display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center' },
-  searchInput: { flex: 1, padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px' },
-  dateSelect: { padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '13px', background: '#fff' },
-  toggleLabel: { display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', color: '#4b5563', whiteSpace: 'nowrap' },
-  listCount: { fontSize: '12px', color: '#6b7280', marginBottom: '8px' },
-  list: { flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' },
-  empty: { padding: '40px 20px', textAlign: 'center', color: '#9ca3af' },
-  card: { display: 'block', width: '100%', textAlign: 'left', padding: '12px 14px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '10px', cursor: 'pointer', transition: 'all 0.15s' },
-  cardLine1: { marginBottom: '6px' },
-  stageBadge: { display: 'inline-block', padding: '2px 8px', borderRadius: '10px', color: '#fff', fontSize: '11px', fontWeight: 600 },
-  cardMeta: { fontSize: '12px', color: '#6b7280', marginTop: '4px' },
+  body: { flex: 1, display: 'grid', gridTemplateColumns: '280px minmax(0, 1fr)', gap: '16px', padding: '16px', overflow: 'hidden' },
+  left: { display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: '12px', padding: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', overflow: 'hidden' },
+  right: { display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: '12px', padding: '28px 32px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', overflowY: 'auto' },
+  sectionTitle: { margin: 0, fontSize: '20px', fontWeight: 700, marginBottom: '20px', color: '#1f2937' },
+  searchRow: { display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' },
+  searchInput: { width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box' },
+  dateSelect: { padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '12px', background: '#fff' },
+  toggleLabel: { display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#4b5563', whiteSpace: 'nowrap' },
+  listCount: { fontSize: '11px', color: '#6b7280', marginBottom: '6px' },
+  list: { flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' },
+  empty: { padding: '30px 10px', textAlign: 'center', color: '#9ca3af', fontSize: '13px' },
+  card: { display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.15s' },
+  cardLine1: { marginBottom: '4px' },
+  cardLine2: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' },
+  stageBadge: { display: 'inline-block', padding: '2px 7px', borderRadius: '8px', color: '#fff', fontSize: '10px', fontWeight: 600 },
+  cardMeta: { fontSize: '11px', color: '#9ca3af' },
   liveDot: { color: '#dc2626', fontWeight: 600 },
-  cardCc: { fontSize: '12px', color: '#4b5563', marginTop: '4px', fontStyle: 'italic' },
-  formGroup: { marginBottom: '12px' },
-  label: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '4px' },
+  inlineRow: { display: 'flex', gap: '12px', marginBottom: '20px' },
+  ccGroup: { marginBottom: '20px' },
+  ccTextarea: { width: '100%', padding: '14px 16px', border: '1px solid #d1d5db', borderRadius: '10px', fontSize: '15px', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.6, minHeight: '220px' },
+  label: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px' },
   input: { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' },
   autoBadge: { background: '#ecfdf5', color: '#047857', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: 500 },
-  hint: { fontSize: '11px', color: '#9ca3af', marginTop: '4px' },
   error: { background: '#fef2f2', color: '#991b1b', padding: '10px 12px', borderRadius: '8px', fontSize: '13px', marginBottom: '12px' },
-  btnRow: { display: 'flex', gap: '8px', marginTop: '8px' },
-  primaryBtn: { padding: '12px 16px', background: '#b5976a', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' },
-  secondaryBtn: { padding: '12px 16px', background: '#fff', color: '#374151', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' },
-  infoBox: { marginTop: '16px', padding: '10px 12px', background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px', fontSize: '12px', color: '#0369a1' },
+  btnRow: { display: 'flex', gap: '10px', marginTop: '8px' },
+  primaryBtn: { padding: '14px 20px', background: '#b5976a', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 700, cursor: 'pointer' },
+  secondaryBtn: { padding: '14px 20px', background: '#fff', color: '#374151', border: '1px solid #d1d5db', borderRadius: '10px', fontSize: '15px', fontWeight: 600, cursor: 'pointer' },
   modalBg: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
   modal: { background: '#fff', padding: '24px', borderRadius: '12px', width: '360px', maxWidth: '90vw' },
 }
