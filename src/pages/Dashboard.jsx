@@ -65,7 +65,7 @@ export default function Dashboard() {
       .finally(() => setChartLookup(false))
   }, [form.name, form.birth, chartManual])
 
-  async function handleCreate(goToEditor) {
+  async function handleCreate() {
     setFormError('')
     if (!form.name.trim()) { setFormError('이름을 입력하세요.'); return }
     const birth = normalizeBirth(form.birth)
@@ -80,7 +80,7 @@ export default function Dashboard() {
         setCreating(false)
         return
       }
-      const created = await createPatient({
+      await createPatient({
         name: form.name.trim(),
         birth,
         chartNumber,
@@ -88,11 +88,7 @@ export default function Dashboard() {
       })
       setForm({ name: '', birth: '', chartNumber: '', cc: '' })
       setChartManual(false)
-      if (goToEditor) {
-        navigate(`/editor/${encodeURIComponent(created.chart_number)}`)
-      } else {
-        reload()
-      }
+      reload()
     } catch (err) {
       setFormError(err.message || '등록 실패')
     } finally { setCreating(false) }
@@ -200,14 +196,9 @@ export default function Dashboard() {
 
           {formError && <div style={styles.error}>{formError}</div>}
 
-          <div style={styles.btnRow}>
-            <button onClick={() => handleCreate(true)} disabled={creating} style={{ ...styles.primaryBtn, flex: 2 }}>
-              {creating ? '등록 중…' : '등록 + 진단 시작'}
-            </button>
-            <button onClick={() => handleCreate(false)} disabled={creating} style={{ ...styles.secondaryBtn, flex: 1 }}>
-              등록만
-            </button>
-          </div>
+          <button onClick={handleCreate} disabled={creating} style={styles.primaryBtn}>
+            {creating ? '등록 중…' : '등록'}
+          </button>
         </div>
       </div>
 
@@ -301,8 +292,7 @@ const styles = {
   input: { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', boxSizing: 'border-box' },
   autoBadge: { background: '#ecfdf5', color: '#047857', fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: 500 },
   error: { background: '#fef2f2', color: '#991b1b', padding: '10px 12px', borderRadius: '8px', fontSize: '13px', marginBottom: '12px' },
-  btnRow: { display: 'flex', gap: '10px', marginTop: '8px' },
-  primaryBtn: { padding: '14px 20px', background: '#b5976a', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '15px', fontWeight: 700, cursor: 'pointer' },
+  primaryBtn: { width: '100%', padding: '16px 20px', background: '#b5976a', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '16px', fontWeight: 700, cursor: 'pointer', marginTop: '8px' },
   secondaryBtn: { padding: '14px 20px', background: '#fff', color: '#374151', border: '1px solid #d1d5db', borderRadius: '10px', fontSize: '15px', fontWeight: 600, cursor: 'pointer' },
   modalBg: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 },
   modal: { background: '#fff', padding: '24px', borderRadius: '12px', width: '360px', maxWidth: '90vw' },
