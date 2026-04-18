@@ -53,13 +53,7 @@ export default function Editor() {
       if (!mounted) return
       if (!data) { setLoadError(`차트번호 "${chartNumber}" 환자를 찾을 수 없습니다.`); return }
       setReport(data)
-      const cf = data.clinical_form || {
-        ...getEmptyClinicalForm(),
-        patientName: data.patient_name || '',
-        birthDate: data.patient_birth || '',
-        chiefComplaint: data.cc || '',
-      }
-      setClinicalForm(cf)
+      setClinicalForm(data.clinical_form || getEmptyClinicalForm())
       setStaffForm(data.staff_form || INITIAL_STAFF_FORM)
       if (data.sections && Object.keys(data.sections).length > 0) {
         setRefinedContent(data.sections)
@@ -118,8 +112,6 @@ export default function Editor() {
         clinical_form: clinicalForm,
         staff_form: staffForm,
         progress_stage: report.progress_stage === 'done' ? 'done' : progress,
-        patient_name: clinicalForm.patientName || report.patient_name,
-        cc: clinicalForm.chiefComplaint || report.cc,
       }
       if (editedContent) patch.sections = refinedContent || editedContent
       updateReport(report.id, patch).catch(err => console.error('autosave failed', err))
@@ -272,7 +264,7 @@ export default function Editor() {
               page={clinicalPage}
               onPageChange={setClinicalPage}
             />
-            {clinicalPage === 3 && (
+            {clinicalPage === 2 && (
               <button onClick={handleGenerateDraft} disabled={isGenerating} style={{ ...btnStyle('#b5976a'), width: '100%', padding: '14px', fontSize: '16px', marginTop: '24px' }}>
                 {isGenerating ? 'AI 초안 생성 중...' : 'AI 초안 생성 →'}
               </button>

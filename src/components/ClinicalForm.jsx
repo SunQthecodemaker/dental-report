@@ -1,8 +1,8 @@
 /**
  * ClinicalForm — Step 1: 의사 입력
- * page 1: 환자정보 (이름, 생년월일, CC)
- * page 2: 진단 (골격/치성/기타 문제목록)
- * page 3: 치료계획 (옵션 카드 + 메모)
+ * page 1: 진단 (골격/치성/기타 문제목록)
+ * page 2: 치료계획 (옵션 카드 + 메모)
+ * (환자정보는 대시보드에서 입력 — ClinicalForm에서 중복 제거)
  */
 import { useState } from 'react'
 
@@ -72,15 +72,11 @@ function getEmptyTxOption() {
 
 export function getEmptyClinicalForm() {
   return {
-    // page 1: 환자정보
-    patientName: '',
-    birthDate: '',
-    chiefComplaint: '',
-    // page 2: 진단
+    // page 1: 진단
     skeletal: { memo: '' },
     dental: { memo: '' },
     etc: { memo: '' },
-    // page 3: 치료계획 (목표 → 계획이 한 세트)
+    // page 2: 치료계획 (목표 → 계획이 한 세트)
     treatmentPlans: [getEmptyTxOption()],
     treatmentMemo: '',
   }
@@ -154,9 +150,8 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
       {/* 페이지 탭 */}
       <div style={tabBarStyle}>
         {[
-          { p: 1, label: '환자 정보' },
-          { p: 2, label: '진단' },
-          { p: 3, label: '치료 계획' },
+          { p: 1, label: '진단' },
+          { p: 2, label: '치료 계획' },
         ].map(({ p, label }) => (
           <button
             key={p}
@@ -169,46 +164,8 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
         ))}
       </div>
 
-      {/* Page 1: 환자 정보 */}
+      {/* Page 1: 진단 */}
       {page === 1 && (
-        <div style={pageStyle}>
-          <div style={sectionStyle}>
-            <SectionHeader label="환자 정보" color="#374151" />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <FieldRow label="환자 이름">
-                <input
-                  type="text"
-                  value={value.patientName || ''}
-                  onChange={e => updateTopLevel('patientName', e.target.value)}
-                  placeholder="환자명 입력"
-                  style={fieldInputStyle}
-                />
-              </FieldRow>
-              <FieldRow label="생년월일">
-                <input
-                  type="date"
-                  value={value.birthDate || ''}
-                  onChange={e => updateTopLevel('birthDate', e.target.value)}
-                  style={fieldInputStyle}
-                />
-              </FieldRow>
-              <FieldRow label="C.C (주호소)">
-                <textarea
-                  value={value.chiefComplaint || ''}
-                  onChange={e => updateTopLevel('chiefComplaint', e.target.value)}
-                  placeholder="교정 치료를 원하는 이유 (환자 호소 내용을 붙여넣기)"
-                  style={{ ...fieldInputStyle, minHeight: '80px', resize: 'vertical' }}
-                  rows={3}
-                />
-              </FieldRow>
-            </div>
-          </div>
-          <NavButtons page={page} onPageChange={onPageChange} />
-        </div>
-      )}
-
-      {/* Page 2: 진단 */}
-      {page === 2 && (
         <div style={pageStyle}>
           {DIAGNOSIS_SECTIONS.map(section => (
             <div key={section.key} style={sectionStyle}>
@@ -303,8 +260,8 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
         </div>
       )}
 
-      {/* Page 3: 치료계획 */}
-      {page === 3 && (
+      {/* Page 2: 치료계획 */}
+      {page === 2 && (
         <div style={pageStyle}>
           {plans.map((plan, idx) => (
             <div key={idx} style={sectionStyle}>
