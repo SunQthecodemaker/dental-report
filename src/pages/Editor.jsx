@@ -15,10 +15,10 @@ const INITIAL_STAFF_FORM = {
 }
 
 const STEP_LABELS = [
-  { num: 1, label: '의사 입력' },
-  { num: 2, label: '내용 편집' },
-  { num: 3, label: '톤 변환' },
-  { num: 4, label: '브로셔' },
+  { num: 1, label: '진단 & 치료 계획' },
+  { num: 2, label: '상담 관리' },
+  { num: 3, label: 'AI 작성' },
+  { num: 4, label: '모바일진단서' },
 ]
 
 export default function Editor() {

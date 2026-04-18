@@ -3,12 +3,12 @@ import { findAvailableChartNumber, isChartNumberTaken } from './chartNumber'
 import { getSessionId, getPcLabel } from './session'
 
 export const PROGRESS_STAGES = {
-  registered:    { label: '환자 등록',   color: '#9ca3af' },
-  diagnosis:     { label: '진단 작성중', color: '#eab308' },
-  draft:         { label: '초안 편집중', color: '#f97316' },
-  consultation:  { label: '상담 입력중', color: '#3b82f6' },
-  finalizing:    { label: '최종 편집중', color: '#8b5cf6' },
-  done:          { label: '완료',         color: '#10b981' },
+  registered:    { label: '환자 등록',        color: '#9ca3af' },
+  diagnosis:     { label: '진단 & 치료 계획', color: '#eab308' },
+  draft:         { label: '상담 관리',        color: '#3b82f6' },
+  consultation:  { label: '상담 관리',        color: '#3b82f6' },
+  finalizing:    { label: 'AI 작성',           color: '#8b5cf6' },
+  done:          { label: '완료',              color: '#10b981' },
 }
 
 export const STEP_TO_STAGE = {
