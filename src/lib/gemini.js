@@ -3,15 +3,6 @@ import { supabase } from './supabase'
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/generate-text`
 
-async function loadCorrections() {
-  const { data } = await supabase
-    .from('charting_corrections')
-    .select('original_term, corrected_term')
-    .order('created_at', { ascending: false })
-    .limit(30)
-  return data || []
-}
-
 async function loadClinicSettings() {
   const { data } = await supabase.from('clinic_settings').select('*')
   const settings = { guidelines: [], terminology: [], strengths: [] }
@@ -45,197 +36,165 @@ export async function saveCorrections(originalText, editedText) {
   }
 }
 
+function summaryIsEmpty(summary) {
+  if (!summary) return true
+  const plans = (summary.treatmentPlans || []).filter(Boolean)
+  return !summary.skeletal && !summary.dental && !summary.etc && plans.length === 0 && !summary.overall
+}
+
+function buildStaffLines(staffForm = {}) {
+  const lines = []
+  for (const key of ['personality', 'anxiety', 'costReaction', 'interests']) {
+    const arr = staffForm[key]
+    if (Array.isArray(arr) && arr.length > 0) {
+      lines.push(`- ${key}: ${arr.join(', ')}`)
+    }
+  }
+  for (const key of ['willingness', 'understanding']) {
+    if (typeof staffForm[key] === 'number') {
+      lines.push(`- ${key}: ${staffForm[key]}/5`)
+    }
+  }
+  return lines.length > 0 ? lines.join('\n') : '(성향 정보 없음)'
+}
+
 /**
- * Step 1: 초안 생성 — 차팅 → 새 섹션 구조 (톤 중립, 내용 중심)
+ * 진단서 본문 생성 — 정리된 소스(summary) + 환자 성향(staffForm) → 환자용 문장
+ *
+ * 환각 방지 원칙:
+ * - summary 텍스트에 **명시적으로 있는 내용만** 재서술
+ * - 소스 외 치아 문제/치료 옵션 절대 추가 금지
+ * - 빈 섹션은 빈 문자열로 둠
  */
-export async function generateDraft({ chartingText }) {
-  const [corrections, settings] = await Promise.all([
-    loadCorrections(),
-    loadClinicSettings(),
-  ])
+export async function composeReport({ summary, staffForm }) {
+  if (summaryIsEmpty(summary)) {
+    return getEmptyDraft()
+  }
+
+  const settings = await loadClinicSettings()
+
+  let guidelinesBlock = ''
+  if (settings.guidelines.length > 0) {
+    guidelinesBlock = `\n\n**치과 작성 지침 (톤/표현만 참고, 내용 추가 금지):**\n${settings.guidelines.map((g) => `- ${g}`).join('\n')}`
+  }
 
   let terminologyBlock = ''
   if (settings.terminology.length > 0) {
-    terminologyBlock = `\n\n**용어/표현 사전 (이 변환을 반드시 적용):**\n${settings.terminology.map((t) => `- "${t.from}" → "${t.to}"`).join('\n')}`
+    terminologyBlock = `\n\n**용어/표현 사전 (이 변환만 적용, 의미 추가 금지):**\n${settings.terminology.map((t) => `- "${t.from}" → "${t.to}"`).join('\n')}`
   }
 
   let strengthsBlock = ''
   if (settings.strengths.length > 0) {
-    strengthsBlock = `\n\n**치과 특장점 (해당 내용이 차팅에 관련되면 자연스럽게 반영):**\n${settings.strengths.map((s) => {
+    strengthsBlock = `\n\n**치과 특장점 (appealPoints에만 활용. 이 중 소스와 직접 관련된 것만 선별):**\n${settings.strengths.map((s) => {
       const content = typeof s === 'string' ? s : s.title || ''
       return `- ${content}`
     }).join('\n')}`
   }
 
-  let correctionsBlock = ''
-  if (corrections.length > 0) {
-    correctionsBlock = `\n\n**과거 교정 사례 (표현 스타일 참고):**\n${corrections.map((c) => `- "${c.original_term}" → "${c.corrected_term}"`).join('\n')}`
-  }
+  const systemPrompt = `당신은 한국 치과 진단서를 환자 친화적 문장으로 **재서술**하는 AI입니다. 글을 창작하는 게 아니라 소스를 옮겨 쓰는 역할입니다.
 
-  const systemPrompt = `당신은 한국 치과에서 환자용 진단서 초안을 작성하는 AI입니다.
-이 단계에서는 **내용 정확성과 구조화**에만 집중하세요. 환자 맞춤 톤 조절은 다음 단계에서 합니다.
+**⛔ 절대 규칙 (위반 시 전체 출력 오답):**
+1. 아래 [입력 소스]에 **글자 단위로 명시된 내용만** 사용하시오.
+2. 입력에 없는 치아 문제(예: 과개교합, 개방교합, 반대교합, 정중선 편위, 총생, 공간, 매복치, 잇몸 문제 등)를 **단 한 번이라도** 언급하면 오답입니다.
+3. 입력에 없는 치료(예: 임플란트, 보철, 크라운, 미백, 사랑니 발치 등)를 절대 추가 금지.
+4. "아마도", "가능성이", "~할 수도 있습니다", "추정됩니다", "예상됩니다" 같은 추측 표현 금지.
+5. 해당 섹션에 입력이 **비어 있으면 반드시 빈 문자열("")로 출력**. 무리해서 채우지 마시오.
+6. 치료 기간/비용/예후/장치명은 입력에 명시된 경우에만 언급.
+7. 입력의 구조를 유지: 치료 계획 #1 → treatmentOptions[0], 치료 계획 #2 → treatmentOptions[1] 등 1:1 매핑.
 
-**언어 규칙:**
-- 모든 출력은 100% 한국어로만 작성합니다.
-- 영어 병기 금지. 괄호 안 영어 설명, 영어 부제목, 영어 주석 모두 금지합니다.
+**✅ 톤 규칙 (환자 성향 반영 — 내용은 추가하지 않고 표현만 조절):**
+- 감성적 → 따뜻하고 공감하는 표현
+- 꼼꼼한 편 → 근거와 이유 포함
+- 바쁜 분 → 핵심만 짧고 명확
+- 불안 요소 있으면 → 해당 부분에 안심 문구 (새 내용 아님, 기존 내용 재표현)
+- 비용 부담 있으면 → 가치 중심 표현
+- 치료 의지 1~2 → 부드럽게 권유
+- 치료 의지 4~5 → 구체적 다음 단계
+- 이해도 1~2 → 비유와 쉬운 표현
+- 이해도 4~5 → 전문적이고 구체적
+- 특이 상황에 내원 여건(거리/시간 등) 있으면 → personalNote에 접근성 고려 문구
 
-**내용 규칙:**
-- 차팅 원문에 있는 내용만 변환합니다. 차팅에 없는 내용을 절대 추가하지 마세요.
-- 치과 특장점에 등록된 내용은 해당 치료가 차팅에 언급될 경우 자연스럽게 포함할 수 있습니다.
-- 치료 기간, 비용, 예후 등 차팅에 언급되지 않은 정보는 생략합니다.
-- 빈 필드는 빈 문자열("")로 둡니다.
+**언어:** 100% 한국어. 영어 병기 금지. 괄호 안 영어 설명 금지.
 
-**톤:**
-- 전문적이고 중립적인 설명체 ("~입니다", "~됩니다").
-- 환자에게 읽히는 문서이므로 알기 쉬운 표현을 사용합니다.
-- 감정적 표현이나 설득 문구는 넣지 않습니다 (다음 단계에서 추가됩니다).
-
-**출력 형식 (JSON):**
+**출력 형식 (반드시 JSON):**
 {
-  "skeletalRelationship": "골격(뼈, 악골) 관련 분석 내용. 1~3문장. 해당 없으면 빈 문자열",
-  "dentalRelationship": "치아 자체 문제(배열, 교합, 총생 등) 관련 분석 내용. 1~4문장. 해당 없으면 빈 문자열",
-  "problemList": [
-    { "text": "문제 설명 (1문장)", "severity": "high 또는 mid" }
-  ],
-  "treatmentGoals": [
-    { "problemRef": 1, "goal": "치료 목표 (1문장)", "detail": "상세 설명 (선택)" }
-  ],
+  "skeletalRelationship": "골격 문제 소스를 환자용 2인칭 문장으로 재서술 (1~3문장). 소스 비어있으면 \\"\\"",
+  "dentalRelationship": "치성 문제 소스를 환자용 문장으로 재서술 (1~4문장). 소스 비어있으면 \\"\\"",
+  "problemList": [],
+  "treatmentGoals": [],
   "treatmentOptions": [
     {
-      "name": "옵션명 (예: 상악 소구치 발치 + 고정식 교정)",
-      "description": "설명 (2~3문장)",
-      "expectedEffect": "기대 효과 (1~2문장, 해당 없으면 빈 문자열)",
-      "duration": "예상 기간 (해당 없으면 빈 문자열)",
-      "appliance": "장치 종류 (해당 없으면 빈 문자열)"
+      "name": "치료 계획 개요 한 줄",
+      "description": "치료 계획 소스를 환자용 2~3문장으로 재서술",
+      "expectedEffect": "소스에 있으면 기재, 없으면 \\"\\"",
+      "duration": "소스에 있으면 기재, 없으면 \\"\\"",
+      "appliance": "소스에 있으면 기재, 없으면 \\"\\""
     }
   ],
-  "additionalNotes": "추가 사항 (없으면 빈 문자열)"
-}
-
-**규칙:**
-- problemList: 주요 문제는 "high", 부수적 문제는 "mid". 최소 1개 이상.
-- treatmentGoals: problemRef는 problemList 배열의 1-based 인덱스. 문제 번호와 1:1 매핑.
-- treatmentOptions: 옵션이 여러 개면 각각의 기대 효과를 명시.
-- skeletalRelationship, dentalRelationship: 차팅에 해당 내용이 없으면 빈 문자열로.${terminologyBlock}${strengthsBlock}${correctionsBlock}`
-
-  const userMessage = `## 차팅 원문 (의사 기록)
-${chartingText}
-
-위 차팅을 환자가 이해할 수 있는 진단서 내용으로 변환해주세요. JSON 형식으로 출력합니다.`
-
-  const response = await fetch(EDGE_FUNCTION_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ parts: [{ text: userMessage }] }],
-      generationConfig: {
-        temperature: 0.5,
-        maxOutputTokens: 8000,
-        responseMimeType: 'application/json',
-        thinkingConfig: { thinkingBudget: 0 },
-      },
-    }),
-  })
-
-  const data = await response.json()
-  if (data.error) throw new Error(data.error.message || 'Gemini API 호출 실패')
-
-  const content = data.candidates?.[0]?.content?.parts?.[0]?.text
-  if (!content) throw new Error('AI 응답이 비어있습니다.')
-
-  try {
-    return migrateToNewFormat(sanitize(JSON.parse(content)))
-  } catch {
-    const jsonMatch = content.match(/\{[\s\S]*\}/)
-    if (jsonMatch) return migrateToNewFormat(sanitize(JSON.parse(jsonMatch[0])))
-    return getEmptyDraft()
-  }
-}
-
-/**
- * Step 3: 톤 변환 — 편집된 내용 + 환자 성향 → 맞춤형 표현 + personalNote 생성
- */
-export async function refineContent({ content, staffForm }) {
-  const settings = await loadClinicSettings()
-
-  let guidelinesBlock = ''
-  if (settings.guidelines.length > 0) {
-    guidelinesBlock = `\n\n**작성 지침 (반드시 준수):**\n${settings.guidelines.map((g) => `- ${g}`).join('\n')}`
-  }
-
-  let strengthsBlock = ''
-  if (settings.strengths.length > 0) {
-    strengthsBlock = `\n\n**치과 특장점 (personalNote나 appealPoints에 활용):**\n${settings.strengths.map((s) => {
-      const c = typeof s === 'string' ? s : s.title || ''
-      return `- ${c}`
-    }).join('\n')}`
-  }
-
-  const staffLines = []
-  for (const [key, val] of Object.entries(staffForm)) {
-    if (key === 'memo') continue
-    if (Array.isArray(val) && val.length > 0) {
-      staffLines.push(`- ${key}: ${val.join(', ')}`)
-    } else if (typeof val === 'number') {
-      staffLines.push(`- ${key}: ${val}/5`)
-    }
-  }
-  if (staffForm.memo) staffLines.push(`- 추가 메모: ${staffForm.memo}`)
-
-  const systemPrompt = `당신은 치과 진단서의 톤과 표현을 환자 맞춤형으로 다듬는 AI입니다.
-
-**핵심 원칙:**
-- 입력된 내용의 **의미와 구조(섹션, 옵션 순서, 항목 수)를 절대 변경하지 마세요.**
-- 용어, 문장 표현, 톤만 환자 성향에 맞게 조절합니다.
-- 새로운 의학적 내용을 추가하거나, 기존 내용을 삭제하지 마세요.
-
-**톤 규칙:**
-- 환자에게 직접 말하는 2인칭 톤으로 변환
-- 성향이 "감성적"이면 → 따뜻하고 공감하는 표현
-- 성향이 "바쁜 분"이면 → 핵심만 짧고 명확하게
-- 성향이 "꼼꼼한 편"이면 → 근거와 이유를 포함한 상세 설명
-- 불안 요소가 있으면 → 해당 불안에 대한 안심 문구 포함
-- 비용 부담이 있으면 → 가치 중심 표현
-- 치료 의지 낮으면(1~2) → 부드럽게 권유
-- 치료 의지 높으면(4~5) → 구체적 다음 단계 안내
-- 이해도 낮으면(1~2) → 비유와 쉬운 표현
-- 이해도 높으면(4~5) → 전문적이고 구체적 설명
-
-**personalNote 생성:**
-- 입력의 personalNote가 비어 있으면 새로 생성합니다.
-- 환자 성향(상담 정보)을 반영하여 3~5문장의 맞춤 메시지를 작성합니다.
-- 치료 옵션 중 추천 근거, 환자가 신경 쓸 부분에 대한 안심, 다음 단계 안내 등.
-- 이미 내용이 있으면 톤만 조절합니다.
-
-**appealPoints 생성:**
-- 입력의 appealPoints가 비어 있으면, 치과 특장점 중 이 케이스와 관련된 것 2~3개를 선별하여 생성합니다.
-- 각 항목: { "title": "제목", "description": "1~2문장 설명" }
-- 이미 내용이 있으면 톤만 조절합니다.
-
-**언어:** 100% 한국어. 영어 병기 금지.
-
-**출력 형식:** 입력과 동일한 JSON 구조. personalNote와 appealPoints를 추가/보강.
-{
-  "skeletalRelationship": "...",
-  "dentalRelationship": "...",
-  "problemList": [...],
-  "treatmentGoals": [...],
-  "treatmentOptions": [...],
-  "additionalNotes": "...",
-  "personalNote": "환자 맞춤 메시지 (3~5문장)",
+  "additionalNotes": "기타 + 전체 메모 합쳐 환자용으로 정리. 없으면 \\"\\"",
+  "personalNote": "환자 성향/특이 상황 반영 3~5문장 맞춤 메시지 (치료 추천 근거, 안심, 다음 단계)",
   "appealPoints": [
-    { "title": "...", "description": "..." }
+    { "title": "제목", "description": "1~2문장 설명" }
   ]
-}${guidelinesBlock}${strengthsBlock}`
+}
 
-  const userMessage = `## 원본 내용 (사용자가 편집 완료한 내용)
-${JSON.stringify(content, null, 2)}
+**Do/Don't 예시:**
+입력 [골격 문제]: "- 전후방 골격 관계: Class II (심함)\\n- 상악 위치: 전돌"
+✅ Good: "전후방 골격 관계가 Class II 상태이며 심한 편으로, 상악이 앞쪽으로 많이 나와 있는 경향이 관찰됩니다."
+❌ Bad: "Class II 골격에 과개교합이 동반됩니다." (과개교합은 소스에 없음 → 금지)
+❌ Bad: "정중선 편위도 약간 보입니다." (소스에 없음 → 금지)
 
-## 상담 정보 (환자 성향) — 이 정보에 맞춰 톤과 표현을 변환하세요
-${staffLines.length > 0 ? staffLines.join('\n') : '입력 없음'}
+입력 [치성 문제]: "- Angle's Class 우측: II\\n- Angle's Class 좌측: II"
+✅ Good: "상하악 구치부 교합이 좌우 모두 Class II 관계로 맞물려 있어 조정이 필요합니다."
+❌ Bad: "총생과 돌출이 관찰됩니다." (소스에 없음 → 금지)
 
-위 내용의 구조와 의미는 유지하면서, 상담 정보에 맞는 톤으로 다듬고, personalNote와 appealPoints를 생성해주세요.`
+입력 [치료 계획 #1]: "- 교정 단계: 2차\\n- 교정 범위: 전체\\n- 발치: #10 4번, #20 4번\\n- 악궁확장: MARPE"
+✅ Good: name="상악 소구치 발치 + MARPE + 2차 전체 교정", description="상악 좌우 소구치(#10, #20의 4번)를 발치하고, 상악궁을 MARPE로 확장한 뒤 2차 고정식 교정을 진행하는 전체 교정 계획입니다."
+❌ Bad: description에 "고정식 장치 외에 투명 교정도 가능합니다" (소스에 없음 → 금지)
+
+**appealPoints 규칙:**
+- 치과 특장점 중 **위 소스와 직접 관련된** 것만 2~3개 선별.
+- 관련 없는 특장점을 억지로 끼우지 마시오.
+- 관련된 게 없으면 빈 배열([])로 두시오.
+
+**최종 재확인:** 출력하기 전 스스로 검증하시오:
+- 출력에 등장하는 모든 치과 용어/문제/치료 옵션이 입력 소스에 있는가?
+- 없는 것이 하나라도 있으면 제거하시오.${guidelinesBlock}${terminologyBlock}${strengthsBlock}`
+
+  const planLines = (summary.treatmentPlans || [])
+    .map((p, i) => `#${i + 1}:\n${p || '(빈 계획)'}`).join('\n\n') || '(치료 계획 없음)'
+
+  const userMessage = `## 입력 소스 (아래 내용만 사용 — 외부 지식·추측·확장 모두 금지)
+
+### [골격 문제]
+${summary.skeletal || '(비어있음 → skeletalRelationship은 빈 문자열로)'}
+
+### [치성 문제]
+${summary.dental || '(비어있음 → dentalRelationship은 빈 문자열로)'}
+
+### [기타 진단 항목]
+${summary.etc || '(비어있음)'}
+
+### [치료 계획]
+${planLines}
+
+### [전체 추가 메모]
+${summary.overall || '(비어있음)'}
+
+---
+
+## 환자 성향 (문체만 조절, 내용 추가 금지)
+${buildStaffLines(staffForm)}
+
+## 환자 특이 상황 (personalNote 맞춤화에만 사용)
+${staffForm?.specialCircumstances || '(없음)'}
+
+---
+
+**최종 지시:**
+위 입력 소스에 **명시적으로 적힌 내용만** 환자 친화적 문장으로 재서술하여 JSON으로 출력하시오.
+입력에 없는 치아 문제/치료 옵션은 **단 하나도** 추가하지 마시오.
+비어있는 섹션은 반드시 빈 문자열("")로 두시오.`
 
   const response = await fetch(EDGE_FUNCTION_URL, {
     method: 'POST',
@@ -244,7 +203,7 @@ ${staffLines.length > 0 ? staffLines.join('\n') : '입력 없음'}
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents: [{ parts: [{ text: userMessage }] }],
       generationConfig: {
-        temperature: 0.7,
+        temperature: 0.3,
         maxOutputTokens: 8000,
         responseMimeType: 'application/json',
         thinkingConfig: { thinkingBudget: 0 },
@@ -259,15 +218,14 @@ ${staffLines.length > 0 ? staffLines.join('\n') : '입력 없음'}
   if (!text) throw new Error('AI 응답이 비어있습니다.')
 
   try {
-    return sanitize(JSON.parse(text))
+    return migrateToNewFormat(sanitize(JSON.parse(text)))
   } catch {
     const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (jsonMatch) return sanitize(JSON.parse(jsonMatch[0]))
-    return content
+    if (jsonMatch) return migrateToNewFormat(sanitize(JSON.parse(jsonMatch[0])))
+    return getEmptyDraft()
   }
 }
 
-// 빈 초안 템플릿
 export function getEmptyDraft() {
   return {
     skeletalRelationship: '',
@@ -281,40 +239,15 @@ export function getEmptyDraft() {
   }
 }
 
-// 이전 형식(diagnosis 배열/문자열) → 새 형식으로 변환
 export function migrateToNewFormat(obj) {
   if (!obj) return getEmptyDraft()
-  // 이미 새 형식이면 그대로
-  if ('skeletalRelationship' in obj || 'problemList' in obj) {
-    return {
-      ...getEmptyDraft(),
-      ...obj,
-      problemList: obj.problemList || [],
-      treatmentGoals: obj.treatmentGoals || [],
-      treatmentOptions: obj.treatmentOptions || [],
-      appealPoints: obj.appealPoints || [],
-    }
-  }
-  // 이전 형식 변환
-  const skeletal = Array.isArray(obj.diagnosis)
-    ? (obj.diagnosis.find(d => d.category === '골격문제')?.content || '')
-    : ''
-  const dental = Array.isArray(obj.diagnosis)
-    ? (obj.diagnosis.find(d => d.category === '치성문제')?.content || '')
-    : (typeof obj.diagnosis === 'string' ? obj.diagnosis : '')
-
   return {
     ...getEmptyDraft(),
-    skeletalRelationship: skeletal,
-    dentalRelationship: dental,
-    treatmentOptions: (obj.treatmentOptions || []).map(o => ({
-      name: o.name || '',
-      description: o.description || '',
-      expectedEffect: '',
-      duration: o.duration || '',
-      appliance: '',
-    })),
-    additionalNotes: obj.additionalNotes || '',
+    ...obj,
+    problemList: obj.problemList || [],
+    treatmentGoals: obj.treatmentGoals || [],
+    treatmentOptions: obj.treatmentOptions || [],
+    appealPoints: obj.appealPoints || [],
   }
 }
 

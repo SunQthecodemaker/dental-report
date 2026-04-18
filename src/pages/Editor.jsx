@@ -1,17 +1,18 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import StaffForm from '../components/StaffForm'
-import ClinicalForm, { getEmptyClinicalForm } from '../components/ClinicalForm'
+import ClinicalForm, { getEmptyClinicalForm, buildAutoSummary } from '../components/ClinicalForm'
 import ContentEditor from '../components/ContentEditor'
 import BrochurePreview from '../components/BrochurePreview'
-import { generateDraft, refineContent, saveCorrections } from '../lib/gemini'
+import { composeReport, saveCorrections } from '../lib/gemini'
 import { supabase } from '../lib/supabase'
 import { getByChartNumber, updateReport, acquireLock, releaseLock, isOtherPcEditing, PROGRESS_STAGES, STEP_TO_STAGE } from '../lib/reports'
-import { getSessionId, getPcLabel } from '../lib/session'
+import { getPcLabel } from '../lib/session'
 
 const INITIAL_STAFF_FORM = {
-  personality: [], anxiety: [], costReaction: [],
-  willingness: 3, understanding: 3, interests: [], memo: '',
+  personality: [], anxiety: [], costReaction: [], interests: [],
+  willingness: 3, understanding: 3,
+  specialCircumstances: '', memo: '',
 }
 
 const STEP_LABELS = [
@@ -20,6 +21,16 @@ const STEP_LABELS = [
   { num: 3, label: 'AI 작성' },
   { num: 4, label: '모바일진단서' },
 ]
+
+function timeAgo(date) {
+  if (!date) return ''
+  const diff = Math.floor((Date.now() - date.getTime()) / 1000)
+  if (diff < 5) return '방금'
+  if (diff < 60) return `${diff}초 전`
+  const m = Math.floor(diff / 60)
+  if (m < 60) return `${m}분 전`
+  return `${Math.floor(m / 60)}시간 전`
+}
 
 export default function Editor() {
   const { chartNumber } = useParams()
@@ -31,20 +42,20 @@ export default function Editor() {
   const [clinicalForm, setClinicalForm] = useState(getEmptyClinicalForm())
   const [clinicalPage, setClinicalPage] = useState(1)
   const [staffForm, setStaffForm] = useState(INITIAL_STAFF_FORM)
-  const [draftContent, setDraftContent] = useState(null)
-  const [editedContent, setEditedContent] = useState(null)
   const [refinedContent, setRefinedContent] = useState(null)
+  const [editedContent, setEditedContent] = useState(null)
   const [photos, setPhotos] = useState([])
   const [step, setStep] = useState(1)
 
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [isRefining, setIsRefining] = useState(false)
+  const [isComposing, setIsComposing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [savedLink, setSavedLink] = useState(null)
 
+  const [saveState, setSaveState] = useState('idle')
+  const [lastSavedAt, setLastSavedAt] = useState(null)
+
   const hydratedRef = useRef(false)
   const saveTimerRef = useRef(null)
-  const skipNextAutosave = useRef(false)
 
   useEffect(() => {
     let mounted = true
@@ -54,11 +65,10 @@ export default function Editor() {
       if (!data) { setLoadError(`차트번호 "${chartNumber}" 환자를 찾을 수 없습니다.`); return }
       setReport(data)
       setClinicalForm(data.clinical_form || getEmptyClinicalForm())
-      setStaffForm(data.staff_form || INITIAL_STAFF_FORM)
+      setStaffForm({ ...INITIAL_STAFF_FORM, ...(data.staff_form || {}) })
       if (data.sections && Object.keys(data.sections).length > 0) {
         setRefinedContent(data.sections)
         setEditedContent(data.sections)
-        setDraftContent(data.sections)
       }
       setPhotos(data.photos || [])
       hydratedRef.current = true
@@ -72,19 +82,8 @@ export default function Editor() {
     const heartbeat = setInterval(() => {
       acquireLock(report.id, `step${step}`).catch(() => {})
     }, 60 * 1000)
-    const onUnload = () => {
-      const body = JSON.stringify({ locked_by: null, locked_at: null, current_step: null })
-      try {
-        navigator.sendBeacon?.(
-          `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/dental_reports?id=eq.${report.id}`,
-          new Blob([body], { type: 'application/json' })
-        )
-      } catch {}
-    }
-    window.addEventListener('beforeunload', onUnload)
     return () => {
       clearInterval(heartbeat)
-      window.removeEventListener('beforeunload', onUnload)
       releaseLock(report.id).catch(() => {})
     }
   }, [report?.id, step])
@@ -104,59 +103,55 @@ export default function Editor() {
 
   useEffect(() => {
     if (!hydratedRef.current || !report?.id) return
-    if (skipNextAutosave.current) { skipNextAutosave.current = false; return }
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    saveTimerRef.current = setTimeout(() => {
+    setSaveState('pending')
+    saveTimerRef.current = setTimeout(async () => {
       const progress = STEP_TO_STAGE[step] || report.progress_stage || 'diagnosis'
       const patch = {
         clinical_form: clinicalForm,
         staff_form: staffForm,
         progress_stage: report.progress_stage === 'done' ? 'done' : progress,
       }
-      if (editedContent) patch.sections = refinedContent || editedContent
-      updateReport(report.id, patch).catch(err => console.error('autosave failed', err))
+      if (editedContent) patch.sections = editedContent
+      setSaveState('saving')
+      try {
+        await updateReport(report.id, patch)
+        setLastSavedAt(new Date())
+        setSaveState('saved')
+      } catch (err) {
+        console.error('autosave failed', err)
+        setSaveState('idle')
+      }
     }, 1500)
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
-  }, [clinicalForm, staffForm, editedContent, refinedContent, step, report?.id])
+  }, [clinicalForm, staffForm, editedContent, step, report?.id])
 
   const otherPcEditing = useMemo(() => isOtherPcEditing(report, `step${step}`), [report, step])
 
-  const handleGenerateDraft = async () => {
-    const ct = (clinicalForm?.chartingText || '').trim()
-    if (!ct) {
-      const anyChecked = Object.values(clinicalForm?.skeletal || {}).some(v => v && typeof v === 'object')
-        || Object.values(clinicalForm?.dental || {}).some(v => v && typeof v === 'object')
-      if (!anyChecked) { alert('차팅 또는 진단 항목을 입력해주세요.'); return }
+  const summary = useMemo(() => {
+    const auto = buildAutoSummary(clinicalForm)
+    const saved = clinicalForm.summary || {}
+    return {
+      skeletal: saved.skeletal !== undefined && saved.skeletal !== '' ? saved.skeletal : auto.skeletal,
+      dental:   saved.dental   !== undefined && saved.dental   !== '' ? saved.dental   : auto.dental,
+      etc:      saved.etc      !== undefined && saved.etc      !== '' ? saved.etc      : auto.etc,
+      treatmentPlans: (clinicalForm.treatmentPlans || []).map((_, i) =>
+        (saved.treatmentPlans && saved.treatmentPlans[i]) || auto.treatmentPlans[i] || ''
+      ),
+      overall: saved.overall !== undefined && saved.overall !== '' ? saved.overall : auto.overall,
     }
-    setIsGenerating(true)
-    try {
-      const result = await generateDraft({ chartingText: ct, clinicalForm })
-      setDraftContent(result)
-      setEditedContent(JSON.parse(JSON.stringify(result)))
-      setStep(2)
-    } catch (err) {
-      alert('AI 생성 실패: ' + err.message)
-    } finally { setIsGenerating(false) }
-  }
+  }, [clinicalForm])
 
-  const handleRefine = async () => {
-    if (!editedContent) return
-    setIsRefining(true)
+  const handleComposeAndNext = async () => {
+    setIsComposing(true)
     try {
-      const refined = await refineContent({ content: editedContent, staffForm })
-      setRefinedContent(refined)
+      const result = await composeReport({ summary, staffForm })
+      setRefinedContent(result)
+      setEditedContent(JSON.parse(JSON.stringify(result)))
       setStep(3)
     } catch (err) {
-      alert('AI 톤 변환 실패: ' + err.message)
-    } finally { setIsRefining(false) }
-  }
-
-  const handleMakeBrochure = () => {
-    if (draftContent && refinedContent) {
-      saveCorrections(draftContent.skeletalRelationship, refinedContent.skeletalRelationship).catch(() => {})
-      saveCorrections(draftContent.dentalRelationship, refinedContent.dentalRelationship).catch(() => {})
-    }
-    setStep(4)
+      alert('AI 작성 실패: ' + err.message)
+    } finally { setIsComposing(false) }
   }
 
   const handleSave = async () => {
@@ -175,9 +170,13 @@ export default function Editor() {
           uploadedPhotos.push({ ...photo, file: undefined, preview: undefined })
         }
       }
+      if (refinedContent && editedContent) {
+        saveCorrections(refinedContent.skeletalRelationship, editedContent.skeletalRelationship).catch(() => {})
+        saveCorrections(refinedContent.dentalRelationship, editedContent.dentalRelationship).catch(() => {})
+      }
       const expiresAt = new Date(); expiresAt.setDate(expiresAt.getDate() + 90)
       await updateReport(report.id, {
-        sections: refinedContent || editedContent,
+        sections: editedContent,
         photos: uploadedPhotos,
         clinical_form: clinicalForm,
         staff_form: staffForm,
@@ -209,14 +208,13 @@ export default function Editor() {
 
   if (!report) return <div style={loadErrS.wrap}>불러오는 중…</div>
 
-  const displayContent = step >= 3 ? (refinedContent || editedContent) : editedContent
   const stage = PROGRESS_STAGES[report.progress_stage] || PROGRESS_STAGES.registered
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: "'Pretendard', sans-serif" }}>
       {otherPcEditing && (
         <div style={bannerS.other}>
-          ⚠️ 다른 PC에서도 같은 단계({report.current_step})를 열고 있습니다. (편집은 가능하나 덮어쓰기 충돌 주의)
+          ⚠️ 다른 PC에서도 같은 단계를 열고 있습니다. (편집은 가능하나 덮어쓰기 충돌 주의)
         </div>
       )}
 
@@ -230,6 +228,7 @@ export default function Editor() {
           <span style={{ padding: '2px 8px', borderRadius: '10px', background: stage.color, color: '#fff', fontSize: '11px', fontWeight: 600 }}>
             {stage.label}
           </span>
+          <SaveBadge state={saveState} at={lastSavedAt} />
         </div>
 
         <div style={headerS.steps}>
@@ -264,39 +263,37 @@ export default function Editor() {
               page={clinicalPage}
               onPageChange={setClinicalPage}
             />
-            {clinicalPage === 2 && (
-              <button onClick={handleGenerateDraft} disabled={isGenerating} style={{ ...btnStyle('#b5976a'), width: '100%', padding: '14px', fontSize: '16px', marginTop: '24px' }}>
-                {isGenerating ? 'AI 초안 생성 중...' : 'AI 초안 생성 →'}
+            {clinicalPage === 3 && (
+              <button onClick={() => setStep(2)} style={{ ...btnStyle('#b5976a'), width: '100%', padding: '14px', fontSize: '16px', marginTop: '16px' }}>
+                다음: 상담 관리 →
               </button>
             )}
           </div>
         )}
 
-        {step === 2 && draftContent && editedContent && (
-          <div style={{ padding: '16px 24px', height: 'calc(100vh - 120px)' }}>
+        {step === 2 && (
+          <div style={{ maxWidth: '860px', margin: '0 auto', padding: '24px' }}>
             <div style={infoBoxS.amber}>
-              ✎ 좌측 초안을 참조하면서 우측에서 내용을 수정하세요. 말투/톤은 다음 단계에서 AI가 조절합니다.
+              💡 환자 성향·의지·특이 상황이 AI 작성의 <strong>문체</strong>를 결정합니다. 내용은 이전 단계의 정리를 그대로 사용합니다.
             </div>
-            <ContentEditor original={draftContent} edited={editedContent} onChange={setEditedContent} />
-            <div style={{ padding: '12px 16px', background: '#f9fafb', borderRadius: '8px', marginTop: '12px' }}>
-              <h4 style={{ margin: '0 0 8px 0', fontSize: '14px' }}>상담자 입력 (환자 성향)</h4>
+            <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', border: '1px solid #e5e7eb' }}>
               <StaffForm value={staffForm} onChange={setStaffForm} />
             </div>
-            <button onClick={handleRefine} disabled={isRefining} style={{ ...btnStyle('#b5976a'), width: '100%', padding: '16px', fontSize: '16px', fontWeight: 700, marginTop: '12px' }}>
-              {isRefining ? 'AI 톤 변환 중...' : 'AI 톤 변환 (환자 맞춤)'}
+            <button onClick={handleComposeAndNext} disabled={isComposing} style={{ ...btnStyle('#b5976a'), width: '100%', padding: '16px', fontSize: '16px', fontWeight: 700, marginTop: '16px' }}>
+              {isComposing ? 'AI 작성 중...' : '다음: AI 작성 →'}
             </button>
           </div>
         )}
 
-        {step === 3 && displayContent && (
+        {step === 3 && editedContent && (
           <div style={{ display: 'flex', height: 'calc(100vh - 60px)' }}>
             <div style={{ flex: 1, overflow: 'auto', padding: '24px', borderRight: '1px solid #e5e7eb' }}>
               <div style={infoBoxS.green}>
-                환자 성향이 반영된 톤으로 변환되었습니다. 내용을 최종 확인하세요.
+                ✨ AI가 정리 소스와 환자 성향을 반영해 작성했습니다. 내용을 최종 확인·수정하세요.
               </div>
-              <ContentEditor original={editedContent} edited={refinedContent} onChange={setRefinedContent} />
-              <button onClick={handleMakeBrochure} style={{ ...btnStyle('#c45c5c'), width: '100%', padding: '16px', fontSize: '18px', fontWeight: 700, marginTop: '16px' }}>
-                브로셔 만들기
+              <ContentEditor original={refinedContent} edited={editedContent} onChange={setEditedContent} />
+              <button onClick={() => setStep(4)} style={{ ...btnStyle('#c45c5c'), width: '100%', padding: '16px', fontSize: '18px', fontWeight: 700, marginTop: '16px' }}>
+                다음: 모바일 진단서 →
               </button>
             </div>
             <div style={{ width: '420px', background: '#1a1a18', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px', overflow: 'auto', flexShrink: 0 }}>
@@ -304,7 +301,7 @@ export default function Editor() {
                 <BrochurePreview
                   patientName={report.patient_name}
                   consultDate={report.consult_date}
-                  content={refinedContent}
+                  content={editedContent}
                   photos={photos}
                   mode="preview"
                 />
@@ -313,13 +310,13 @@ export default function Editor() {
           </div>
         )}
 
-        {step === 4 && displayContent && (
+        {step === 4 && editedContent && (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
             <div style={{ width: '100%', maxWidth: '800px', background: '#fff', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
               <BrochurePreview
                 patientName={report.patient_name}
                 consultDate={report.consult_date}
-                content={refinedContent || editedContent}
+                content={editedContent}
                 photos={photos}
                 mode="view"
               />
@@ -331,6 +328,24 @@ export default function Editor() {
   )
 }
 
+function SaveBadge({ state, at }) {
+  const label =
+    state === 'saving' ? '💾 저장 중…' :
+    state === 'pending' ? '✏️ 입력 중…' :
+    state === 'saved' && at ? `💾 자동 저장됨 · ${timeAgo(at)}` :
+    ''
+  if (!label) return null
+  return (
+    <span style={{
+      fontSize: '11px',
+      color: state === 'saving' ? '#b5976a' : '#6b7280',
+      background: '#f3f4f6',
+      padding: '3px 8px',
+      borderRadius: '6px',
+    }}>{label}</span>
+  )
+}
+
 const btnStyle = (color) => ({
   padding: '10px 20px', background: color, color: '#fff', border: 'none', borderRadius: '8px',
   fontSize: '14px', fontWeight: 600, cursor: 'pointer',
@@ -338,7 +353,7 @@ const btnStyle = (color) => ({
 
 const headerS = {
   bar: { display: 'flex', alignItems: 'center', padding: '10px 20px', background: '#fff', borderBottom: '1px solid #e5e7eb', gap: '16px', flexShrink: 0, zIndex: 10 },
-  left: { display: 'flex', gap: '10px', alignItems: 'center' },
+  left: { display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' },
   steps: { display: 'flex', alignItems: 'center', gap: '4px', flex: 1, justifyContent: 'center' },
   right: { display: 'flex', gap: '8px', alignItems: 'center' },
 }
@@ -348,7 +363,7 @@ const bannerS = {
 }
 
 const infoBoxS = {
-  amber: { background: '#f5f2ed', border: '1px solid #d4c8b4', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: '#5a5a55', marginBottom: '12px' },
+  amber: { background: '#f5f2ed', border: '1px solid #d4c8b4', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: '#5a5a55', marginBottom: '16px' },
   green: { background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '10px 14px', fontSize: '13px', color: '#065f46', marginBottom: '16px' },
 }
 

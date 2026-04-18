@@ -79,6 +79,81 @@ export function getEmptyClinicalForm() {
     // page 2: 치료계획 (목표 → 계획이 한 세트)
     treatmentPlans: [getEmptyTxOption()],
     treatmentMemo: '',
+    // page 3: 정리 (사용자 편집 반영, 없으면 자동 생성)
+    summary: { skeletal: '', dental: '', etc: '', treatmentPlans: [], overall: '' },
+  }
+}
+
+const ALL_SECTIONS = [
+  { key: 'skeletal', label: '골격 문제', items: SKELETAL_ITEMS },
+  { key: 'dental',   label: '치성 문제', items: DENTAL_ITEMS },
+  { key: 'etc',      label: '기타',      items: ETC_ITEMS },
+]
+
+function itemValueToText(section, item, value) {
+  const v = value[section]?.[item.key]
+  const severe = value[section]?.[`${item.key}_severe`]
+  const severeTag = severe ? ' (심함)' : ''
+  if (item.type === 'text') return v ? `${item.label}: ${v}${severeTag}` : null
+  if (item.type === 'radio') return v ? `${item.label}: ${v}${severeTag}` : null
+  if (item.type === 'checkbox') {
+    if (Array.isArray(v) && v.length > 0) return `${item.label}: ${v.join(', ')}${severeTag}`
+    return null
+  }
+  if (item.type === 'checkbox_text') {
+    const arr = Array.isArray(v) ? v : []
+    const text = value[section]?.[`${item.key}_text`]
+    if (arr.length === 0 && !text) return null
+    const parts = [...arr]
+    if (text) parts.push(text)
+    return `${item.label}: ${parts.join(', ')}${severeTag}`
+  }
+  return null
+}
+
+function sectionToText(sectionKey, clinicalForm) {
+  const def = ALL_SECTIONS.find(s => s.key === sectionKey)
+  if (!def) return ''
+  const lines = []
+  for (const item of def.items) {
+    const line = itemValueToText(sectionKey, item, clinicalForm)
+    if (line) lines.push(`- ${line}`)
+  }
+  const memo = clinicalForm[sectionKey]?.memo
+  if (memo) lines.push(`- 특이사항: ${memo}`)
+  return lines.join('\n')
+}
+
+function planToText(plan, idx) {
+  const lines = []
+  if (plan.goal) lines.push(`목표: ${plan.goal}`)
+  if (plan.scope) lines.push(`교정 범위: ${plan.scope}`)
+  if (plan.phase) lines.push(`교정 단계: ${plan.phase}`)
+  if ((plan.primary || []).length > 0) lines.push(`1차 처치: ${plan.primary.join(', ')}`)
+  const ext = ['ext_10', 'ext_20', 'ext_30', 'ext_40'].map(k => {
+    const v = plan[k]
+    if (!v) return null
+    const extraText = plan[`${k}_text`]
+    const suffix = extraText ? ` (${extraText})` : ''
+    return `${k.replace('ext_', '#')}: ${v}${suffix}`
+  }).filter(Boolean)
+  if (ext.length > 0) lines.push(`발치: ${ext.join(' / ')}`)
+  if (plan.expansion) lines.push(`악궁확장: ${plan.expansion}`)
+  if (plan.distalization) lines.push(`후방이동: 필요${plan.distalExtraction ? ` (${plan.distalExtraction})` : ''}`)
+  if (plan.stripping) lines.push(`치간삭제: 필요`)
+  if ((plan.txEtc || []).length > 0) lines.push(`기타: ${plan.txEtc.join(', ')}`)
+  if (plan.duration) lines.push(`예상 기간: ${plan.duration}`)
+  if (plan.memo) lines.push(`추가: ${plan.memo}`)
+  return lines.length > 0 ? lines.map(l => `- ${l}`).join('\n') : ''
+}
+
+export function buildAutoSummary(clinicalForm) {
+  return {
+    skeletal: sectionToText('skeletal', clinicalForm),
+    dental: sectionToText('dental', clinicalForm),
+    etc: sectionToText('etc', clinicalForm),
+    treatmentPlans: (clinicalForm.treatmentPlans || []).map(planToText),
+    overall: clinicalForm.treatmentMemo || '',
   }
 }
 
@@ -152,6 +227,7 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
         {[
           { p: 1, label: '진단' },
           { p: 2, label: '치료 계획' },
+          { p: 3, label: '정리' },
         ].map(({ p, label }) => (
           <button
             key={p}
@@ -287,24 +363,24 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
                 />
               </FieldRow>
 
-              {/* 교정 범위 */}
+              {/* 교정 단계 (먼저) */}
               <div style={itemRowStyle}>
-                <div style={labelStyle}>교정 범위</div>
+                <div style={labelStyle}>교정 단계</div>
                 <div style={{ display: 'flex', gap: '6px' }}>
-                  {['전체', '부분'].map(s => (
-                    <button key={s} onClick={() => updatePlan(idx, 'scope', plan.scope === s ? '' : s)} style={chipStyle(plan.scope === s, '#b5976a')}>{s} 교정</button>
+                  {['1차', '2차'].map(p => (
+                    <button key={p} onClick={() => updatePlan(idx, 'phase', plan.phase === p ? '' : p)} style={chipStyle(plan.phase === p, '#b5976a')}>{p} 교정</button>
                   ))}
                 </div>
               </div>
 
-              {/* 전체 → 1차/2차 */}
-              {plan.scope === '전체' && (
+              {/* 단계 선택 시 → 교정 범위 + 세부 */}
+              {plan.phase && (
                 <>
                   <div style={itemRowStyle}>
-                    <div style={labelStyle}>교정 단계</div>
+                    <div style={labelStyle}>교정 범위</div>
                     <div style={{ display: 'flex', gap: '6px' }}>
-                      {['1차', '2차'].map(p => (
-                        <button key={p} onClick={() => updatePlan(idx, 'phase', plan.phase === p ? '' : p)} style={chipStyle(plan.phase === p, '#b5976a')}>{p} 교정</button>
+                      {['전체', '부분'].map(s => (
+                        <button key={s} onClick={() => updatePlan(idx, 'scope', plan.scope === s ? '' : s)} style={chipStyle(plan.scope === s, '#b5976a')}>{s} 교정</button>
                       ))}
                     </div>
                   </div>
@@ -460,11 +536,124 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
               rows={3}
             />
           </div>
-          <NavButtons page={page} onPageChange={onPageChange} lastPage />
+          <NavButtons page={page} onPageChange={onPageChange} />
         </div>
+      )}
+
+      {/* Page 3: 정리 — 자동 생성 + 편집 가능 */}
+      {page === 3 && (
+        <SummaryPage value={value} onChange={onChange} onPageChange={onPageChange} />
       )}
     </div>
   )
+}
+
+function SummaryPage({ value, onChange, onPageChange }) {
+  const auto = buildAutoSummary(value)
+  const summary = value.summary || { skeletal: '', dental: '', etc: '', treatmentPlans: [], overall: '' }
+
+  const getValue = (key, fallback) => {
+    const v = summary[key]
+    return (v === undefined || v === null) ? fallback : v
+  }
+  const setValue = (key, val) => {
+    onChange({ ...value, summary: { ...summary, [key]: val } })
+  }
+  const setPlanValue = (idx, val) => {
+    const plans = [...(summary.treatmentPlans || [])]
+    plans[idx] = val
+    onChange({ ...value, summary: { ...summary, treatmentPlans: plans } })
+  }
+  const regenerate = () => {
+    onChange({ ...value, summary: { ...auto } })
+  }
+
+  const hasAny = auto.skeletal || auto.dental || auto.etc ||
+    auto.treatmentPlans.some(t => t) || auto.overall
+
+  return (
+    <div style={pageStyle}>
+      <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '10px', padding: '12px 16px', color: '#0369a1', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+        <span>💡 진단/치료 계획에서 <strong>선택한 항목만</strong> 자동 정리되어 아래 표시됩니다. 그대로 수정하거나 보완하세요. 이 내용이 다음 단계(상담 관리 → AI 작성)의 소스가 됩니다.</span>
+        <button onClick={regenerate} style={{ padding: '6px 12px', background: '#fff', border: '1px solid #bae6fd', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          🔄 자동 다시 생성
+        </button>
+      </div>
+
+      {!hasAny && (
+        <div style={{ padding: '40px 20px', textAlign: 'center', color: '#9ca3af', background: '#f9fafb', borderRadius: '10px' }}>
+          아직 선택된 항목이 없습니다. 이전 탭에서 진단/치료 계획을 먼저 입력하세요.
+        </div>
+      )}
+
+      {[
+        { key: 'skeletal', label: '🩻 골격 문제' },
+        { key: 'dental',   label: '🦷 치성 문제' },
+        { key: 'etc',      label: '📝 기타' },
+      ].map(({ key, label }) => (
+        <div key={key} style={sectionStyle}>
+          <SectionHeader label={label} color="#b5976a" />
+          {auto[key] && (
+            <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '6px' }}>자동 정리:</div>
+          )}
+          {auto[key] && (
+            <pre style={autoPreStyle}>{auto[key]}</pre>
+          )}
+          <textarea
+            value={getValue(key, auto[key])}
+            onChange={e => setValue(key, e.target.value)}
+            placeholder="자동 정리된 내용을 그대로 쓰거나 수정하세요."
+            style={{ ...memoStyle, minHeight: '80px', background: '#fff' }}
+            rows={4}
+          />
+        </div>
+      ))}
+
+      {(value.treatmentPlans || []).map((_, idx) => (
+        <div key={idx} style={sectionStyle}>
+          <SectionHeader label={`📋 치료 계획 #${idx + 1}`} color="#b5976a" />
+          {auto.treatmentPlans[idx] && (
+            <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '6px' }}>자동 정리:</div>
+          )}
+          {auto.treatmentPlans[idx] && (
+            <pre style={autoPreStyle}>{auto.treatmentPlans[idx]}</pre>
+          )}
+          <textarea
+            value={getValue('treatmentPlans', []).concat()[idx] !== undefined ? summary.treatmentPlans[idx] : auto.treatmentPlans[idx]}
+            onChange={e => setPlanValue(idx, e.target.value)}
+            placeholder="치료 계획 정리"
+            style={{ ...memoStyle, minHeight: '80px', background: '#fff' }}
+            rows={4}
+          />
+        </div>
+      ))}
+
+      <div style={sectionStyle}>
+        <SectionHeader label="📝 전체 추가 메모" color="#6b7280" />
+        <textarea
+          value={getValue('overall', auto.overall)}
+          onChange={e => setValue('overall', e.target.value)}
+          placeholder="전체 치료에 대한 추가사항 (선택)"
+          style={{ ...memoStyle, minHeight: '60px', background: '#fff' }}
+          rows={2}
+        />
+      </div>
+
+      <NavButtons page={3} onPageChange={onPageChange} lastPage />
+    </div>
+  )
+}
+
+const autoPreStyle = {
+  background: '#faf8f5',
+  border: '1px dashed #e5d4b8',
+  borderRadius: '6px',
+  padding: '8px 12px',
+  fontSize: '12px',
+  color: '#5a5a55',
+  margin: '0 0 8px 0',
+  whiteSpace: 'pre-wrap',
+  fontFamily: 'inherit',
 }
 
 /* ═══ 서브 컴포넌트 ═══ */
@@ -491,6 +680,30 @@ function FieldRow({ label, children }) {
   )
 }
 
+function ExtQuadCell({ plan, idx, field, label, alignH, borderSide, updatePlan }) {
+  const value = plan[field] || ''
+  const textField = `${field}_text`
+  const showInput = value === '기타'
+  return (
+    <div style={quadCellStyle(alignH, borderSide)}>
+      <div style={quadLabel}>{label}</div>
+      <select value={value} onChange={e => updatePlan(idx, field, e.target.value)} style={quadSelect(value)}>
+        <option value="">비발치</option>
+        {['4번', '5번', '기타'].map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+      {showInput && (
+        <input
+          type="text"
+          value={plan[textField] || ''}
+          onChange={e => updatePlan(idx, textField, e.target.value)}
+          placeholder="치아번호"
+          style={{ marginTop: '4px', padding: '3px 6px', fontSize: '12px', border: '1px solid #dc2626', borderRadius: '4px', width: '80px', textAlign: alignH === 'right' ? 'right' : 'left' }}
+        />
+      )}
+    </div>
+  )
+}
+
 function ExtractionQuadrant({ plan, idx, updatePlan }) {
   return (
     <div style={{
@@ -501,40 +714,12 @@ function ExtractionQuadrant({ plan, idx, updatePlan }) {
       maxWidth: '340px',
       margin: '0 auto',
     }}>
-      {/* #10 상우 */}
-      <div style={quadCellStyle('right', 'bottom')}>
-        <div style={quadLabel}>#10</div>
-        <select value={plan.ext_10 || ''} onChange={e => updatePlan(idx, 'ext_10', e.target.value)} style={quadSelect(plan.ext_10)}>
-          <option value="">비발치</option>
-          {['4번', '5번', '기타'].map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-      </div>
+      <ExtQuadCell plan={plan} idx={idx} field="ext_10" label="#10" alignH="right" borderSide="bottom" updatePlan={updatePlan} />
       <div style={{ borderBottom: '2px solid #9ca3af', width: '2px', background: '#9ca3af' }} />
-      {/* #20 상좌 */}
-      <div style={quadCellStyle('left', 'bottom')}>
-        <div style={quadLabel}>#20</div>
-        <select value={plan.ext_20 || ''} onChange={e => updatePlan(idx, 'ext_20', e.target.value)} style={quadSelect(plan.ext_20)}>
-          <option value="">비발치</option>
-          {['4번', '5번', '기타'].map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-      </div>
-      {/* #40 하우 */}
-      <div style={quadCellStyle('right', 'top')}>
-        <div style={quadLabel}>#40</div>
-        <select value={plan.ext_40 || ''} onChange={e => updatePlan(idx, 'ext_40', e.target.value)} style={quadSelect(plan.ext_40)}>
-          <option value="">비발치</option>
-          {['4번', '5번', '기타'].map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-      </div>
+      <ExtQuadCell plan={plan} idx={idx} field="ext_20" label="#20" alignH="left" borderSide="bottom" updatePlan={updatePlan} />
+      <ExtQuadCell plan={plan} idx={idx} field="ext_40" label="#40" alignH="right" borderSide="top" updatePlan={updatePlan} />
       <div style={{ borderTop: '2px solid #9ca3af', width: '2px', background: '#9ca3af' }} />
-      {/* #30 하좌 */}
-      <div style={quadCellStyle('left', 'top')}>
-        <div style={quadLabel}>#30</div>
-        <select value={plan.ext_30 || ''} onChange={e => updatePlan(idx, 'ext_30', e.target.value)} style={quadSelect(plan.ext_30)}>
-          <option value="">비발치</option>
-          {['4번', '5번', '기타'].map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-      </div>
+      <ExtQuadCell plan={plan} idx={idx} field="ext_30" label="#30" alignH="left" borderSide="top" updatePlan={updatePlan} />
     </div>
   )
 }
