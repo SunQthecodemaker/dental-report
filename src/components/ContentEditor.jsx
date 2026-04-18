@@ -1,44 +1,13 @@
 /**
- * ContentEditor — Step 2: 초안 내용 편집
+ * ContentEditor — AI 작성 단계: 결과 편집
  * 좌측: AI 초안 (읽기전용 참조)
- * 우측: 섹션별 편집 (골격관계, 치성관계, 문제목록, 치료목표, 치료계획, 추가사항)
+ * 우측: 섹션별 편집 (골격관계, 치성관계, 치료계획, 맞춤 안내, 어필, 추가사항)
  */
 export default function ContentEditor({ original, edited, onChange }) {
   const update = (field, value) => onChange({ ...edited, [field]: value })
 
   const isChanged = (a, b) => JSON.stringify(a) !== JSON.stringify(b)
   const revert = (field) => onChange({ ...edited, [field]: original[field] })
-
-  // 문제 목록
-  const updateProblem = (idx, field, value) => {
-    const list = [...edited.problemList]
-    list[idx] = { ...list[idx], [field]: value }
-    onChange({ ...edited, problemList: list })
-  }
-  const addProblem = () => {
-    onChange({ ...edited, problemList: [...edited.problemList, { text: '', severity: 'mid' }] })
-  }
-  const removeProblem = (idx) => {
-    const list = edited.problemList.filter((_, i) => i !== idx)
-    // treatmentGoals의 problemRef도 조정
-    const goals = edited.treatmentGoals
-      .filter(g => g.problemRef !== idx + 1)
-      .map(g => ({ ...g, problemRef: g.problemRef > idx + 1 ? g.problemRef - 1 : g.problemRef }))
-    onChange({ ...edited, problemList: list, treatmentGoals: goals })
-  }
-
-  // 치료 목표
-  const updateGoal = (idx, field, value) => {
-    const goals = [...edited.treatmentGoals]
-    goals[idx] = { ...goals[idx], [field]: value }
-    onChange({ ...edited, treatmentGoals: goals })
-  }
-  const addGoal = () => {
-    onChange({ ...edited, treatmentGoals: [...edited.treatmentGoals, { problemRef: 1, goal: '', detail: '' }] })
-  }
-  const removeGoal = (idx) => {
-    onChange({ ...edited, treatmentGoals: edited.treatmentGoals.filter((_, i) => i !== idx) })
-  }
 
   // 치료 옵션
   const updateOption = (idx, field, value) => {
@@ -74,34 +43,6 @@ export default function ContentEditor({ original, edited, onChange }) {
         )}
         {original.dentalRelationship && (
           <RO title="치성 관계" content={original.dentalRelationship} />
-        )}
-        {original.problemList?.length > 0 && (
-          <div style={S.roSection}>
-            <div style={S.roTitle}>문제 목록</div>
-            {original.problemList.map((p, i) => (
-              <div key={i} style={S.roItem}>
-                <span style={{ ...S.roBadge, background: p.severity === 'high' ? '#fecaca' : '#fef3c7', color: p.severity === 'high' ? '#dc2626' : '#92400e' }}>
-                  {i + 1}
-                </span>
-                {p.text}
-                <span style={{ fontSize: '10px', color: '#9ca3af', marginLeft: '4px' }}>
-                  ({p.severity === 'high' ? '주요' : '보조'})
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-        {original.treatmentGoals?.length > 0 && (
-          <div style={S.roSection}>
-            <div style={S.roTitle}>치료 목표</div>
-            {original.treatmentGoals.map((g, i) => (
-              <div key={i} style={S.roItem}>
-                <span style={{ ...S.roBadge, background: '#dcfce7', color: '#16a34a' }}>{g.problemRef}</span>
-                {g.goal}
-                {g.detail && <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '2px' }}>{g.detail}</div>}
-              </div>
-            ))}
-          </div>
         )}
         {original.treatmentOptions?.map((opt, i) => (
           <div key={i} style={S.roOption}>
@@ -153,69 +94,6 @@ export default function ContentEditor({ original, edited, onChange }) {
             rows={4}
           />
         </EditSec>
-
-        {/* 문제 목록 */}
-        <div style={S.secWrap}>
-          <div style={S.secHead}>
-            <span style={S.secTitle}>문제 목록</span>
-            <button onClick={addProblem} style={S.addBtn}>+ 문제 추가</button>
-          </div>
-          {edited.problemList.map((p, idx) => (
-            <div key={idx} style={S.problemRow}>
-              <span style={{ ...S.problemNum, background: p.severity === 'high' ? '#dc2626' : '#b5976a' }}>{idx + 1}</span>
-              <input
-                value={p.text}
-                onChange={e => updateProblem(idx, 'text', e.target.value)}
-                placeholder="문제 설명"
-                style={S.problemInput}
-              />
-              <select
-                value={p.severity}
-                onChange={e => updateProblem(idx, 'severity', e.target.value)}
-                style={S.severitySelect}
-              >
-                <option value="high">주요</option>
-                <option value="mid">보조</option>
-              </select>
-              <button onClick={() => removeProblem(idx)} style={S.delBtn}>×</button>
-            </div>
-          ))}
-        </div>
-
-        {/* 치료 목표 */}
-        <div style={S.secWrap}>
-          <div style={S.secHead}>
-            <span style={S.secTitle}>치료 목표</span>
-            <button onClick={addGoal} style={S.addBtn}>+ 목표 추가</button>
-          </div>
-          {edited.treatmentGoals.map((g, idx) => (
-            <div key={idx} style={S.goalRow}>
-              <select
-                value={g.problemRef}
-                onChange={e => updateGoal(idx, 'problemRef', Number(e.target.value))}
-                style={S.goalRefSelect}
-                title="연결 문제 번호"
-              >
-                {edited.problemList.map((_, pi) => (
-                  <option key={pi} value={pi + 1}>#{pi + 1}</option>
-                ))}
-              </select>
-              <input
-                value={g.goal}
-                onChange={e => updateGoal(idx, 'goal', e.target.value)}
-                placeholder="치료 목표"
-                style={{ ...S.problemInput, flex: 2 }}
-              />
-              <input
-                value={g.detail || ''}
-                onChange={e => updateGoal(idx, 'detail', e.target.value)}
-                placeholder="상세 (선택)"
-                style={{ ...S.problemInput, flex: 1 }}
-              />
-              <button onClick={() => removeGoal(idx)} style={S.delBtn}>×</button>
-            </div>
-          ))}
-        </div>
 
         {/* 치료 옵션 */}
         <div style={S.secWrap}>

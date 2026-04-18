@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { summaryWithKoreanTeeth } from './toothCode'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/generate-text`
@@ -71,6 +72,9 @@ export async function composeReport({ summary, staffForm }) {
     return getEmptyDraft()
   }
 
+  // 치아번호(#16, #10: 4번 등)를 환자 친화적 한글 부위명으로 1차 치환
+  const koreanSummary = summaryWithKoreanTeeth(summary)
+
   const settings = await loadClinicSettings()
 
   let guidelinesBlock = ''
@@ -116,12 +120,20 @@ export async function composeReport({ summary, staffForm }) {
 
 **언어:** 100% 한국어. 영어 병기 금지. 괄호 안 영어 설명 금지.
 
-**출력 형식 (반드시 JSON):**
+**🦷 치아번호 변환 규칙 (혹시 소스에 남아있는 #숫자가 있으면 반드시 적용):**
+- #16 → 오른쪽 위 첫 번째 큰어금니
+- #26 → 왼쪽 위 첫 번째 큰어금니
+- #36 → 왼쪽 아래 첫 번째 큰어금니
+- #46 → 오른쪽 아래 첫 번째 큰어금니
+- #14 → 오른쪽 위 첫 번째 작은어금니, #24 → 왼쪽 위 ..., #34/#44 같은 방식
+- 끝자리 1=중앙 앞니, 2=옆 앞니, 3=송곳니, 4=첫 번째 작은어금니, 5=두 번째 작은어금니, 6=첫 번째 큰어금니, 7=두 번째 큰어금니, 8=사랑니
+- 사분면(#10, #20, #30, #40)만 있으면 "오른쪽 위/왼쪽 위/왼쪽 아래/오른쪽 아래" 영역으로
+- 출력 텍스트에 "#숫자"가 그대로 남으면 안 됨
+
+**출력 형식 (반드시 JSON, problemList/treatmentGoals는 포함하지 말 것):**
 {
   "skeletalRelationship": "골격 문제 소스를 환자용 2인칭 문장으로 재서술 (1~3문장). 소스 비어있으면 \\"\\"",
   "dentalRelationship": "치성 문제 소스를 환자용 문장으로 재서술 (1~4문장). 소스 비어있으면 \\"\\"",
-  "problemList": [],
-  "treatmentGoals": [],
   "treatmentOptions": [
     {
       "name": "치료 계획 개요 한 줄",
@@ -161,25 +173,26 @@ export async function composeReport({ summary, staffForm }) {
 - 출력에 등장하는 모든 치과 용어/문제/치료 옵션이 입력 소스에 있는가?
 - 없는 것이 하나라도 있으면 제거하시오.${guidelinesBlock}${terminologyBlock}${strengthsBlock}`
 
-  const planLines = (summary.treatmentPlans || [])
-    .map((p, i) => `#${i + 1}:\n${p || '(빈 계획)'}`).join('\n\n') || '(치료 계획 없음)'
+  const planLines = (koreanSummary.treatmentPlans || [])
+    .map((p, i) => `계획 ${i + 1}:\n${p || '(빈 계획)'}`).join('\n\n') || '(치료 계획 없음)'
 
   const userMessage = `## 입력 소스 (아래 내용만 사용 — 외부 지식·추측·확장 모두 금지)
+※ 치아번호는 이미 환자 친화적 한글 부위명으로 변환되어 있습니다. 그대로 사용하시면 됩니다.
 
 ### [골격 문제]
-${summary.skeletal || '(비어있음 → skeletalRelationship은 빈 문자열로)'}
+${koreanSummary.skeletal || '(비어있음 → skeletalRelationship은 빈 문자열로)'}
 
 ### [치성 문제]
-${summary.dental || '(비어있음 → dentalRelationship은 빈 문자열로)'}
+${koreanSummary.dental || '(비어있음 → dentalRelationship은 빈 문자열로)'}
 
 ### [기타 진단 항목]
-${summary.etc || '(비어있음)'}
+${koreanSummary.etc || '(비어있음)'}
 
 ### [치료 계획]
 ${planLines}
 
 ### [전체 추가 메모]
-${summary.overall || '(비어있음)'}
+${koreanSummary.overall || '(비어있음)'}
 
 ---
 
@@ -244,8 +257,9 @@ export function migrateToNewFormat(obj) {
   return {
     ...getEmptyDraft(),
     ...obj,
-    problemList: obj.problemList || [],
-    treatmentGoals: obj.treatmentGoals || [],
+    // problemList / treatmentGoals는 더 이상 사용하지 않음 — 항상 빈 배열로 강제
+    problemList: [],
+    treatmentGoals: [],
     treatmentOptions: obj.treatmentOptions || [],
     appealPoints: obj.appealPoints || [],
   }
