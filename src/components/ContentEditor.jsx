@@ -56,26 +56,47 @@ export default function ContentEditor({ original, edited, onChange }) {
     return data.publicUrl
   }
 
-  const insertImageAtCaret = (url) => {
+  // 이미지 종횡비로 orient 결정 (portrait / landscape / wide)
+  const detectOrient = (url) => new Promise((resolve) => {
+    const probe = new Image()
+    probe.onload = () => {
+      const r = probe.naturalWidth / probe.naturalHeight
+      if (r > 2) resolve('wide')
+      else if (r > 1.2) resolve('landscape')
+      else if (r < 0.85) resolve('portrait')
+      else resolve('square')
+    }
+    probe.onerror = () => resolve('landscape')
+    probe.src = url
+  })
+
+  // figure + img + figcaption 묶음 삽입 (브로셔에서 매칭 캡션으로 렌더)
+  const insertImageAtCaret = async (url) => {
+    const orient = await detectOrient(url)
+    const fig = document.createElement('figure')
+    fig.setAttribute('data-orient', orient)
+
     const img = document.createElement('img')
     img.src = url
-    img.style.maxWidth = '100%'
-    img.style.height = 'auto'
-    img.style.borderRadius = '6px'
-    img.style.margin = '10px 0'
-    img.style.display = 'block'
+    img.setAttribute('data-orient', orient)
+    fig.appendChild(img)
+
+    const cap = document.createElement('figcaption')
+    cap.setAttribute('data-placeholder', '사진 설명 입력...')
+    fig.appendChild(cap)
+
     const sel = window.getSelection()
     if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
       const range = sel.getRangeAt(0)
       range.deleteContents()
-      range.insertNode(img)
-      // 커서를 이미지 뒤로 이동
-      range.setStartAfter(img)
-      range.setEndAfter(img)
+      range.insertNode(fig)
+      // 커서를 figcaption 안으로 이동 (바로 설명 입력 가능)
+      range.selectNodeContents(cap)
+      range.collapse(true)
       sel.removeAllRanges()
       sel.addRange(range)
     } else {
-      editorRef.current.appendChild(img)
+      editorRef.current.appendChild(fig)
     }
     commitBody()
   }
@@ -92,7 +113,7 @@ export default function ContentEditor({ original, edited, onChange }) {
           const file = item.getAsFile()
           if (!file) continue
           const url = await uploadImage(file)
-          insertImageAtCaret(url)
+          await insertImageAtCaret(url)
         }
       } catch (err) {
         alert('이미지 업로드 실패: ' + err.message)
@@ -119,7 +140,7 @@ export default function ContentEditor({ original, edited, onChange }) {
     try {
       for (const file of files) {
         const url = await uploadImage(file)
-        insertImageAtCaret(url)
+        await insertImageAtCaret(url)
       }
     } catch (err) {
       alert('이미지 업로드 실패: ' + err.message)

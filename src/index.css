@@ -54,8 +54,37 @@ input, textarea, button, select {
   max-width: 100%;
   height: auto;
   border-radius: 6px;
-  margin: 10px 0;
+  margin: 0;
   display: block;
+}
+
+/* 사진 + 캡션 묶음 (figure/figcaption) */
+[contenteditable] figure {
+  margin: 14px auto;
+  text-align: center;
+  max-width: 100%;
+}
+[contenteditable] figure[data-orient="portrait"] {
+  max-width: 60%;
+}
+[contenteditable] figcaption {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #b5976a;
+  font-family: 'Nanum Myeongjo', serif;
+  font-style: italic;
+  font-size: 13px;
+  color: #6a6a65;
+  line-height: 1.6;
+  text-align: center;
+  min-height: 1.2em;
+  outline: none;
+}
+[contenteditable] figcaption:empty::before {
+  content: attr(data-placeholder);
+  color: #c4bfb3;
+  font-style: italic;
+  pointer-events: none;
 }
 
 [contenteditable] strong { font-weight: 700; }
@@ -81,11 +110,33 @@ input, textarea, button, select {
 .ro-draft strong { font-weight: 700; color: #374151; }
 .ro-draft em { color: #6b7280; }
 
-/* 브로셔 본문 렌더링 (BodySection 내부) */
-.brochure-body p { margin: 0 0 12px; }
-.brochure-body p:last-child { margin-bottom: 0; }
-.brochure-body strong { font-weight: 700; color: #1a1a18; }
-.brochure-body-dark strong { color: #f5f2ed; }
-.brochure-body em { font-style: italic; color: #b5976a; }
-.brochure-body ul, .brochure-body ol { margin: 8px 0 12px 20px; }
-.brochure-body li { margin-bottom: 4px; }
+/* 브로셔 종합 소견 본문 */
+.brochure-summary p {
+  font-family: 'Nanum Myeongjo', 'Noto Serif KR', serif;
+  font-size: 15.5px;
+  line-height: 2.05;
+  color: #3a3a36;
+  margin: 0 0 18px;
+  letter-spacing: 0.005em;
+}
+.brochure-summary p:last-child { margin-bottom: 0; }
+.brochure-summary p:first-of-type {
+  font-size: 16px;
+  color: #1a1a18;
+}
+.brochure-summary p:first-of-type::first-letter {
+  font-family: 'Cormorant Garamond', 'Nanum Myeongjo', serif;
+  font-weight: 400;
+  font-size: 58px;
+  float: left;
+  line-height: 0.85;
+  margin: 8px 10px 0 0;
+  color: #b5976a;
+}
+.brochure-summary strong { font-weight: 700; color: #1a1a18; }
+.brochure-summary em { font-style: italic; color: #b5976a; }
+
+@media (max-width: 640px) {
+  .brochure-summary p { font-size: 14.5px; }
+  .brochure-summary p:first-of-type::first-letter { font-size: 44px; }
+}
