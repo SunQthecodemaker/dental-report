@@ -51,8 +51,29 @@ export default function ContentEditor({ original, edited, onChange, onUploadingC
   useEffect(() => {
     if (!editorRef.current || bodyInitialized.current) return
     editorRef.current.innerHTML = edited?.body || ''
+    // 중첩된 figure 자동 unnest (레거시 데이터 복구)
+    const nested = editorRef.current.querySelectorAll('figure figure')
+    let didUnnest = false
+    nested.forEach(nestedFig => {
+      const outerFig = nestedFig.parentElement?.closest('figure:not(:scope)')
+      const outer = nestedFig.closest('figure').parentElement
+      // 단순화: 중첩된 figure를 바로 위 figure 뒤로 이동
+      const top = nestedFig.parentElement
+      let cur = top
+      while (cur && cur.tagName !== 'FIGURE') cur = cur.parentElement
+      // cur는 nested의 조상 figure
+      if (cur && cur.parentElement) {
+        cur.parentElement.insertBefore(nestedFig, cur.nextSibling)
+        didUnnest = true
+      }
+    })
+    if (didUnnest) {
+      // 정리된 HTML을 state에 반영
+      const html = editorRef.current.innerHTML
+      onChange({ ...edited, body: html })
+    }
     bodyInitialized.current = true
-  }, [edited])
+  }, [edited, onChange])
 
   useEffect(() => {
     setNoteDraft(edited?.personalNote || '')
@@ -126,12 +147,24 @@ export default function ContentEditor({ original, edited, onChange, onUploadingC
     fig.appendChild(cap)
 
     const sel = window.getSelection()
+    let range = null
     if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
-      const range = sel.getRangeAt(0)
-      range.deleteContents()
+      range = sel.getRangeAt(0)
+      // ⚠️ 중첩 방지: 커서가 figure/figcaption 안에 있으면 figure 뒤로 이동
+      const anchor = sel.anchorNode
+      const anchorEl = anchor?.nodeType === 1 ? anchor : anchor?.parentElement
+      const enclosingFigure = anchorEl?.closest?.('figure')
+      if (enclosingFigure) {
+        range = document.createRange()
+        range.setStartAfter(enclosingFigure)
+        range.setEndAfter(enclosingFigure)
+      } else {
+        range.deleteContents()
+      }
       range.insertNode(fig)
-      range.selectNodeContents(cap)
-      range.collapse(initialCaption ? false : true) // 캡션 있으면 끝으로, 없으면 앞으로
+      // 커서를 figure 바로 뒤로 이동 (다음 paste 안전 + 텍스트 이어쓰기 가능)
+      range.setStartAfter(fig)
+      range.setEndAfter(fig)
       sel.removeAllRanges()
       sel.addRange(range)
     } else {

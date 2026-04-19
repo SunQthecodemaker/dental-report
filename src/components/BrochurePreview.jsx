@@ -71,6 +71,16 @@ function parseSections(bodyHtml) {
     const root = doc.getElementById('root')
     if (!root) return []
 
+    // 🛡 중첩된 figure 자동 unnest (parseSections 안전 장치)
+    const nestedFigs = root.querySelectorAll('figure figure')
+    nestedFigs.forEach(nested => {
+      let anc = nested.parentElement
+      while (anc && anc.tagName !== 'FIGURE') anc = anc.parentElement
+      if (anc && anc.parentElement) {
+        anc.parentElement.insertBefore(nested, anc.nextSibling)
+      }
+    })
+
     const raw = []
     let cur = { title: null, nodes: [] }
     for (const node of Array.from(root.childNodes)) {
