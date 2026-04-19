@@ -137,7 +137,20 @@ function readFigure(fig) {
   const src = img?.getAttribute('src') || ''
   const caption = (cap?.textContent || '').trim()
   const orient = img?.getAttribute('data-orient') || fig.getAttribute('data-orient') || ''
-  return { src, caption, orient }
+  const phototype = img?.getAttribute('data-phototype') || fig.getAttribute('data-phototype') || detectPhotoTypeFromCaption(caption)
+  return { src, caption, orient, phototype }
+}
+
+// 캡션 텍스트로 타입 폴백 판정 (레거시 데이터용)
+function detectPhotoTypeFromCaption(caption) {
+  if (!caption) return ''
+  const c = caption.trim()
+  if (/^파노라마/.test(c)) return 'panorama'
+  if (/^측모두부|^측모 두부|^세팔로|^cephalo/i.test(c)) return 'cephalogram'
+  if (/^구내/.test(c)) return 'intraoral'
+  if (/^전치부|^근접/.test(c)) return 'intraoral'
+  if (/^얼굴/.test(c)) return 'face'
+  return ''
 }
 
 function parseTreatmentPlans(summaryHtml) {
@@ -222,12 +235,128 @@ function DiagnosticSection({ num, en, kr, figures, summaryHtml, v, design, onUpd
   const hasSummary = !!summaryHtml && summaryHtml.replace(/<[^>]+>/g, '').trim().length > 0
   if (!hasFigs && !hasSummary) return null
 
+  // 타입별 그룹핑
+  const panoramas = figures.filter(f => f.phototype === 'panorama')
+  const intraorals = figures.filter(f => !f.phototype || f.phototype === 'intraoral')
+  const others = figures.filter(f => ['cephalogram', 'face', 'other'].includes(f.phototype))
+
+  // 구내 그룹이 텍스트를 소비하는지
+  const intraoralConsumesText = intraorals.length > 0 && hasSummary
+
   return (
     <div style={S.sec}>
       <SecHead num={num} en={en} kr={kr} />
-      {hasFigs && <Photos figures={figures} design={design} onUpdateCaption={onUpdateCaption} />}
-      {hasSummary && <Summary html={summaryHtml} />}
+
+      {/* 1단: 파노라마 풀폭 */}
+      {panoramas.map((f, i) => (
+        <figure key={`pano-${i}`} style={S.figFull}>
+          <img src={f.src} alt={f.caption || ''} style={S.imgFull} />
+          <EditableCaption caption={f.caption} src={f.src} design={design} onUpdateCaption={onUpdateCaption} full />
+        </figure>
+      ))}
+
+      {/* 2단: 기타(셉, 얼굴 등) - 사용자 지정: "따로 배치" */}
+      {others.map((f, i) => (
+        <figure key={`oth-${i}`} style={S.figCenter}>
+          <img src={f.src} alt={f.caption || ''} style={S.imgPortrait} />
+          <EditableCaption caption={f.caption} src={f.src} design={design} onUpdateCaption={onUpdateCaption} />
+        </figure>
+      ))}
+
+      {/* 3단: 구내 그룹 + 텍스트 */}
+      <IntraoralGroup figures={intraorals} summaryHtml={summaryHtml} design={design} onUpdateCaption={onUpdateCaption} />
+
+      {/* 구내가 텍스트를 소비 안 했고 텍스트만 남아있으면 단독 렌더 */}
+      {!intraoralConsumesText && hasSummary && <Summary html={summaryHtml} />}
     </div>
+  )
+}
+
+// 편집 가능한 캡션 (design 모드에서만 editable)
+function EditableCaption({ caption, src, design, onUpdateCaption, full }) {
+  if (!design && !caption) return null
+  const style = full ? { ...S.figCap, padding: '14px 48px 0', background: 'transparent' } : S.figCap
+  if (design) {
+    return (
+      <figcaption
+        style={{ ...style, outline: 'none', minHeight: '1em', cursor: 'text' }}
+        contentEditable
+        suppressContentEditableWarning
+        onBlur={(e) => onUpdateCaption?.(src, e.currentTarget.textContent.trim())}
+        data-placeholder="사진 설명 입력..."
+      >{caption}</figcaption>
+    )
+  }
+  return <figcaption style={style}>{caption}</figcaption>
+}
+
+// 구내 그룹 + 텍스트 통합 레이아웃
+function IntraoralGroup({ figures, summaryHtml, design, onUpdateCaption }) {
+  const count = figures.length
+  const hasSummary = !!summaryHtml && summaryHtml.replace(/<[^>]+>/g, '').trim().length > 0
+
+  if (count === 0) return null
+
+  const img = (f, i) => (
+    <figure key={i} style={S.figGrid}>
+      <img src={f.src} alt={f.caption || ''} style={S.imgGrid} />
+      <EditableCaption caption={f.caption} src={f.src} design={design} onUpdateCaption={onUpdateCaption} />
+    </figure>
+  )
+
+  // 1장 + 텍스트 → 좌 사진 / 우 텍스트 (모바일 세로)
+  if (count === 1 && hasSummary) {
+    return (
+      <div className="v4-split">
+        <div className="v4-split-photo">{img(figures[0], 0)}</div>
+        <div className="v4-split-text"><Summary html={summaryHtml} inSplit /></div>
+      </div>
+    )
+  }
+
+  // 1장 + 텍스트 없음 → 중앙 단독
+  if (count === 1) {
+    return (
+      <div style={S.figSolo}>{img(figures[0], 0)}</div>
+    )
+  }
+
+  // 2장 + 텍스트 → 2-up, 텍스트 아래
+  if (count === 2) {
+    return (
+      <>
+        <div className="v4-grid2">{figures.map(img)}</div>
+        {hasSummary && <Summary html={summaryHtml} />}
+      </>
+    )
+  }
+
+  // 3장 + 텍스트 → [1][2] / [3][텍스트]
+  if (count === 3 && hasSummary) {
+    return (
+      <div className="v4-grid3">
+        {figures.map(img)}
+        <div className="v4-grid3-text"><Summary html={summaryHtml} inSplit /></div>
+      </div>
+    )
+  }
+
+  // 3장 텍스트 없음 → 2-up + 1장 단독
+  if (count === 3) {
+    return (
+      <>
+        <div className="v4-grid2">{figures.slice(0, 2).map(img)}</div>
+        {img(figures[2], 2)}
+      </>
+    )
+  }
+
+  // 4장+ → 2×2 (혹은 2-col) grid + 텍스트 아래
+  return (
+    <>
+      <div className="v4-grid2">{figures.map(img)}</div>
+      {hasSummary && <Summary html={summaryHtml} />}
+    </>
   )
 }
 
@@ -295,7 +424,8 @@ function SecHead({ num, en, kr, center }) {
   )
 }
 
-function Photos({ figures, design, onUpdateCaption }) {
+// eslint-disable-next-line no-unused-vars
+function _LegacyPhotos({ figures, design, onUpdateCaption }) {
   // 배치 규칙: 1장 → single, 2장 → 2-up, 3+ → 첫장 full + 나머지 2-up
   if (figures.length === 1) {
     return (
@@ -325,7 +455,8 @@ function Photos({ figures, design, onUpdateCaption }) {
   )
 }
 
-function FigCard({ fig, variant, design, onUpdateCaption }) {
+// eslint-disable-next-line no-unused-vars
+function _LegacyFigCard({ fig, variant, design, onUpdateCaption }) {
   if (!fig?.src) return null
   const isPortrait = fig.orient === 'portrait'
   const imgStyle =
@@ -358,16 +489,17 @@ function FigCard({ fig, variant, design, onUpdateCaption }) {
   )
 }
 
-function Summary({ html }) {
+function Summary({ html, inSplit }) {
+  const wrapStyle = inSplit ? { ...S.summary, maxWidth: '100%', paddingTop: 12, marginTop: 0 } : S.summary
   return (
-    <div style={S.summary}>
-      <div style={S.summaryMark} />
+    <div style={wrapStyle}>
+      {!inSplit && <div style={S.summaryMark} />}
       <div style={S.summaryLabel}>
         <span style={S.summaryEn}>Summary</span>
         <span style={S.summaryDot} />
         <span style={S.summaryKr}>종합 소견</span>
       </div>
-      <div className="brochure-summary" dangerouslySetInnerHTML={{ __html: html }} />
+      <div className={inSplit ? 'brochure-summary brochure-summary-narrow' : 'brochure-summary'} dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   )
 }

@@ -140,3 +140,54 @@ input, textarea, button, select {
   .brochure-summary p { font-size: 14.5px; }
   .brochure-summary p:first-of-type::first-letter { font-size: 44px; }
 }
+
+/* narrow column(구내 1장 split 또는 3장 asymmetric 텍스트 셀) */
+.brochure-summary-narrow p { font-size: 14px; line-height: 1.95; }
+.brochure-summary-narrow p:first-of-type { font-size: 14.5px; }
+.brochure-summary-narrow p:first-of-type::first-letter { font-size: 42px; margin: 6px 8px 0 0; }
+
+/* ══ 구내 사진 + 텍스트 레이아웃 ══ */
+/* 1장 split: 좌 45% + 우 텍스트 */
+.v4-split {
+  display: grid;
+  grid-template-columns: 45% 1fr;
+  gap: 28px;
+  align-items: start;
+  margin-bottom: 32px;
+}
+.v4-split-photo { min-width: 0; }
+.v4-split-text { min-width: 0; }
+
+/* 2장 2-up grid */
+.v4-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+  margin-bottom: 24px;
+}
+
+/* 3장 asymmetric: [1][2] / [3][텍스트] */
+.v4-grid3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+  margin-bottom: 24px;
+}
+.v4-grid3-text {
+  padding: 4px 8px;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  /* 1장 split: 모바일에서는 세로 스택 */
+  .v4-split {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+  /* 구내 2장/3장 grid는 사용자 선호대로 모바일에서도 2열 유지 */
+  .v4-grid2 { gap: 8px; }
+  .v4-grid3 { gap: 8px; }
+  .v4-grid3-text { padding: 4px; }
+}

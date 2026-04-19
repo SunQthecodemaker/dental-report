@@ -9,12 +9,29 @@ import { generateImageCaption } from '../lib/gemini'
  *
  * 데이터: { body: HTML, personalNote, appealPoints }
  */
-export default function ContentEditor({ original, edited, onChange }) {
+// AI Vision 캡션 접두어로 사진 타입 판정
+function detectPhotoType(caption) {
+  if (!caption) return ''
+  const c = caption.trim()
+  if (/^파노라마/.test(c)) return 'panorama'
+  if (/^측모두부|^측모 두부|^세팔로|^cephalo/i.test(c)) return 'cephalogram'
+  if (/^구내/.test(c)) return 'intraoral'
+  if (/^전치부|^근접/.test(c)) return 'intraoral'
+  if (/^얼굴/.test(c)) return 'face'
+  return 'other'
+}
+
+export default function ContentEditor({ original, edited, onChange, onUploadingChange }) {
   const editorRef = useRef(null)
   const inputTimerRef = useRef(null)
   const [uploading, setUploading] = useState(false)
   const [noteDraft, setNoteDraft] = useState(edited?.personalNote || '')
   const bodyInitialized = useRef(false)
+
+  // 업로드 상태를 상위(Editor)에 전파 → 단계 전환 잠금에 사용
+  useEffect(() => {
+    onUploadingChange?.(uploading)
+  }, [uploading, onUploadingChange])
 
   // 최초 1회만 innerHTML 설정 (이후에는 cursor 점프 방지 위해 React가 건드리지 않음)
   useEffect(() => {
@@ -71,15 +88,19 @@ export default function ContentEditor({ original, edited, onChange }) {
     probe.src = url
   })
 
-  // figure + img + figcaption 묶음 삽입 (AI Vision 자동 캡션 포함)
+  // figure + img + figcaption 묶음 삽입 (AI Vision 자동 캡션 + 타입 포함)
   const insertImageAtCaret = async (url, initialCaption = '') => {
     const orient = await detectOrient(url)
+    const phototype = detectPhotoType(initialCaption)
+
     const fig = document.createElement('figure')
     fig.setAttribute('data-orient', orient)
+    if (phototype) fig.setAttribute('data-phototype', phototype)
 
     const img = document.createElement('img')
     img.src = url
     img.setAttribute('data-orient', orient)
+    if (phototype) img.setAttribute('data-phototype', phototype)
     fig.appendChild(img)
 
     const cap = document.createElement('figcaption')

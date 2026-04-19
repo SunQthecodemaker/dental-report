@@ -49,6 +49,7 @@ export default function Editor() {
 
   const [isComposing, setIsComposing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
   const [savedLink, setSavedLink] = useState(null)
 
   const [saveState, setSaveState] = useState('idle')
@@ -240,6 +241,21 @@ export default function Editor() {
     setEditedContent({ ...editedContent, personalNote: newNote })
   }
 
+  // 단계 전환 핸들러: 업로드 중 차단 + 편집 flush
+  const changeStep = (num) => {
+    if (num === step) return
+    if (isUploadingPhoto) {
+      alert('사진 업로드 중입니다. 완료 후 이동해주세요.')
+      return
+    }
+    // 활성 포커스 flush — ContentEditor/figcaption onBlur → commit 보장
+    if (document.activeElement instanceof HTMLElement) {
+      try { document.activeElement.blur() } catch { /* noop */ }
+    }
+    // 약간의 지연 후 setStep (commit이 동기 setState를 스케줄할 시간 부여)
+    setTimeout(() => setStep(num), 0)
+  }
+
   if (loadError) {
     return (
       <div style={loadErrS.wrap}>
@@ -278,7 +294,7 @@ export default function Editor() {
 
         <div style={headerS.steps}>
           {STEP_LABELS.map(({ num, label }) => (
-            <div key={num} onClick={() => setStep(num)} style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: num === step ? 1 : 0.5, cursor: 'pointer' }}>
+            <div key={num} onClick={() => changeStep(num)} style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: num === step ? 1 : 0.5, cursor: isUploadingPhoto ? 'not-allowed' : 'pointer' }}>
               <div style={{
                 width: '22px', height: '22px', borderRadius: '50%',
                 background: num === step ? '#b5976a' : num < step ? '#6a9b7a' : '#d1d5db',
@@ -336,7 +352,7 @@ export default function Editor() {
               <div style={infoBoxS.green}>
                 ✨ AI가 정리 소스와 환자 성향을 반영해 작성했습니다. 내용을 최종 확인·수정하세요.
               </div>
-              <ContentEditor original={refinedContent} edited={editedContent} onChange={setEditedContent} />
+              <ContentEditor original={refinedContent} edited={editedContent} onChange={setEditedContent} onUploadingChange={setIsUploadingPhoto} />
               <button onClick={() => setStep(4)} style={{ ...btnStyle('#c45c5c'), width: '100%', padding: '16px', fontSize: '18px', fontWeight: 700, marginTop: '16px' }}>
                 다음: 진단서 디자이너 →
               </button>
