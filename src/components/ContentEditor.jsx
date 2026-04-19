@@ -72,40 +72,31 @@ export default function ContentEditor({ original, edited, onChange, onUploadingC
       if (ratio > 1.2) return { type: 'intraoral', orient: 'landscape' }
       return { type: 'intraoral', orient: 'square' }
     }
-    const imgJobs = unclassified.map(fig => {
+    // img.decode()로 확실히 로드 대기 (load 이벤트 race 방지)
+    const imgJobs = unclassified.map(async fig => {
       const img = fig.querySelector('img')
-      if (!img) return null
-      return new Promise(resolve => {
-        const finish = () => {
-          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-            const r = img.naturalWidth / img.naturalHeight
-            const { type, orient } = classifyRatio(r)
-            fig.setAttribute('data-phototype', type)
-            img.setAttribute('data-phototype', type)
-            if (!img.getAttribute('data-orient')) img.setAttribute('data-orient', orient)
-            if (!fig.getAttribute('data-orient')) fig.setAttribute('data-orient', orient)
-            resolve(true)
-          } else {
-            resolve(false)
-          }
-        }
-        if (img.complete) finish()
-        else { img.addEventListener('load', finish, { once: true }); img.addEventListener('error', () => resolve(false), { once: true }) }
-      })
-    }).filter(Boolean)
+      if (!img) return false
+      try {
+        if (img.decode) await img.decode()
+      } catch { /* decode 실패 무시 */ }
+      if (img.naturalWidth <= 0 || img.naturalHeight <= 0) return false
+      const r = img.naturalWidth / img.naturalHeight
+      const { type, orient } = classifyRatio(r)
+      fig.setAttribute('data-phototype', type)
+      img.setAttribute('data-phototype', type)
+      if (!img.getAttribute('data-orient')) img.setAttribute('data-orient', orient)
+      if (!fig.getAttribute('data-orient')) fig.setAttribute('data-orient', orient)
+      return true
+    })
 
     const flush = () => {
       if (!editorRef.current) return
       onChange({ ...edited, body: editorRef.current.innerHTML })
     }
 
-    if (imgJobs.length > 0) {
-      Promise.all(imgJobs).then(results => {
-        if (results.some(Boolean) || didModify) flush()
-      })
-    } else if (didModify) {
-      flush()
-    }
+    Promise.all(imgJobs).then(results => {
+      if (results.some(Boolean) || didModify) flush()
+    }).catch(() => { if (didModify) flush() })
 
     bodyInitialized.current = true
   }, [edited, onChange])
