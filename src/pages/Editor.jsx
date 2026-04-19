@@ -363,7 +363,7 @@ export default function Editor() {
                   cursor: isUploadingPhoto ? 'not-allowed' : 'pointer',
                 }}
               >
-                {isUploadingPhoto ? '📤 사진 업로드 중... 완료 후 이동됩니다' : '다음: 진단서 디자이너 →'}
+                {isUploadingPhoto ? '📤 사진 업로드 중... 완료 후 이동됩니다' : '디자인하기'}
               </button>
             </div>
             <div style={{ width: '420px', background: '#1a1a18', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px', overflow: 'auto', flexShrink: 0 }}>
