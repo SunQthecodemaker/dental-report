@@ -23,6 +23,77 @@ function stripHtml(html) {
   return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
+/**
+ * Gemini Vision — 치과 사진을 보고 한국어 한 줄 캡션 자동 생성
+ * 입력: File 객체 (이미지)
+ * 출력: 문자열 (예: "파노라마 방사선 — 16번 임플란트", "구내 사진 · 상악 교합면")
+ */
+export async function generateImageCaption(file) {
+  if (!file || !file.type?.startsWith('image/')) return ''
+
+  // File → base64
+  const base64 = await new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      const s = reader.result || ''
+      const comma = s.indexOf(',')
+      resolve(comma >= 0 ? s.slice(comma + 1) : '')
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+
+  const systemPrompt = `당신은 치과 상담 사진을 한 줄 한국어 캡션으로 요약하는 도우미입니다.
+
+**사진 종류 (정확히 이 분류만 사용):**
+- 파노라마 방사선 (치열 전체, 가로로 길며 흑백)
+- 측모두부 방사선 (측면 두개골 실루엣, 흑백)
+- 구내 사진 · 전면 (앞니 보이는 정면 교합)
+- 구내 사진 · 우측 측방 (오른쪽 옆면 교합)
+- 구내 사진 · 좌측 측방 (왼쪽 옆면 교합)
+- 구내 사진 · 상악 교합면 (위쪽 치아 배열 위에서 본 모습)
+- 구내 사진 · 하악 교합면 (아래쪽 치아 배열 위에서 본 모습)
+- 전치부 근접 (앞니 확대)
+- 얼굴 사진 · 정면
+- 얼굴 사진 · 측면
+- 기타 치과 사진
+
+**규칙:**
+- 한 줄 캡션만 출력 (마크다운·번호·따옴표 금지)
+- 명확히 보이는 특이 소견이 있으면 " — [소견]"으로 덧붙임 (예: "— 16번 임플란트")
+- 확신이 없으면 상위 카테고리만 ("구내 사진", "방사선 사진")
+- 설명 말고 라벨만`
+
+  try {
+    const response = await fetch(EDGE_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{
+          parts: [
+            { text: '이 사진의 한 줄 캡션:' },
+            { inline_data: { mime_type: file.type || 'image/png', data: base64 } },
+          ],
+        }],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 80,
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      }),
+    })
+    const data = await response.json()
+    if (data.error) return ''
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!text) return ''
+    return text.trim().replace(/^["'`]+|["'`]+$/g, '').split('\n')[0].trim()
+  } catch (err) {
+    console.warn('image caption generation failed:', err)
+    return ''
+  }
+}
+
 export async function saveCorrections(originalText, editedText) {
   const orig = stripHtml(originalText)
   const edit = stripHtml(editedText)

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { generateImageCaption } from '../lib/gemini'
 
 /**
  * ContentEditor — AI 작성 단계: 하나의 워드 문서형 편집기
@@ -70,8 +71,8 @@ export default function ContentEditor({ original, edited, onChange }) {
     probe.src = url
   })
 
-  // figure + img + figcaption 묶음 삽입 (브로셔에서 매칭 캡션으로 렌더)
-  const insertImageAtCaret = async (url) => {
+  // figure + img + figcaption 묶음 삽입 (AI Vision 자동 캡션 포함)
+  const insertImageAtCaret = async (url, initialCaption = '') => {
     const orient = await detectOrient(url)
     const fig = document.createElement('figure')
     fig.setAttribute('data-orient', orient)
@@ -82,7 +83,11 @@ export default function ContentEditor({ original, edited, onChange }) {
     fig.appendChild(img)
 
     const cap = document.createElement('figcaption')
-    cap.setAttribute('data-placeholder', '사진 설명 입력...')
+    if (initialCaption) {
+      cap.textContent = initialCaption
+    } else {
+      cap.setAttribute('data-placeholder', '사진 설명 입력...')
+    }
     fig.appendChild(cap)
 
     const sel = window.getSelection()
@@ -90,9 +95,8 @@ export default function ContentEditor({ original, edited, onChange }) {
       const range = sel.getRangeAt(0)
       range.deleteContents()
       range.insertNode(fig)
-      // 커서를 figcaption 안으로 이동 (바로 설명 입력 가능)
       range.selectNodeContents(cap)
-      range.collapse(true)
+      range.collapse(initialCaption ? false : true) // 캡션 있으면 끝으로, 없으면 앞으로
       sel.removeAllRanges()
       sel.addRange(range)
     } else {
@@ -112,8 +116,11 @@ export default function ContentEditor({ original, edited, onChange }) {
         for (const item of imageItems) {
           const file = item.getAsFile()
           if (!file) continue
-          const url = await uploadImage(file)
-          await insertImageAtCaret(url)
+          const [url, caption] = await Promise.all([
+            uploadImage(file),
+            generateImageCaption(file),
+          ])
+          await insertImageAtCaret(url, caption)
         }
       } catch (err) {
         alert('이미지 업로드 실패: ' + err.message)
@@ -139,8 +146,11 @@ export default function ContentEditor({ original, edited, onChange }) {
     setUploading(true)
     try {
       for (const file of files) {
-        const url = await uploadImage(file)
-        await insertImageAtCaret(url)
+        const [url, caption] = await Promise.all([
+          uploadImage(file),
+          generateImageCaption(file),
+        ])
+        await insertImageAtCaret(url, caption)
       }
     } catch (err) {
       alert('이미지 업로드 실패: ' + err.message)

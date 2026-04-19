@@ -13,8 +13,9 @@ const EN_LABEL = {
   '추가 사항': 'Additional Notes',
 }
 
-export default function BrochurePreview({ patientName, consultDate, content, photos = [], mode = 'preview' }) {
-  const v = mode === 'view'
+export default function BrochurePreview({ patientName, consultDate, content, photos = [], mode = 'preview', onUpdateCaption, onUpdateNote }) {
+  const v = mode === 'view' || mode === 'design'
+  const design = mode === 'design'
   const bodyHtml = content?.body || ''
   const hasBody = !!bodyHtml && bodyHtml.replace(/<[^>]+>/g, '').trim().length > 0
   const hasNote = !!content?.personalNote
@@ -46,12 +47,13 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
           <DiagnosticSection
             key={i} num={num} en={en} kr={sec.title}
             figures={sec.figures} summaryHtml={sec.summaryHtml} v={v}
+            design={design} onUpdateCaption={onUpdateCaption}
           />
         )
       })}
 
       {/* 맞춤 안내 */}
-      {hasNote && <PersonalNote patientName={patientName} note={content.personalNote} v={v} />}
+      {hasNote && <PersonalNote patientName={patientName} note={content.personalNote} v={v} design={design} onUpdateNote={onUpdateNote} />}
 
       {/* 푸터 */}
       <Footer v={v} />
@@ -215,7 +217,7 @@ function Cover({ patientName, consultDate, v }) {
   )
 }
 
-function DiagnosticSection({ num, en, kr, figures, summaryHtml, v }) {
+function DiagnosticSection({ num, en, kr, figures, summaryHtml, v, design, onUpdateCaption }) {
   const hasFigs = figures.length > 0
   const hasSummary = !!summaryHtml && summaryHtml.replace(/<[^>]+>/g, '').trim().length > 0
   if (!hasFigs && !hasSummary) return null
@@ -223,7 +225,7 @@ function DiagnosticSection({ num, en, kr, figures, summaryHtml, v }) {
   return (
     <div style={S.sec}>
       <SecHead num={num} en={en} kr={kr} />
-      {hasFigs && <Photos figures={figures} />}
+      {hasFigs && <Photos figures={figures} design={design} onUpdateCaption={onUpdateCaption} />}
       {hasSummary && <Summary html={summaryHtml} />}
     </div>
   )
@@ -293,12 +295,12 @@ function SecHead({ num, en, kr, center }) {
   )
 }
 
-function Photos({ figures }) {
+function Photos({ figures, design, onUpdateCaption }) {
   // 배치 규칙: 1장 → single, 2장 → 2-up, 3+ → 첫장 full + 나머지 2-up
   if (figures.length === 1) {
     return (
       <div style={S.photos}>
-        <FigCard fig={figures[0]} variant="solo" />
+        <FigCard fig={figures[0]} variant="solo" design={design} onUpdateCaption={onUpdateCaption} />
       </div>
     )
   }
@@ -306,7 +308,7 @@ function Photos({ figures }) {
     return (
       <div style={S.photos}>
         <div style={S.grid2}>
-          {figures.map((f, i) => <FigCard key={i} fig={f} variant="grid" />)}
+          {figures.map((f, i) => <FigCard key={i} fig={f} variant="grid" design={design} onUpdateCaption={onUpdateCaption} />)}
         </div>
       </div>
     )
@@ -315,15 +317,15 @@ function Photos({ figures }) {
   const [first, ...rest] = figures
   return (
     <div style={S.photos}>
-      <FigCard fig={first} variant="full" />
+      <FigCard fig={first} variant="full" design={design} onUpdateCaption={onUpdateCaption} />
       <div style={S.grid2}>
-        {rest.map((f, i) => <FigCard key={i} fig={f} variant="grid" />)}
+        {rest.map((f, i) => <FigCard key={i} fig={f} variant="grid" design={design} onUpdateCaption={onUpdateCaption} />)}
       </div>
     </div>
   )
 }
 
-function FigCard({ fig, variant }) {
+function FigCard({ fig, variant, design, onUpdateCaption }) {
   if (!fig?.src) return null
   const isPortrait = fig.orient === 'portrait'
   const imgStyle =
@@ -341,7 +343,17 @@ function FigCard({ fig, variant }) {
   return (
     <figure style={wrapperStyle}>
       <img src={fig.src} alt={fig.caption || ''} style={imgStyle} />
-      {fig.caption && <figcaption style={S.figCap}>{fig.caption}</figcaption>}
+      {design ? (
+        <figcaption
+          style={{ ...S.figCap, outline: 'none', minHeight: '1em', cursor: 'text' }}
+          contentEditable
+          suppressContentEditableWarning
+          onBlur={(e) => onUpdateCaption?.(fig.src, e.currentTarget.textContent.trim())}
+          data-placeholder="사진 설명 입력..."
+        >{fig.caption}</figcaption>
+      ) : (
+        fig.caption && <figcaption style={S.figCap}>{fig.caption}</figcaption>
+      )}
     </figure>
   )
 }
@@ -360,12 +372,22 @@ function Summary({ html }) {
   )
 }
 
-function PersonalNote({ patientName, note, v }) {
+function PersonalNote({ patientName, note, v, design, onUpdateNote }) {
   return (
     <div style={S.note}>
       <div style={S.noteTopRule} />
       <div style={S.noteLabel}>A Personal Note · 드리는 말씀</div>
-      <div style={S.noteQuote}>{`\u201C${note}\u201D`}</div>
+      {design ? (
+        <div
+          style={{ ...S.noteQuote, outline: 'none', minHeight: '1em', cursor: 'text' }}
+          contentEditable
+          suppressContentEditableWarning
+          onBlur={(e) => onUpdateNote?.(e.currentTarget.textContent.trim())}
+          data-placeholder="맞춤 메시지 입력..."
+        >{note}</div>
+      ) : (
+        <div style={S.noteQuote}>{note}</div>
+      )}
       <div style={S.noteSign}>— 프라임에스 치과교정과</div>
     </div>
   )
@@ -434,17 +456,17 @@ const S = {
   secEn: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 14, color: C.mid, letterSpacing: '0.04em', marginBottom: 6 },
   secKr: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: 28, color: C.ink, letterSpacing: '-0.01em' },
 
-  // 사진
+  // 사진 — 크롭 금지: 자연 비율 유지
   photos: { marginBottom: 40 },
   figFull: { margin: '0 -48px 24px' },
-  figSolo: { margin: '0 0 24px' },
-  figCenter: { maxWidth: 400, margin: '0 auto 24px' },
+  figSolo: { margin: '0 0 24px', textAlign: 'center' },
+  figCenter: { maxWidth: 480, margin: '0 auto 24px' },
   figGrid: { margin: 0 },
-  grid2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 },
-  imgFull: { width: '100%', display: 'block', aspectRatio: '16/9', objectFit: 'cover' },
-  imgSolo: { width: '100%', display: 'block', aspectRatio: '16/9', objectFit: 'cover', borderRadius: 2 },
-  imgPortrait: { width: '100%', display: 'block', aspectRatio: '3/4', objectFit: 'cover', borderRadius: 2 },
-  imgGrid: { width: '100%', display: 'block', aspectRatio: '4/3', objectFit: 'cover', borderRadius: 2 },
+  grid2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, alignItems: 'start' },
+  imgFull: { width: '100%', display: 'block' },
+  imgSolo: { maxWidth: '100%', display: 'block', margin: '0 auto', borderRadius: 2 },
+  imgPortrait: { maxWidth: '100%', display: 'block', margin: '0 auto', borderRadius: 2 },
+  imgGrid: { width: '100%', display: 'block', borderRadius: 2 },
   figCap: { marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.gold}`, fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 13, lineHeight: 1.7, color: C.mid, textAlign: 'center', letterSpacing: '0.01em' },
 
   // 종합 소견

@@ -18,8 +18,8 @@ const INITIAL_STAFF_FORM = {
 const STEP_LABELS = [
   { num: 1, label: '진단 & 치료 계획' },
   { num: 2, label: '상담 관리' },
-  { num: 3, label: 'AI 작성' },
-  { num: 4, label: '모바일진단서' },
+  { num: 3, label: '초안' },
+  { num: 4, label: '진단서 디자이너' },
 ]
 
 function timeAgo(date) {
@@ -203,6 +203,43 @@ export default function Editor() {
     if (savedLink) { navigator.clipboard.writeText(savedLink); alert('링크가 복사되었습니다.') }
   }
 
+  // 진단서 디자이너에서 figcaption 편집 시 body HTML에 반영
+  const handleUpdateCaption = (imgSrc, newCaption) => {
+    if (!editedContent?.body || !imgSrc) return
+    try {
+      const parser = new DOMParser()
+      const doc = parser.parseFromString(`<div id="root">${editedContent.body}</div>`, 'text/html')
+      const root = doc.getElementById('root')
+      if (!root) return
+      const targets = root.querySelectorAll(`img[src="${imgSrc}"]`)
+      let changed = false
+      targets.forEach(img => {
+        let fig = img.closest('figure')
+        if (!fig) {
+          fig = document.createElement('figure')
+          img.parentNode.insertBefore(fig, img)
+          fig.appendChild(img)
+        }
+        let cap = fig.querySelector('figcaption')
+        if (!cap) {
+          cap = document.createElement('figcaption')
+          fig.appendChild(cap)
+        }
+        if (cap.textContent !== newCaption) {
+          cap.textContent = newCaption
+          changed = true
+        }
+      })
+      if (changed) setEditedContent({ ...editedContent, body: root.innerHTML })
+    } catch (err) { console.warn('caption update failed', err) }
+  }
+
+  // 진단서 디자이너에서 맞춤 안내 편집
+  const handleUpdateNote = (newNote) => {
+    if (newNote === editedContent?.personalNote) return
+    setEditedContent({ ...editedContent, personalNote: newNote })
+  }
+
   if (loadError) {
     return (
       <div style={loadErrS.wrap}>
@@ -301,7 +338,7 @@ export default function Editor() {
               </div>
               <ContentEditor original={refinedContent} edited={editedContent} onChange={setEditedContent} />
               <button onClick={() => setStep(4)} style={{ ...btnStyle('#c45c5c'), width: '100%', padding: '16px', fontSize: '18px', fontWeight: 700, marginTop: '16px' }}>
-                다음: 모바일 진단서 →
+                다음: 진단서 디자이너 →
               </button>
             </div>
             <div style={{ width: '420px', background: '#1a1a18', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px', overflow: 'auto', flexShrink: 0 }}>
@@ -326,7 +363,9 @@ export default function Editor() {
                 consultDate={report.consult_date}
                 content={editedContent}
                 photos={photos}
-                mode="view"
+                mode="design"
+                onUpdateCaption={handleUpdateCaption}
+                onUpdateNote={handleUpdateNote}
               />
             </div>
           </div>
