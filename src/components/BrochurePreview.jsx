@@ -2,21 +2,36 @@
  * BrochurePreview — 프라임에스 디자인 무드 (다크+골드, 세리프)
  * mode: "preview" (에디터 우측 축소) | "view" (환자 열람, 반응형)
  *
- * content: 새 형식 데이터 (skeletalRelationship, dentalRelationship, problemList, ...)
- * photos: [{ slot, url, caption }] — 기본 7장 + 추가
+ * content: { body: HTML, personalNote, appealPoints[] }
+ * photos: [{ slot, url, caption }] — 7장 슬롯 + 추가
  */
+
+const EN_LABEL = {
+  '치성 관계': 'Dental Relationship',
+  '골격 관계': 'Skeletal Relationship',
+  '치료 계획': 'Treatment Plan',
+  '추가 사항': 'Additional Notes',
+  '맞춤 안내': 'For You',
+}
+
+const SECTION_BG_CYCLE = ['light', 'dark', 'cream', 'light']
+
 export default function BrochurePreview({ patientName, consultDate, content, photos = [], mode = 'preview' }) {
   const v = mode === 'view'
-  const s = v ? 1 : 0.85 // scale factor for font sizes
+  const s = v ? 1 : 0.85
 
   const C = {
     gold: '#b5976a', goldLight: '#d4b896',
     dark: '#1a1a18', dark2: '#2c2c2a', mid: '#5a5a55',
     light: '#f5f2ed', white: '#fdfcfa', cream: '#f0ece4',
-    red: '#c45c5c', green: '#6a9b7a',
   }
 
-  if (!content || (!content.skeletalRelationship && !content.dentalRelationship && (!content.problemList || content.problemList.length === 0))) {
+  const bodyHtml = content?.body || ''
+  const hasBody = !!bodyHtml && bodyHtml.replace(/<[^>]+>/g, '').trim().length > 0
+  const hasNote = !!content?.personalNote
+  const hasAppeal = Array.isArray(content?.appealPoints) && content.appealPoints.length > 0
+
+  if (!hasBody && !hasNote && !hasAppeal) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '400px', color: '#9ca3af', fontSize: '14px', textAlign: 'center', padding: '40px', fontFamily: "'Nanum Myeongjo', serif" }}>
         AI 텍스트를 생성하면<br />여기에 미리보기가 표시됩니다
@@ -27,9 +42,7 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
   const font = "'Nanum Myeongjo', 'Noto Serif KR', serif"
   const fontEn = "'Cormorant Garamond', serif"
 
-  // 사진 헬퍼
-  const getPhoto = (slot) => photos.find(p => p.slot === slot)
-  const extraPhotos = photos.filter(p => p.slot === 'extra')
+  const sections = parseBodySections(bodyHtml)
 
   return (
     <div style={{ fontFamily: font, color: C.dark, lineHeight: v ? '2' : '1.8', background: C.white }}>
@@ -37,7 +50,7 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
       {/* ══ HERO ══ */}
       <div style={{
         background: `linear-gradient(160deg, #0f0f0e 0%, ${C.dark2} 40%, ${C.dark} 100%)`,
-        color: '#fff', padding: v ? '48px 28px 36px' : '32px 20px 24px', textAlign: 'center', position: 'relative',
+        color: '#fff', padding: v ? '48px 28px 36px' : '32px 20px 24px', textAlign: 'center',
       }}>
         <div style={{ fontFamily: fontEn, fontSize: f(11,s), letterSpacing: '0.4em', textTransform: 'uppercase', color: C.gold, marginBottom: '4px' }}>
           Prime S Dental
@@ -58,122 +71,31 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
         </div>
       </div>
 
-      {/* ══ 검사 자료 ══ */}
+      {/* ══ 검사 자료 (Step 1 슬롯 사진) ══ */}
       {photos.length > 0 && (
-        <Sec v={v} s={s} en="Clinical Records" kr="검사 자료" C={C} fontEn={fontEn}>
-          {renderPhotos(photos, v, s, C, fontEn)}
+        <Sec v={v} s={s} en="Clinical Records" kr="검사 자료" C={C} fontEn={fontEn} bg="light">
+          {renderSlotPhotos(photos, v, s, C, fontEn)}
         </Sec>
       )}
 
-      {/* ══ 골격 관계 (다크) ══ */}
-      {content.skeletalRelationship && (
-        <div style={{ background: C.dark, padding: v ? '32px 24px' : '24px 20px' }}>
-          <SecHead v={v} s={s} en="Skeletal Relationship" kr="골격 관계" C={C} fontEn={fontEn} dark />
-          <div style={{ ...textStyle(v, s), color: 'rgba(255,255,255,0.6)' }}>
-            {content.skeletalRelationship}
-          </div>
-        </div>
-      )}
+      {/* ══ 본문 섹션들 (body 파싱 결과) ══ */}
+      {sections.map((sec, i) => {
+        const bg = SECTION_BG_CYCLE[i % SECTION_BG_CYCLE.length]
+        const en = EN_LABEL[sec.title] || ''
+        return (
+          <BodySection
+            key={i}
+            v={v} s={s} C={C} fontEn={fontEn}
+            en={en} kr={sec.title}
+            html={sec.html}
+            bg={bg}
+          />
+        )
+      })}
 
-      {/* ══ 치성 관계 ══ */}
-      {content.dentalRelationship && (
-        <Sec v={v} s={s} en="Dental Relationship" kr="치성 관계" C={C} fontEn={fontEn}>
-          <div style={textStyle(v, s)}>{content.dentalRelationship}</div>
-        </Sec>
-      )}
-
-      {/* ══ 문제 목록 (다크) ══ */}
-      {content.problemList?.length > 0 && (
-        <div style={{ background: C.dark, padding: v ? '32px 24px' : '24px 20px' }}>
-          <SecHead v={v} s={s} en="Problem List" kr="문제 목록" C={C} fontEn={fontEn} dark />
-          {content.problemList.map((p, i) => (
-            <div key={i} style={{
-              display: 'flex', gap: '10px', alignItems: 'flex-start',
-              padding: '10px 0', borderBottom: i < content.problemList.length - 1 ? '1px solid rgba(255,255,255,0.08)' : 'none',
-            }}>
-              <div style={{
-                width: '24px', height: '24px', borderRadius: '50%',
-                background: p.severity === 'high' ? C.red : C.gold,
-                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: f(11,s), fontWeight: 700, flexShrink: 0, marginTop: '2px',
-              }}>{i + 1}</div>
-              <div>
-                <div style={{ fontSize: f(13,s), color: 'rgba(255,255,255,0.8)', lineHeight: '1.7' }}>{p.text}</div>
-                <span style={{
-                  fontSize: f(10,s), fontWeight: 700, padding: '1px 8px', borderRadius: '2px', marginTop: '2px', display: 'inline-block',
-                  background: p.severity === 'high' ? 'rgba(196,92,92,0.2)' : 'rgba(181,151,106,0.2)',
-                  color: p.severity === 'high' ? '#fca5a5' : C.goldLight,
-                }}>{p.severity === 'high' ? '주요' : '보조'}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ══ 치료 목표 & 계획 ══ */}
-      {(content.treatmentGoals?.length > 0 || content.treatmentOptions?.length > 0) && (
-        <div style={{ background: C.light, padding: v ? '32px 24px' : '24px 20px' }}>
-          <SecHead v={v} s={s} en="Treatment Goals & Plan" kr="치료 목표 & 계획" C={C} fontEn={fontEn} />
-
-          {/* 목표 */}
-          {content.treatmentGoals?.map((g, i) => (
-            <div key={i} style={{
-              display: 'flex', gap: 0, marginBottom: '6px', borderRadius: '4px', overflow: 'hidden', border: `1px solid ${C.cream}`,
-            }}>
-              <div style={{
-                width: '28px', background: C.green, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#fff', fontSize: f(11,s), fontWeight: 700, flexShrink: 0,
-              }}>{g.problemRef}</div>
-              <div style={{ flex: 1, padding: '10px 12px', background: C.white }}>
-                <div style={{ fontSize: f(11,s), color: C.red }}>
-                  문제 #{g.problemRef} {content.problemList?.[g.problemRef - 1]?.text ? `— ${content.problemList[g.problemRef - 1].text.slice(0, 20)}...` : ''}
-                </div>
-                <div style={{ fontSize: f(13,s), fontWeight: 700, color: C.dark }}>{g.goal}</div>
-                {g.detail && <div style={{ fontSize: f(11,s), color: C.mid }}>{g.detail}</div>}
-              </div>
-            </div>
-          ))}
-
-          {/* 치료 계획 구분선 */}
-          {content.treatmentOptions?.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '20px 0 14px' }}>
-              <span style={{ fontFamily: fontEn, fontSize: f(10,s), letterSpacing: '0.3em', textTransform: 'uppercase', color: C.gold, whiteSpace: 'nowrap' }}>Treatment Plan</span>
-              <div style={{ flex: 1, height: '1px', background: C.cream }} />
-            </div>
-          )}
-
-          {/* 옵션 카드 */}
-          {content.treatmentOptions?.map((opt, i) => (
-            <div key={i} style={{
-              padding: v ? '20px' : '14px', background: C.white, borderRadius: '4px',
-              border: `1px solid ${C.cream}`, marginBottom: '10px',
-            }}>
-              <div style={{
-                display: 'inline-block', fontFamily: fontEn, fontSize: f(10,s), letterSpacing: '0.2em', textTransform: 'uppercase',
-                color: C.gold, border: `1px solid ${C.gold}`, padding: '3px 12px', borderRadius: '2px', marginBottom: '10px',
-              }}>Option {String.fromCharCode(65 + i)}</div>
-              <div style={{ fontSize: f(15,s), fontWeight: 700, color: C.dark, marginBottom: '8px' }}>{opt.name}</div>
-              <div style={{ fontSize: f(12,s), lineHeight: '2', color: C.mid, marginBottom: '10px' }}>{opt.description}</div>
-              {opt.expectedEffect && (
-                <div style={{
-                  padding: '10px 14px', background: C.light, borderRadius: '4px', borderLeft: `3px solid ${C.gold}`,
-                  fontSize: f(12,s), lineHeight: '1.8', color: C.dark, marginBottom: '10px',
-                }}>
-                  <strong style={{ color: C.gold }}>기대 효과</strong><br />{opt.expectedEffect}
-                </div>
-              )}
-              <div style={{ display: 'flex', gap: '16px', fontSize: f(11,s), color: C.mid }}>
-                {opt.duration && <span>예상 {opt.duration}</span>}
-                {opt.appliance && <span>{opt.appliance}</span>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ══ 맞춤 안내 (다크) ══ */}
-      {content.personalNote && (
-        <div style={{ background: C.dark, padding: v ? '32px 24px' : '24px 20px' }}>
+      {/* ══ 맞춤 안내 (personalNote, 다크) ══ */}
+      {hasNote && (
+        <div style={{ background: C.dark, padding: v ? '36px 24px' : '24px 20px' }}>
           <SecHead v={v} s={s} en="For You" kr={`${patientName || '○○○'}님께 드리는 말씀`} C={C} fontEn={fontEn} dark />
           <div style={{
             border: '1px solid rgba(181,151,106,0.3)', borderRadius: '4px', padding: v ? '24px 20px' : '16px 14px',
@@ -181,7 +103,7 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
             <div style={{ fontFamily: fontEn, fontSize: f(10,s), letterSpacing: '0.25em', textTransform: 'uppercase', color: C.gold, marginBottom: '12px' }}>
               Personalized Note
             </div>
-            <div style={{ fontSize: f(13,s), lineHeight: '2.3', color: 'rgba(255,255,255,0.65)', whiteSpace: 'pre-wrap' }}>
+            <div style={{ fontSize: f(13,s), lineHeight: '2.3', color: 'rgba(255,255,255,0.75)', whiteSpace: 'pre-wrap' }}>
               {content.personalNote}
             </div>
           </div>
@@ -189,8 +111,8 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
       )}
 
       {/* ══ 어필 포인트 ══ */}
-      {content.appealPoints?.length > 0 && (
-        <Sec v={v} s={s} en="Why Prime S" kr="프라임에스에서 치료하면" C={C} fontEn={fontEn}>
+      {hasAppeal && (
+        <Sec v={v} s={s} en="Why Prime S" kr="프라임에스에서 치료하면" C={C} fontEn={fontEn} bg="light">
           {content.appealPoints.map((ap, i) => (
             <div key={i} style={{
               display: 'flex', gap: '14px', alignItems: 'flex-start',
@@ -206,13 +128,6 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
               </div>
             </div>
           ))}
-        </Sec>
-      )}
-
-      {/* ══ 추가 사항 ══ */}
-      {content.additionalNotes && (
-        <Sec v={v} s={s} en="Additional Notes" kr="추가 안내" C={C} fontEn={fontEn}>
-          <div style={textStyle(v, s)}>{content.additionalNotes}</div>
         </Sec>
       )}
 
@@ -247,8 +162,73 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
   )
 }
 
-// 사진 렌더링
-function renderPhotos(photos, v, s, C, fontEn) {
+/**
+ * body HTML을 h2 기준으로 섹션 분할
+ * 반환: [{ title: '치성 관계', html: '...' }, ...]
+ */
+function parseBodySections(html) {
+  if (!html || typeof html !== 'string') return []
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(`<div id="root">${html}</div>`, 'text/html')
+    const root = doc.getElementById('root')
+    if (!root) return []
+    const sections = []
+    let current = { title: null, html: '' }
+    for (const node of Array.from(root.childNodes)) {
+      if (node.nodeType === 1 && node.tagName === 'H2') {
+        if (current.title || current.html.trim()) sections.push(current)
+        current = { title: node.textContent.trim(), html: '' }
+      } else {
+        current.html += node.nodeType === 1 ? node.outerHTML : (node.textContent || '')
+      }
+    }
+    if (current.title || current.html.trim()) sections.push(current)
+    return sections.filter(s => s.title || s.html.trim())
+  } catch {
+    return [{ title: null, html }]
+  }
+}
+
+// 본문 한 섹션 렌더링 (밝은/다크/크림 bg 교차)
+function BodySection({ v, s, C, fontEn, en, kr, html, bg }) {
+  const isDark = bg === 'dark'
+  const bgColor = bg === 'dark' ? C.dark : bg === 'cream' ? C.light : C.white
+  const textColor = isDark ? 'rgba(255,255,255,0.85)' : C.mid
+  const imgBorder = isDark ? 'rgba(255,255,255,0.15)' : C.cream
+
+  return (
+    <div style={{ background: bgColor, padding: v ? '36px 24px' : '24px 20px' }}>
+      {kr && <SecHead v={v} s={s} en={en} kr={kr} C={C} fontEn={fontEn} dark={isDark} />}
+      <div
+        className={`brochure-body ${isDark ? 'brochure-body-dark' : ''}`}
+        style={{
+          fontSize: f(13, s),
+          lineHeight: v ? '2.1' : '1.9',
+          color: textColor,
+          letterSpacing: '0.01em',
+        }}
+        dangerouslySetInnerHTML={{ __html: decorateImages(html, imgBorder) }}
+      />
+    </div>
+  )
+}
+
+// html 내 <img> 태그에 디자인 스타일 적용 (inline style 병합)
+function decorateImages(html, border) {
+  if (!html) return ''
+  return html.replace(/<img\b([^>]*)>/gi, (m, attrs) => {
+    // 기존 style 추출/병합
+    const styleMatch = attrs.match(/style=["']([^"']*)["']/i)
+    const existing = styleMatch ? styleMatch[1] : ''
+    const newStyle = `${existing};max-width:100%;height:auto;display:block;border-radius:6px;margin:14px auto;box-shadow:0 6px 20px rgba(0,0,0,0.15);border:1px solid ${border};`
+    const cleaned = attrs.replace(/style=["'][^"']*["']/i, '')
+    return `<img${cleaned} style="${newStyle}">`
+  })
+}
+
+// 검사자료 슬롯 사진 (구내5 + 파노 + 셉 + extras)
+function renderSlotPhotos(photos, v, s, C, fontEn) {
   const intraoral = photos.filter(p => ['front', 'left', 'right', 'upper', 'lower'].includes(p.slot))
   const pano = photos.find(p => p.slot === 'panorama')
   const ceph = photos.find(p => p.slot === 'cephalogram')
@@ -307,27 +287,25 @@ function Label({ s, fontEn, children }) {
 
 function SecHead({ v, s, en, kr, C, fontEn, dark }) {
   return (
-    <div style={{ paddingBottom: '12px' }}>
-      <div style={{ fontFamily: fontEn, fontSize: f(10,s), letterSpacing: '0.3em', textTransform: 'uppercase', color: C.gold, marginBottom: '4px' }}>{en}</div>
+    <div style={{ paddingBottom: '12px', marginBottom: '12px' }}>
+      {en && (
+        <div style={{ fontFamily: fontEn, fontSize: f(10,s), letterSpacing: '0.3em', textTransform: 'uppercase', color: C.gold, marginBottom: '4px' }}>{en}</div>
+      )}
       <div style={{ fontSize: f(17,s), fontWeight: 700, color: dark ? '#fff' : C.dark }}>{kr}</div>
-      <div style={{ width: '100%', height: '1px', background: `linear-gradient(to right, ${C.gold}, transparent)`, marginTop: '12px' }} />
+      <div style={{ width: '100%', height: '1px', background: `linear-gradient(to right, ${C.gold}, transparent)`, marginTop: '10px' }} />
     </div>
   )
 }
 
-function Sec({ v, s, en, kr, C, fontEn, children }) {
+function Sec({ v, s, en, kr, C, fontEn, bg, children }) {
+  const bgColor = bg === 'dark' ? C.dark : bg === 'cream' ? C.light : C.white
+  const dark = bg === 'dark'
   return (
-    <div style={{ padding: v ? '0 24px 32px' : '0 20px 24px' }}>
-      <div style={{ paddingTop: v ? '32px' : '24px' }}>
-        <SecHead v={v} s={s} en={en} kr={kr} C={C} fontEn={fontEn} />
-      </div>
+    <div style={{ background: bgColor, padding: v ? '32px 24px' : '24px 20px' }}>
+      <SecHead v={v} s={s} en={en} kr={kr} C={C} fontEn={fontEn} dark={dark} />
       {children}
     </div>
   )
-}
-
-function textStyle(v, s) {
-  return { fontSize: f(13,s), lineHeight: '2.2', color: '#5a5a55', letterSpacing: '0.01em', whiteSpace: 'pre-wrap' }
 }
 
 function f(base, scale) {

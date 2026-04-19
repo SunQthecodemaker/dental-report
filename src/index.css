@@ -26,3 +26,66 @@ input, textarea, button, select {
   background: #7c3aed;
   color: #fff;
 }
+
+/* ContentEditor 편집 영역 */
+[contenteditable]:empty::before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+[contenteditable] h2 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a1a18;
+  margin: 18px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 2px solid #b5976a;
+  letter-spacing: 0.02em;
+}
+[contenteditable] h2:first-child { margin-top: 0; }
+
+[contenteditable] p {
+  margin: 6px 0;
+  line-height: 1.9;
+}
+
+[contenteditable] img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 10px 0;
+  display: block;
+}
+
+[contenteditable] strong { font-weight: 700; }
+[contenteditable] em { font-style: italic; color: #6b7280; }
+
+[contenteditable]:focus {
+  border-color: #b5976a !important;
+  box-shadow: 0 0 0 3px rgba(181, 151, 106, 0.12);
+}
+
+/* AI 초안 읽기전용 패널 */
+.ro-draft h2 {
+  font-size: 13px;
+  font-weight: 700;
+  color: #b5976a;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin: 14px 0 6px;
+}
+.ro-draft h2:first-child { margin-top: 0; }
+.ro-draft p { margin: 4px 0; font-size: 13px; line-height: 1.8; color: #4b5563; }
+.ro-draft img { max-width: 100%; height: auto; border-radius: 4px; margin: 8px 0; }
+.ro-draft strong { font-weight: 700; color: #374151; }
+.ro-draft em { color: #6b7280; }
+
+/* 브로셔 본문 렌더링 (BodySection 내부) */
+.brochure-body p { margin: 0 0 12px; }
+.brochure-body p:last-child { margin-bottom: 0; }
+.brochure-body strong { font-weight: 700; color: #1a1a18; }
+.brochure-body-dark strong { color: #f5f2ed; }
+.brochure-body em { font-style: italic; color: #b5976a; }
+.brochure-body ul, .brochure-body ol { margin: 8px 0 12px 20px; }
+.brochure-body li { margin-bottom: 4px; }

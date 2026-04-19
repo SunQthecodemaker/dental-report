@@ -17,10 +17,18 @@ async function loadClinicSettings() {
   return settings
 }
 
+// HTML 태그 제거 (문장 비교용)
+function stripHtml(html) {
+  if (!html || typeof html !== 'string') return ''
+  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
 export async function saveCorrections(originalText, editedText) {
-  if (!originalText || !editedText || originalText === editedText) return
-  const origSentences = originalText.split(/[.。]\s*/).filter(Boolean)
-  const editSentences = editedText.split(/[.。]\s*/).filter(Boolean)
+  const orig = stripHtml(originalText)
+  const edit = stripHtml(editedText)
+  if (!orig || !edit || orig === edit) return
+  const origSentences = orig.split(/[.。]\s*/).filter(Boolean)
+  const editSentences = edit.split(/[.。]\s*/).filter(Boolean)
   const corrections = []
   const len = Math.min(origSentences.length, editSentences.length)
   for (let i = 0; i < len; i++) {
@@ -60,21 +68,22 @@ function buildStaffLines(staffForm = {}) {
 }
 
 /**
- * 진단서 본문 생성 — 정리된 소스(summary) + 환자 성향(staffForm) → 환자용 문장
+ * 진단서 본문 생성 — 정리된 소스(summary) + 환자 성향(staffForm) → 환자용 본문(HTML)
  *
  * 환각 방지 원칙:
  * - summary 텍스트에 **명시적으로 있는 내용만** 재서술
  * - 소스 외 치아 문제/치료 옵션 절대 추가 금지
- * - 빈 섹션은 빈 문자열로 둠
+ * - 비어있는 섹션은 출력에서 완전히 생략
+ *
+ * 출력: { body: HTML, personalNote, appealPoints }
+ *   body 섹션 순서: 치성 관계 → 골격 관계 → 치료 계획 → 추가 사항
  */
 export async function composeReport({ summary, staffForm }) {
   if (summaryIsEmpty(summary)) {
     return getEmptyDraft()
   }
 
-  // 치아번호(#16, #10: 4번 등)를 환자 친화적 한글 부위명으로 1차 치환
   const koreanSummary = summaryWithKoreanTeeth(summary)
-
   const settings = await loadClinicSettings()
 
   let guidelinesBlock = ''
@@ -89,7 +98,7 @@ export async function composeReport({ summary, staffForm }) {
 
   let strengthsBlock = ''
   if (settings.strengths.length > 0) {
-    strengthsBlock = `\n\n**치과 특장점 (appealPoints에만 활용. 이 중 소스와 직접 관련된 것만 선별):**\n${settings.strengths.map((s) => {
+    strengthsBlock = `\n\n**치과 특장점 (appealPoints에만 활용. 소스와 직접 관련된 것만 선별):**\n${settings.strengths.map((s) => {
       const content = typeof s === 'string' ? s : s.title || ''
       return `- ${content}`
     }).join('\n')}`
@@ -102,9 +111,9 @@ export async function composeReport({ summary, staffForm }) {
 2. 입력에 없는 치아 문제(예: 과개교합, 개방교합, 반대교합, 정중선 편위, 총생, 공간, 매복치, 잇몸 문제 등)를 **단 한 번이라도** 언급하면 오답입니다.
 3. 입력에 없는 치료(예: 임플란트, 보철, 크라운, 미백, 사랑니 발치 등)를 절대 추가 금지.
 4. "아마도", "가능성이", "~할 수도 있습니다", "추정됩니다", "예상됩니다" 같은 추측 표현 금지.
-5. 해당 섹션에 입력이 **비어 있으면 반드시 빈 문자열("")로 출력**. 무리해서 채우지 마시오.
+5. 해당 섹션에 입력이 **비어 있으면 그 섹션 전체를 출력에서 생략**(h2 헤딩도 쓰지 말 것).
 6. 치료 기간/비용/예후/장치명은 입력에 명시된 경우에만 언급.
-7. 입력의 구조를 유지: 치료 계획 #1 → treatmentOptions[0], 치료 계획 #2 → treatmentOptions[1] 등 1:1 매핑.
+7. 치료 계획이 여러 개면 순서대로 모두 서술(#1, #2…).
 
 **✅ 톤 규칙 (환자 성향 반영 — 내용은 추가하지 않고 표현만 조절):**
 - 감성적 → 따뜻하고 공감하는 표현
@@ -125,53 +134,44 @@ export async function composeReport({ summary, staffForm }) {
 - #26 → 왼쪽 위 첫 번째 큰어금니
 - #36 → 왼쪽 아래 첫 번째 큰어금니
 - #46 → 오른쪽 아래 첫 번째 큰어금니
-- #14 → 오른쪽 위 첫 번째 작은어금니, #24 → 왼쪽 위 ..., #34/#44 같은 방식
+- #14 → 오른쪽 위 첫 번째 작은어금니 등
 - 끝자리 1=중앙 앞니, 2=옆 앞니, 3=송곳니, 4=첫 번째 작은어금니, 5=두 번째 작은어금니, 6=첫 번째 큰어금니, 7=두 번째 큰어금니, 8=사랑니
-- 사분면(#10, #20, #30, #40)만 있으면 "오른쪽 위/왼쪽 위/왼쪽 아래/오른쪽 아래" 영역으로
-- 출력 텍스트에 "#숫자"가 그대로 남으면 안 됨
+- 사분면(#10/#20/#30/#40)만 있으면 "오른쪽 위/왼쪽 위/왼쪽 아래/오른쪽 아래" 영역
+- 출력에 "#숫자"가 그대로 남으면 안 됨
 
-**출력 형식 (반드시 JSON, problemList/treatmentGoals는 포함하지 말 것):**
+**출력 형식 (반드시 JSON):**
 {
-  "skeletalRelationship": "골격 문제 소스를 환자용 2인칭 문장으로 재서술 (1~3문장). 소스 비어있으면 \\"\\"",
-  "dentalRelationship": "치성 문제 소스를 환자용 문장으로 재서술 (1~4문장). 소스 비어있으면 \\"\\"",
-  "treatmentOptions": [
-    {
-      "name": "치료 계획 개요 한 줄",
-      "description": "치료 계획 소스를 환자용 2~3문장으로 재서술",
-      "expectedEffect": "소스에 있으면 기재, 없으면 \\"\\"",
-      "duration": "소스에 있으면 기재, 없으면 \\"\\"",
-      "appliance": "소스에 있으면 기재, 없으면 \\"\\""
-    }
-  ],
-  "additionalNotes": "기타 + 전체 메모 합쳐 환자용으로 정리. 없으면 \\"\\"",
+  "body": "<h2>치성 관계</h2><p>...</p><h2>골격 관계</h2><p>...</p><h2>치료 계획</h2><p>...</p><h2>추가 사항</h2><p>...</p>",
   "personalNote": "환자 성향/특이 상황 반영 3~5문장 맞춤 메시지 (치료 추천 근거, 안심, 다음 단계)",
-  "appealPoints": [
-    { "title": "제목", "description": "1~2문장 설명" }
-  ]
+  "appealPoints": [ { "title": "제목", "description": "1~2문장 설명" } ]
 }
 
+**body HTML 규칙:**
+- 섹션 순서 고정: **치성 관계 → 골격 관계 → 치료 계획 → 추가 사항**
+- 각 섹션은 \`<h2>섹션명</h2>\` + \`<p>문단</p>\` 여러 개로 구성
+- 소스가 비어있는 섹션은 h2 자체를 생략 (예: 골격 소스 없음 → 골격 관계 블록 전체 생략)
+- 치료 계획이 여러 개면 한 섹션 안에 \`<p><strong>계획 #1:</strong> ...</p><p><strong>계획 #2:</strong> ...</p>\`식 서술
+- \`<img>\`, \`<script>\`, \`<style>\` 태그 절대 쓰지 말 것 (이미지는 사용자가 나중에 삽입)
+- 다른 태그(ul, li, strong, em) 최소 사용
+- 줄바꿈이나 공백 없는 한 줄 HTML 문자열
+
 **Do/Don't 예시:**
-입력 [골격 문제]: "- 전후방 골격 관계: Class II (심함)\\n- 상악 위치: 전돌"
-✅ Good: "전후방 골격 관계가 Class II 상태이며 심한 편으로, 상악이 앞쪽으로 많이 나와 있는 경향이 관찰됩니다."
-❌ Bad: "Class II 골격에 과개교합이 동반됩니다." (과개교합은 소스에 없음 → 금지)
-❌ Bad: "정중선 편위도 약간 보입니다." (소스에 없음 → 금지)
+입력 [골격]: "- 전후방 골격 관계: Class II (심함)\\n- 상악 위치: 전돌"
+✅ Good: "<h2>골격 관계</h2><p>전후방 골격 관계가 Class II 상태이며 심한 편으로, 상악이 앞쪽으로 많이 나와 있는 경향이 관찰됩니다.</p>"
+❌ Bad: "<h2>골격 관계</h2><p>Class II에 과개교합이 동반됩니다.</p>" (과개교합 없음)
 
-입력 [치성 문제]: "- Angle's Class 우측: II\\n- Angle's Class 좌측: II"
-✅ Good: "상하악 구치부 교합이 좌우 모두 Class II 관계로 맞물려 있어 조정이 필요합니다."
-❌ Bad: "총생과 돌출이 관찰됩니다." (소스에 없음 → 금지)
-
-입력 [치료 계획 #1]: "- 교정 단계: 2차\\n- 교정 범위: 전체\\n- 발치: #10 4번, #20 4번\\n- 악궁확장: MARPE"
-✅ Good: name="상악 소구치 발치 + MARPE + 2차 전체 교정", description="상악 좌우 소구치(#10, #20의 4번)를 발치하고, 상악궁을 MARPE로 확장한 뒤 2차 고정식 교정을 진행하는 전체 교정 계획입니다."
-❌ Bad: description에 "고정식 장치 외에 투명 교정도 가능합니다" (소스에 없음 → 금지)
+입력 [치성]: "(비어있음)"
+✅ Good: (치성 관계 블록 자체를 생략, 다른 섹션부터 시작)
+❌ Bad: "<h2>치성 관계</h2><p>별다른 이상 없습니다.</p>" (지어냄 금지)
 
 **appealPoints 규칙:**
-- 치과 특장점 중 **위 소스와 직접 관련된** 것만 2~3개 선별.
-- 관련 없는 특장점을 억지로 끼우지 마시오.
-- 관련된 게 없으면 빈 배열([])로 두시오.
+- 치과 특장점 중 **위 소스와 직접 관련된** 것만 2~3개 선별
+- 관련 없으면 빈 배열([])
 
-**최종 재확인:** 출력하기 전 스스로 검증하시오:
-- 출력에 등장하는 모든 치과 용어/문제/치료 옵션이 입력 소스에 있는가?
-- 없는 것이 하나라도 있으면 제거하시오.${guidelinesBlock}${terminologyBlock}${strengthsBlock}`
+**최종 재확인:** 출력 전에:
+- body 안 모든 치과 용어/문제/치료가 입력 소스에 있는가?
+- 비어있는 섹션의 h2를 지웠는가?
+- "#숫자"가 남아있지 않은가?${guidelinesBlock}${terminologyBlock}${strengthsBlock}`
 
   const planLines = (koreanSummary.treatmentPlans || [])
     .map((p, i) => `계획 ${i + 1}:\n${p || '(빈 계획)'}`).join('\n\n') || '(치료 계획 없음)'
@@ -179,20 +179,20 @@ export async function composeReport({ summary, staffForm }) {
   const userMessage = `## 입력 소스 (아래 내용만 사용 — 외부 지식·추측·확장 모두 금지)
 ※ 치아번호는 이미 환자 친화적 한글 부위명으로 변환되어 있습니다. 그대로 사용하시면 됩니다.
 
-### [골격 문제]
-${koreanSummary.skeletal || '(비어있음 → skeletalRelationship은 빈 문자열로)'}
-
 ### [치성 문제]
-${koreanSummary.dental || '(비어있음 → dentalRelationship은 빈 문자열로)'}
+${koreanSummary.dental || '(비어있음 → 치성 관계 섹션 생략)'}
 
-### [기타 진단 항목]
-${koreanSummary.etc || '(비어있음)'}
+### [골격 문제]
+${koreanSummary.skeletal || '(비어있음 → 골격 관계 섹션 생략)'}
 
 ### [치료 계획]
 ${planLines}
 
+### [기타 진단 항목]
+${koreanSummary.etc || '(비어있음)'}
+
 ### [전체 추가 메모]
-${koreanSummary.overall || '(비어있음)'}
+${koreanSummary.overall || '(비어있음 → 추가 사항 섹션 생략)'}
 
 ---
 
@@ -206,8 +206,8 @@ ${staffForm?.specialCircumstances || '(없음)'}
 
 **최종 지시:**
 위 입력 소스에 **명시적으로 적힌 내용만** 환자 친화적 문장으로 재서술하여 JSON으로 출력하시오.
-입력에 없는 치아 문제/치료 옵션은 **단 하나도** 추가하지 마시오.
-비어있는 섹션은 반드시 빈 문자열("")로 두시오.`
+body HTML은 **치성 → 골격 → 치료계획 → 추가사항** 순서, 비어있는 섹션은 h2째 생략.
+입력에 없는 치아 문제/치료 옵션은 단 하나도 추가하지 마시오.`
 
   const response = await fetch(EDGE_FUNCTION_URL, {
     method: 'POST',
@@ -241,28 +241,66 @@ ${staffForm?.specialCircumstances || '(없음)'}
 
 export function getEmptyDraft() {
   return {
-    skeletalRelationship: '',
-    dentalRelationship: '',
-    problemList: [],
-    treatmentGoals: [],
-    treatmentOptions: [],
-    additionalNotes: '',
+    body: '',
     personalNote: '',
     appealPoints: [],
   }
 }
 
+// 이전 구조(skeletalRelationship 등) → 새 구조(body HTML) 변환
 export function migrateToNewFormat(obj) {
   if (!obj) return getEmptyDraft()
+
+  // 이미 새 구조면 그대로
+  if (typeof obj.body === 'string') {
+    return {
+      body: obj.body || '',
+      personalNote: obj.personalNote || '',
+      appealPoints: obj.appealPoints || [],
+    }
+  }
+
+  // 이전 구조 → body HTML 합성 (치성 → 골격 → 치료계획 → 추가사항)
+  const parts = []
+  if (obj.dentalRelationship) {
+    parts.push(`<h2>치성 관계</h2><p>${escapeHtml(obj.dentalRelationship).replace(/\n\n+/g, '</p><p>').replace(/\n/g, '<br>')}</p>`)
+  }
+  if (obj.skeletalRelationship) {
+    parts.push(`<h2>골격 관계</h2><p>${escapeHtml(obj.skeletalRelationship).replace(/\n\n+/g, '</p><p>').replace(/\n/g, '<br>')}</p>`)
+  }
+  if (Array.isArray(obj.treatmentOptions) && obj.treatmentOptions.length > 0) {
+    const planParts = obj.treatmentOptions.map((opt, i) => {
+      const lines = []
+      if (opt.name) lines.push(`<p><strong>계획 #${i + 1}: ${escapeHtml(opt.name)}</strong></p>`)
+      if (opt.description) lines.push(`<p>${escapeHtml(opt.description)}</p>`)
+      if (opt.expectedEffect) lines.push(`<p><em>기대 효과:</em> ${escapeHtml(opt.expectedEffect)}</p>`)
+      const meta = []
+      if (opt.duration) meta.push(`기간: ${opt.duration}`)
+      if (opt.appliance) meta.push(`장치: ${opt.appliance}`)
+      if (meta.length) lines.push(`<p>${escapeHtml(meta.join(' / '))}</p>`)
+      return lines.join('')
+    }).join('')
+    parts.push(`<h2>치료 계획</h2>${planParts}`)
+  }
+  if (obj.additionalNotes) {
+    parts.push(`<h2>추가 사항</h2><p>${escapeHtml(obj.additionalNotes).replace(/\n\n+/g, '</p><p>').replace(/\n/g, '<br>')}</p>`)
+  }
+
   return {
-    ...getEmptyDraft(),
-    ...obj,
-    // problemList / treatmentGoals는 더 이상 사용하지 않음 — 항상 빈 배열로 강제
-    problemList: [],
-    treatmentGoals: [],
-    treatmentOptions: obj.treatmentOptions || [],
+    body: parts.join(''),
+    personalNote: obj.personalNote || '',
     appealPoints: obj.appealPoints || [],
   }
+}
+
+function escapeHtml(s) {
+  if (typeof s !== 'string') return ''
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 function stripEnglishParens(text) {

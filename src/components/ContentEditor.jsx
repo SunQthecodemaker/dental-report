@@ -1,32 +1,139 @@
+import { useEffect, useRef, useState } from 'react'
+import { supabase } from '../lib/supabase'
+
 /**
- * ContentEditor — AI 작성 단계: 결과 편집
- * 좌측: AI 초안 (읽기전용 참조)
- * 우측: 섹션별 편집 (골격관계, 치성관계, 치료계획, 맞춤 안내, 어필, 추가사항)
+ * ContentEditor — AI 작성 단계: 하나의 워드 문서형 편집기
+ * 좌측: AI 초안 (읽기전용, 참조)
+ * 우측: contentEditable 편집 영역 (이미지 붙여넣기 지원 → Supabase Storage 업로드)
+ *
+ * 데이터: { body: HTML, personalNote, appealPoints }
  */
 export default function ContentEditor({ original, edited, onChange }) {
-  const update = (field, value) => onChange({ ...edited, [field]: value })
+  const editorRef = useRef(null)
+  const inputTimerRef = useRef(null)
+  const [uploading, setUploading] = useState(false)
+  const [noteDraft, setNoteDraft] = useState(edited?.personalNote || '')
+  const bodyInitialized = useRef(false)
 
-  const isChanged = (a, b) => JSON.stringify(a) !== JSON.stringify(b)
-  const revert = (field) => onChange({ ...edited, [field]: original[field] })
+  // 최초 1회만 innerHTML 설정 (이후에는 cursor 점프 방지 위해 React가 건드리지 않음)
+  useEffect(() => {
+    if (!editorRef.current || bodyInitialized.current) return
+    editorRef.current.innerHTML = edited?.body || ''
+    bodyInitialized.current = true
+  }, [edited])
 
-  // 치료 옵션
-  const updateOption = (idx, field, value) => {
-    const opts = [...edited.treatmentOptions]
-    opts[idx] = { ...opts[idx], [field]: value }
-    onChange({ ...edited, treatmentOptions: opts })
+  useEffect(() => {
+    setNoteDraft(edited?.personalNote || '')
+  }, [edited?.personalNote])
+
+  const commitBody = () => {
+    if (!editorRef.current) return
+    const html = editorRef.current.innerHTML
+    onChange({ ...edited, body: html })
   }
-  const moveOption = (idx, dir) => {
-    const opts = [...edited.treatmentOptions]
-    const t = idx + dir
-    if (t < 0 || t >= opts.length) return
-    ;[opts[idx], opts[t]] = [opts[t], opts[idx]]
-    onChange({ ...edited, treatmentOptions: opts })
+
+  const handleInput = () => {
+    if (inputTimerRef.current) clearTimeout(inputTimerRef.current)
+    inputTimerRef.current = setTimeout(commitBody, 300)
   }
-  const addOption = () => {
-    onChange({ ...edited, treatmentOptions: [...edited.treatmentOptions, { name: '', description: '', expectedEffect: '', duration: '', appliance: '' }] })
+
+  const revertToDraft = () => {
+    if (!editorRef.current) return
+    if (!confirm('편집 내용을 AI 초안으로 되돌립니다. 계속하시겠어요?')) return
+    editorRef.current.innerHTML = original?.body || ''
+    commitBody()
   }
-  const removeOption = (idx) => {
-    onChange({ ...edited, treatmentOptions: edited.treatmentOptions.filter((_, i) => i !== idx) })
+
+  // 이미지 업로드: Supabase Storage "dental-reports/content/" 경로
+  const uploadImage = async (file) => {
+    const ext = (file.type.split('/')[1] || 'png').toLowerCase().replace('jpeg', 'jpg')
+    const name = `content/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
+    const { error } = await supabase.storage.from('dental-reports').upload(name, file, {
+      contentType: file.type, cacheControl: '3600', upsert: false,
+    })
+    if (error) throw error
+    const { data } = supabase.storage.from('dental-reports').getPublicUrl(name)
+    return data.publicUrl
+  }
+
+  const insertImageAtCaret = (url) => {
+    const img = document.createElement('img')
+    img.src = url
+    img.style.maxWidth = '100%'
+    img.style.height = 'auto'
+    img.style.borderRadius = '6px'
+    img.style.margin = '10px 0'
+    img.style.display = 'block'
+    const sel = window.getSelection()
+    if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
+      const range = sel.getRangeAt(0)
+      range.deleteContents()
+      range.insertNode(img)
+      // 커서를 이미지 뒤로 이동
+      range.setStartAfter(img)
+      range.setEndAfter(img)
+      sel.removeAllRanges()
+      sel.addRange(range)
+    } else {
+      editorRef.current.appendChild(img)
+    }
+    commitBody()
+  }
+
+  const handlePaste = async (e) => {
+    const items = e.clipboardData?.items || []
+    const imageItems = Array.from(items).filter(it => it.type?.startsWith('image/'))
+
+    if (imageItems.length > 0) {
+      e.preventDefault()
+      setUploading(true)
+      try {
+        for (const item of imageItems) {
+          const file = item.getAsFile()
+          if (!file) continue
+          const url = await uploadImage(file)
+          insertImageAtCaret(url)
+        }
+      } catch (err) {
+        alert('이미지 업로드 실패: ' + err.message)
+      } finally {
+        setUploading(false)
+      }
+      return
+    }
+
+    // 텍스트 붙여넣기는 서식 제거 (plain text)
+    const text = e.clipboardData?.getData('text/plain')
+    if (text) {
+      e.preventDefault()
+      document.execCommand('insertText', false, text)
+    }
+  }
+
+  // drag&drop 이미지도 지원
+  const handleDrop = async (e) => {
+    const files = Array.from(e.dataTransfer?.files || []).filter(f => f.type.startsWith('image/'))
+    if (files.length === 0) return
+    e.preventDefault()
+    setUploading(true)
+    try {
+      for (const file of files) {
+        const url = await uploadImage(file)
+        insertImageAtCaret(url)
+      }
+    } catch (err) {
+      alert('이미지 업로드 실패: ' + err.message)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  // 헤딩 삽입 단축 버튼
+  const insertHeading = (text) => {
+    if (!editorRef.current) return
+    editorRef.current.focus()
+    document.execCommand('insertHTML', false, `<h2>${text}</h2><p></p>`)
+    commitBody()
   }
 
   return (
@@ -37,213 +144,109 @@ export default function ContentEditor({ original, edited, onChange }) {
           <span style={S.badge}>AI 초안</span>
           <span style={S.hint}>참조용 (수정 불가)</span>
         </div>
-
-        {original.skeletalRelationship && (
-          <RO title="골격 관계" content={original.skeletalRelationship} />
-        )}
-        {original.dentalRelationship && (
-          <RO title="치성 관계" content={original.dentalRelationship} />
-        )}
-        {original.treatmentOptions?.map((opt, i) => (
-          <div key={i} style={S.roOption}>
-            <div style={S.roOptName}>{opt.name}</div>
-            <div style={S.roText}>{opt.description}</div>
-            {opt.expectedEffect && <div style={S.roMeta}>기대 효과: {opt.expectedEffect}</div>}
-            {opt.duration && <div style={S.roMeta}>기간: {opt.duration}</div>}
-            {opt.appliance && <div style={S.roMeta}>장치: {opt.appliance}</div>}
-          </div>
-        ))}
-        {original.additionalNotes && (
-          <RO title="추가 사항" content={original.additionalNotes} />
-        )}
+        <div className="ro-draft" style={S.roBody} dangerouslySetInnerHTML={{ __html: original?.body || '<p style="color:#9ca3af">초안이 비어있습니다.</p>' }} />
       </div>
 
-      {/* ── 우측: 편집창 ── */}
+      {/* ── 우측: 편집 ── */}
       <div style={S.right}>
         <div style={S.panelHead}>
           <span style={{ ...S.badge, background: '#7c3aed', color: '#fff' }}>내용 편집</span>
-          <span style={S.hint}>배치 변경 · 용어 수정</span>
+          <span style={S.hint}>워드 문서처럼 자유 편집 · 사진 붙여넣기 가능</span>
+          <div style={{ flex: 1 }} />
+          <button onClick={revertToDraft} style={S.revertBtn} title="AI 초안으로 되돌리기">↺ 초안</button>
         </div>
 
-        {/* 골격 관계 */}
-        <EditSec
-          title="골격 관계"
-          changed={isChanged(original.skeletalRelationship, edited.skeletalRelationship)}
-          onRevert={() => revert('skeletalRelationship')}
-        >
-          <textarea
-            value={edited.skeletalRelationship || ''}
-            onChange={e => update('skeletalRelationship', e.target.value)}
-            placeholder="골격(뼈, 악골) 관련 분석 내용"
-            style={S.ta}
-            rows={3}
-          />
-        </EditSec>
+        {/* 툴바 */}
+        <div style={S.toolbar}>
+          <span style={S.toolLabel}>소제목 추가:</span>
+          <button style={S.toolBtn} onClick={() => insertHeading('치성 관계')}>치성 관계</button>
+          <button style={S.toolBtn} onClick={() => insertHeading('골격 관계')}>골격 관계</button>
+          <button style={S.toolBtn} onClick={() => insertHeading('치료 계획')}>치료 계획</button>
+          <button style={S.toolBtn} onClick={() => insertHeading('추가 사항')}>추가 사항</button>
+          {uploading && <span style={S.uploading}>📤 업로드 중...</span>}
+        </div>
 
-        {/* 치성 관계 */}
-        <EditSec
-          title="치성 관계"
-          changed={isChanged(original.dentalRelationship, edited.dentalRelationship)}
-          onRevert={() => revert('dentalRelationship')}
-        >
+        {/* 편집 영역 */}
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          onInput={handleInput}
+          onBlur={commitBody}
+          onPaste={handlePaste}
+          onDrop={handleDrop}
+          onDragOver={(e) => e.preventDefault()}
+          style={S.editor}
+          data-placeholder="여기에 내용을 작성하거나 사진을 붙여넣으세요..."
+        />
+
+        {/* 맞춤 안내 (personalNote) */}
+        <div style={{ marginTop: '20px' }}>
+          <div style={S.subSecTitle}>맞춤 안내 <span style={S.subSecHint}>(환자에게 드리는 개인화 메시지)</span></div>
           <textarea
-            value={edited.dentalRelationship || ''}
-            onChange={e => update('dentalRelationship', e.target.value)}
-            placeholder="치아 배열, 교합, 총생 등"
-            style={S.ta}
+            value={noteDraft}
+            onChange={(e) => setNoteDraft(e.target.value)}
+            onBlur={() => onChange({ ...edited, personalNote: noteDraft })}
+            style={S.noteTa}
             rows={4}
+            placeholder="환자 성향을 반영한 맞춤 메시지..."
           />
-        </EditSec>
-
-        {/* 치료 옵션 */}
-        <div style={S.secWrap}>
-          <div style={S.secHead}>
-            <span style={S.secTitle}>치료 계획</span>
-            <button onClick={addOption} style={S.addBtn}>+ 옵션 추가</button>
-          </div>
-          {edited.treatmentOptions.map((opt, idx) => {
-            const orig = original.treatmentOptions[idx]
-            const changed = orig ? isChanged(opt, orig) : true
-            return (
-              <div key={idx} style={S.optCard}>
-                <div style={S.optTop}>
-                  <span style={S.optNum}>Option {String.fromCharCode(65 + idx)}</span>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    <button onClick={() => moveOption(idx, -1)} disabled={idx === 0} style={S.moveBtn}>↑</button>
-                    <button onClick={() => moveOption(idx, 1)} disabled={idx === edited.treatmentOptions.length - 1} style={S.moveBtn}>↓</button>
-                    <button onClick={() => removeOption(idx)} style={S.delBtn}>×</button>
-                  </div>
-                </div>
-                <input
-                  value={opt.name}
-                  onChange={e => updateOption(idx, 'name', e.target.value)}
-                  placeholder="옵션명 (예: 상악 소구치 발치 + 고정식 교정)"
-                  style={S.optNameInput}
-                />
-                <textarea
-                  value={opt.description}
-                  onChange={e => updateOption(idx, 'description', e.target.value)}
-                  placeholder="설명"
-                  style={S.ta}
-                  rows={3}
-                />
-                <textarea
-                  value={opt.expectedEffect || ''}
-                  onChange={e => updateOption(idx, 'expectedEffect', e.target.value)}
-                  placeholder="기대 효과 (선택)"
-                  style={{ ...S.ta, background: '#f0fdf4', borderColor: '#bbf7d0' }}
-                  rows={2}
-                />
-                <div style={S.optMetaRow}>
-                  <input
-                    value={opt.duration || ''}
-                    onChange={e => updateOption(idx, 'duration', e.target.value)}
-                    placeholder="예상 기간"
-                    style={S.metaInput}
-                  />
-                  <input
-                    value={opt.appliance || ''}
-                    onChange={e => updateOption(idx, 'appliance', e.target.value)}
-                    placeholder="장치 종류"
-                    style={S.metaInput}
-                  />
-                </div>
-                {changed && <div style={S.changeBar} />}
-              </div>
-            )
-          })}
         </div>
-
-        {/* 추가 사항 */}
-        <EditSec
-          title="추가 사항"
-          changed={isChanged(original.additionalNotes, edited.additionalNotes)}
-          onRevert={() => revert('additionalNotes')}
-        >
-          <textarea
-            value={edited.additionalNotes || ''}
-            onChange={e => update('additionalNotes', e.target.value)}
-            placeholder="추가로 알려드릴 사항 (선택)"
-            style={S.ta}
-            rows={2}
-          />
-        </EditSec>
       </div>
-    </div>
-  )
-}
-
-function RO({ title, content }) {
-  return (
-    <div style={S.roSection}>
-      <div style={S.roTitle}>{title}</div>
-      <div style={S.roText}>{content}</div>
-    </div>
-  )
-}
-
-function EditSec({ title, changed, onRevert, children }) {
-  return (
-    <div style={S.secWrap}>
-      <div style={S.secHead}>
-        <span style={S.secTitle}>{title}</span>
-        {changed && <button onClick={onRevert} style={S.revertBtn}>↺ 원래대로</button>}
-      </div>
-      {children}
-      {changed && <div style={S.changeBar} />}
     </div>
   )
 }
 
 const S = {
-  container: { display: 'flex', gap: 0, height: 'calc(100vh - 140px)', border: '1px solid #e5e7eb', borderRadius: '12px', overflow: 'hidden', background: '#fff' },
+  container: { display: 'flex', gap: 0, minHeight: '520px', border: '1px solid #e5e7eb', borderRadius: '12px', overflow: 'hidden', background: '#fff' },
 
-  left: { flex: '0 0 36%', overflow: 'auto', padding: '20px', background: '#f8f9fa', borderRight: '1px solid #e5e7eb' },
-  right: { flex: 1, overflow: 'auto', padding: '20px' },
+  left: { flex: '0 0 36%', overflow: 'auto', padding: '20px', background: '#f8f9fa', borderRight: '1px solid #e5e7eb', maxHeight: 'calc(100vh - 200px)' },
+  right: { flex: 1, overflow: 'auto', padding: '20px', display: 'flex', flexDirection: 'column' },
 
-  panelHead: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', paddingBottom: '12px', borderBottom: '1px solid #e5e7eb' },
+  panelHead: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', paddingBottom: '12px', borderBottom: '1px solid #e5e7eb' },
   badge: { padding: '4px 12px', borderRadius: '20px', fontSize: '13px', fontWeight: '600', background: '#e5e7eb', color: '#374151' },
   hint: { fontSize: '12px', color: '#9ca3af' },
 
-  // 읽기전용
-  roSection: { marginBottom: '16px' },
-  roTitle: { fontSize: '12px', fontWeight: '700', color: '#b5976a', marginBottom: '6px', letterSpacing: '0.5px', textTransform: 'uppercase' },
-  roText: { fontSize: '13px', lineHeight: '1.8', color: '#4b5563', whiteSpace: 'pre-wrap' },
-  roItem: { fontSize: '13px', color: '#4b5563', padding: '4px 0', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' },
-  roBadge: { display: 'inline-flex', width: '18px', height: '18px', borderRadius: '50%', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: '700', flexShrink: 0 },
-  roOption: { padding: '12px', background: '#fff', borderRadius: '8px', border: '1px solid #e5e7eb', marginBottom: '8px' },
-  roOptName: { fontSize: '14px', fontWeight: '600', color: '#1a1a18', marginBottom: '4px' },
-  roMeta: { fontSize: '11px', color: '#9ca3af', marginTop: '3px' },
+  // 읽기전용 본문 스타일
+  roBody: {
+    fontSize: '13px', lineHeight: '1.9', color: '#4b5563',
+  },
 
-  // 편집
-  secWrap: { marginBottom: '20px', position: 'relative' },
-  secHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' },
-  secTitle: { fontSize: '14px', fontWeight: '700', color: '#1a1a18' },
-  ta: { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', lineHeight: '1.8', resize: 'vertical', fontFamily: 'inherit', color: '#1f2937', background: '#fff', boxSizing: 'border-box', outline: 'none' },
+  // 편집기
+  toolbar: {
+    display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 10px',
+    background: '#f5f2ed', border: '1px solid #e5e0d5', borderRadius: '8px 8px 0 0',
+    borderBottom: 'none', flexWrap: 'wrap',
+  },
+  toolLabel: { fontSize: '11px', color: '#6b7280', marginRight: '4px' },
+  toolBtn: {
+    padding: '4px 10px', background: '#fff', color: '#b5976a',
+    border: '1px solid #d4c8b4', borderRadius: '6px',
+    fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+  },
+  uploading: { marginLeft: 'auto', fontSize: '12px', color: '#b5976a', fontWeight: 600 },
 
-  // 문제 목록
-  problemRow: { display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '6px' },
-  problemNum: { width: '22px', height: '22px', borderRadius: '50%', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '700', flexShrink: 0 },
-  problemInput: { flex: 3, padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px', outline: 'none', boxSizing: 'border-box' },
-  severitySelect: { padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '12px', background: '#fff', cursor: 'pointer' },
+  editor: {
+    minHeight: '360px',
+    padding: '20px 24px',
+    border: '1px solid #d4c8b4',
+    borderRadius: '0 0 8px 8px',
+    fontSize: '15px',
+    lineHeight: '1.9',
+    color: '#1f2937',
+    background: '#fff',
+    outline: 'none',
+    fontFamily: "'Pretendard', 'Noto Sans KR', sans-serif",
+    overflow: 'auto',
+  },
 
-  // 치료 목표
-  goalRow: { display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '6px' },
-  goalRefSelect: { width: '50px', padding: '6px', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '12px', background: '#f0fdf4', textAlign: 'center' },
+  subSecTitle: { fontSize: '13px', fontWeight: 700, color: '#1a1a18', marginBottom: '6px' },
+  subSecHint: { fontSize: '11px', color: '#9ca3af', fontWeight: 400, marginLeft: '4px' },
+  noteTa: {
+    width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px',
+    fontSize: '14px', lineHeight: '1.7', resize: 'vertical', fontFamily: 'inherit',
+    color: '#1f2937', boxSizing: 'border-box', outline: 'none',
+  },
 
-  // 치료 옵션
-  optCard: { padding: '14px', background: '#f5f2ed', borderRadius: '10px', border: '1px solid #e5e0d5', marginBottom: '10px', position: 'relative' },
-  optTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' },
-  optNum: { fontSize: '11px', fontWeight: '600', color: '#b5976a', letterSpacing: '0.5px' },
-  optNameInput: { width: '100%', padding: '8px 10px', border: '1px solid #d4c8b4', borderRadius: '6px', fontSize: '15px', fontWeight: '600', color: '#1a1a18', background: '#fff', marginBottom: '8px', boxSizing: 'border-box', outline: 'none' },
-  optMetaRow: { display: 'flex', gap: '8px', marginTop: '8px' },
-  metaInput: { flex: 1, padding: '6px 10px', border: '1px solid #d4c8b4', borderRadius: '6px', fontSize: '12px', background: '#fff', outline: 'none' },
-
-  // 버튼
-  addBtn: { padding: '4px 12px', background: '#f5f2ed', color: '#b5976a', border: '1px solid #d4c8b4', borderRadius: '6px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' },
-  revertBtn: { padding: '3px 8px', background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' },
-  moveBtn: { padding: '2px 6px', background: '#f3f4f6', color: '#6b7280', border: '1px solid #d1d5db', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' },
-  delBtn: { padding: '2px 8px', background: '#fef2f2', color: '#ef4444', border: '1px solid #fecaca', borderRadius: '4px', fontSize: '14px', fontWeight: '600', cursor: 'pointer' },
-
-  changeBar: { position: 'absolute', left: '-4px', top: 0, bottom: 0, width: '3px', background: '#f59e0b', borderRadius: '2px' },
+  revertBtn: { padding: '4px 10px', background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 600 },
 }

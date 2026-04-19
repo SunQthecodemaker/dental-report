@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import BrochurePreview from '../components/BrochurePreview'
+import { migrateToNewFormat } from '../lib/gemini'
 
 export default function ReportView() {
   const { reportId } = useParams()
@@ -55,10 +56,7 @@ export default function ReportView() {
     )
   }
 
-  // sections가 새 형식(skeletalRelationship 등)이면 그대로, 이전 형식(blocks)이면 빈 content
-  const content = report.sections?.skeletalRelationship !== undefined
-    ? report.sections
-    : report.sections || {}
+  const content = migrateToNewFormat(report.sections || {})
 
   return (
     <div style={{ background: '#e8e4de', minHeight: '100vh', fontFamily: "'Nanum Myeongjo', serif" }}>

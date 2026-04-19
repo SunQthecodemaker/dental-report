@@ -4,7 +4,7 @@ import StaffForm from '../components/StaffForm'
 import ClinicalForm, { getEmptyClinicalForm, buildAutoSummary } from '../components/ClinicalForm'
 import ContentEditor from '../components/ContentEditor'
 import BrochurePreview from '../components/BrochurePreview'
-import { composeReport, saveCorrections } from '../lib/gemini'
+import { composeReport, saveCorrections, migrateToNewFormat } from '../lib/gemini'
 import { supabase } from '../lib/supabase'
 import { getByChartNumber, updateReport, acquireLock, releaseLock, isOtherPcEditing, PROGRESS_STAGES, STEP_TO_STAGE } from '../lib/reports'
 import { getPcLabel } from '../lib/session'
@@ -67,8 +67,9 @@ export default function Editor() {
       setClinicalForm(data.clinical_form || getEmptyClinicalForm())
       setStaffForm({ ...INITIAL_STAFF_FORM, ...(data.staff_form || {}) })
       if (data.sections && Object.keys(data.sections).length > 0) {
-        setRefinedContent(data.sections)
-        setEditedContent(data.sections)
+        const migrated = migrateToNewFormat(data.sections)
+        setRefinedContent(migrated)
+        setEditedContent(JSON.parse(JSON.stringify(migrated)))
       }
       setPhotos(data.photos || [])
       hydratedRef.current = true
@@ -171,8 +172,7 @@ export default function Editor() {
         }
       }
       if (refinedContent && editedContent) {
-        saveCorrections(refinedContent.skeletalRelationship, editedContent.skeletalRelationship).catch(() => {})
-        saveCorrections(refinedContent.dentalRelationship, editedContent.dentalRelationship).catch(() => {})
+        saveCorrections(refinedContent.body, editedContent.body).catch(() => {})
       }
       const expiresAt = new Date(); expiresAt.setDate(expiresAt.getDate() + 90)
       await updateReport(report.id, {

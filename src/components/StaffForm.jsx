@@ -13,16 +13,9 @@ const DEFAULT_SLIDERS = {
   understanding: { label: '이해도',    min: '설명 많이 필요', max: '잘 이해함' },
 }
 
-const CONSULT_TABS = [
-  { key: 'traits',     label: '환자 성향',   icon: '🎭' },
-  { key: 'scales',     label: '의지 · 이해도', icon: '📊' },
-  { key: 'situation',  label: '특이 상황',   icon: '📌' },
-]
-
 export default function StaffForm({ value, onChange }) {
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
   const [sliders, setSliders] = useState(DEFAULT_SLIDERS)
-  const [tab, setTab] = useState('traits')
 
   useEffect(() => { loadConfig() }, [])
 
@@ -48,103 +41,87 @@ export default function StaffForm({ value, onChange }) {
 
   return (
     <div>
-      <div style={tabBarStyle}>
-        {CONSULT_TABS.map(({ key, label, icon }) => (
-          <button key={key} onClick={() => setTab(key)} style={tabStyle(tab === key)}>
-            <span style={{ marginRight: '6px' }}>{icon}</span>{label}
-          </button>
+      {/* 환자 성향 */}
+      <div style={blockStyle}>
+        <div style={blockTitleStyle}>🎭 환자 성향</div>
+        {Object.entries(categories).map(([key, { label, options }]) => (
+          <div key={key} style={{ marginBottom: '14px' }}>
+            <div style={sectionLabelStyle}>{label}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {options.map((opt) => {
+                const selected = (value[key] || []).includes(opt)
+                return (
+                  <button
+                    key={opt}
+                    onClick={() => toggleOption(key, opt)}
+                    style={chipStyle(selected)}
+                  >
+                    {opt}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
         ))}
       </div>
 
-      {tab === 'traits' && (
-        <div>
-          {Object.entries(categories).map(([key, { label, options }]) => (
-            <div key={key} style={{ marginBottom: '16px' }}>
-              <div style={sectionLabelStyle}>{label}</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {options.map((opt) => {
-                  const selected = (value[key] || []).includes(opt)
-                  return (
-                    <button
-                      key={opt}
-                      onClick={() => toggleOption(key, opt)}
-                      style={chipStyle(selected)}
-                    >
-                      {opt}
-                    </button>
-                  )
-                })}
-              </div>
+      {/* 의지 · 이해도 */}
+      <div style={blockStyle}>
+        <div style={blockTitleStyle}>📊 의지 · 이해도</div>
+        {Object.entries(sliders).map(([key, { label, min, max }]) => (
+          <div key={key} style={{ marginBottom: '18px' }}>
+            <div style={sectionLabelStyle}>
+              {label}: <span style={{ color: '#7c3aed' }}>{value[key] || 3}</span>/5
             </div>
-          ))}
-        </div>
-      )}
-
-      {tab === 'scales' && (
-        <div>
-          {Object.entries(sliders).map(([key, { label, min, max }]) => (
-            <div key={key} style={{ marginBottom: '20px' }}>
-              <div style={sectionLabelStyle}>
-                {label}: <span style={{ color: '#7c3aed' }}>{value[key] || 3}</span>/5
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{ fontSize: '11px', color: '#9ca3af', minWidth: '90px', textAlign: 'right' }}>{min}</span>
-                <input
-                  type="range" min="1" max="5"
-                  value={value[key] || 3}
-                  onChange={(e) => onChange({ ...value, [key]: parseInt(e.target.value) })}
-                  style={{ flex: 1, accentColor: '#7c3aed' }}
-                />
-                <span style={{ fontSize: '11px', color: '#9ca3af', minWidth: '90px' }}>{max}</span>
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '11px', color: '#9ca3af', minWidth: '90px', textAlign: 'right' }}>{min}</span>
+              <input
+                type="range" min="1" max="5"
+                value={value[key] || 3}
+                onChange={(e) => onChange({ ...value, [key]: parseInt(e.target.value) })}
+                style={{ flex: 1, accentColor: '#7c3aed' }}
+              />
+              <span style={{ fontSize: '11px', color: '#9ca3af', minWidth: '90px' }}>{max}</span>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
 
-      {tab === 'situation' && (
-        <div>
-          <div style={sectionLabelStyle}>
-            특이 상황 (자유 입력)
-          </div>
-          <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '8px' }}>
-            예: "충남 거주, 주말만 내원 가능" / "가족 동반 상담 원함" / "비용 분할 문의" / "직장 스케줄로 저녁만 가능"
-          </div>
-          <textarea
-            placeholder="진단/치료 외에 AI가 문체 결정 시 반영할 정보를 자유롭게 입력..."
-            value={value.specialCircumstances || ''}
-            onChange={(e) => onChange({ ...value, specialCircumstances: e.target.value })}
-            style={{
-              width: '100%', minHeight: '160px', padding: '12px 14px',
-              border: '1px solid #d1d5db', borderRadius: '10px',
-              fontSize: '14px', resize: 'vertical', fontFamily: 'inherit',
-              boxSizing: 'border-box', lineHeight: 1.6,
-            }}
-          />
+      {/* 특이 상황 */}
+      <div style={{ ...blockStyle, borderBottom: 'none', paddingBottom: 0 }}>
+        <div style={blockTitleStyle}>📌 특이 상황</div>
+        <div style={{ fontSize: '12px', color: '#6b7280', marginBottom: '8px' }}>
+          예: "충남 거주, 주말만 내원 가능" / "가족 동반 상담 원함" / "비용 분할 문의" / "직장 스케줄로 저녁만 가능"
         </div>
-      )}
+        <textarea
+          placeholder="진단/치료 외에 AI가 문체 결정 시 반영할 정보를 자유롭게 입력..."
+          value={value.specialCircumstances || ''}
+          onChange={(e) => onChange({ ...value, specialCircumstances: e.target.value })}
+          style={{
+            width: '100%', minHeight: '120px', padding: '12px 14px',
+            border: '1px solid #d1d5db', borderRadius: '10px',
+            fontSize: '14px', resize: 'vertical', fontFamily: 'inherit',
+            boxSizing: 'border-box', lineHeight: 1.6,
+          }}
+        />
+      </div>
     </div>
   )
 }
 
-const tabBarStyle = {
-  display: 'flex',
-  gap: '4px',
+const blockStyle = {
+  paddingBottom: '20px',
   marginBottom: '20px',
-  background: '#f3f4f6',
-  borderRadius: '12px',
-  padding: '4px',
+  borderBottom: '1px solid #f0ece4',
 }
 
-const tabStyle = (active) => ({
-  flex: 1, padding: '10px 16px', borderRadius: '10px', border: 'none',
-  background: active ? '#fff' : 'transparent',
-  color: active ? '#1f2937' : '#9ca3af',
-  fontSize: '14px', fontWeight: active ? 600 : 400,
-  cursor: 'pointer',
-  boxShadow: active ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-  transition: 'all 0.15s',
-})
+const blockTitleStyle = {
+  fontSize: '15px',
+  fontWeight: 700,
+  color: '#1a1a18',
+  marginBottom: '14px',
+  letterSpacing: '0.02em',
+}
 
 const sectionLabelStyle = {
   fontSize: '13px', fontWeight: 600, color: '#6b7280', marginBottom: '8px',
