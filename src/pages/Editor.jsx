@@ -415,10 +415,20 @@ const btnStyle = (color) => ({
 })
 
 const headerS = {
-  bar: { display: 'flex', alignItems: 'center', padding: '10px 20px', background: '#fff', borderBottom: '1px solid #e5e7eb', gap: '16px', flexShrink: 0, zIndex: 10 },
-  left: { display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' },
-  steps: { display: 'flex', alignItems: 'center', gap: '4px', flex: 1, justifyContent: 'center' },
-  right: { display: 'flex', gap: '8px', alignItems: 'center' },
+  bar: {
+    display: 'grid',
+    gridTemplateColumns: '1fr auto 1fr',
+    alignItems: 'center',
+    padding: '10px 20px',
+    background: '#fff',
+    borderBottom: '1px solid #e5e7eb',
+    gap: '16px',
+    flexShrink: 0,
+    zIndex: 10,
+  },
+  left: { display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', justifySelf: 'start', minWidth: 0 },
+  steps: { display: 'flex', alignItems: 'center', gap: '4px', justifySelf: 'center', whiteSpace: 'nowrap' },
+  right: { display: 'flex', gap: '8px', alignItems: 'center', justifySelf: 'end', minWidth: 0 },
 }
 
 const bannerS = {
