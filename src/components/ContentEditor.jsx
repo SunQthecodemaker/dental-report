@@ -47,31 +47,66 @@ export default function ContentEditor({ original, edited, onChange, onUploadingC
     return () => { if (commitRef) commitRef.current = null }
   }, [commitRef, edited, onChange])
 
-  // 최초 1회만 innerHTML 설정 (이후에는 cursor 점프 방지 위해 React가 건드리지 않음)
+  // 최초 1회만 innerHTML 설정 + 레거시 데이터 자동 복구 (unnest + 종횡비로 타입 판정)
   useEffect(() => {
     if (!editorRef.current || bodyInitialized.current) return
     editorRef.current.innerHTML = edited?.body || ''
-    // 중첩된 figure 자동 unnest (레거시 데이터 복구)
+
+    // 1) 중첩된 figure 자동 unnest
     const nested = editorRef.current.querySelectorAll('figure figure')
-    let didUnnest = false
+    let didModify = false
     nested.forEach(nestedFig => {
-      const outerFig = nestedFig.parentElement?.closest('figure:not(:scope)')
-      const outer = nestedFig.closest('figure').parentElement
-      // 단순화: 중첩된 figure를 바로 위 figure 뒤로 이동
-      const top = nestedFig.parentElement
-      let cur = top
+      let cur = nestedFig.parentElement
       while (cur && cur.tagName !== 'FIGURE') cur = cur.parentElement
-      // cur는 nested의 조상 figure
       if (cur && cur.parentElement) {
         cur.parentElement.insertBefore(nestedFig, cur.nextSibling)
-        didUnnest = true
+        didModify = true
       }
     })
-    if (didUnnest) {
-      // 정리된 HTML을 state에 반영
-      const html = editorRef.current.innerHTML
-      onChange({ ...edited, body: html })
+
+    // 2) data-phototype 없는 figure는 이미지 종횡비로 자동 판정
+    const unclassified = Array.from(editorRef.current.querySelectorAll('figure:not([data-phototype])'))
+    const classifyRatio = (ratio) => {
+      if (ratio > 1.8) return { type: 'panorama', orient: 'wide' }
+      if (ratio < 0.9) return { type: 'cephalogram', orient: 'portrait' }
+      if (ratio > 1.2) return { type: 'intraoral', orient: 'landscape' }
+      return { type: 'intraoral', orient: 'square' }
     }
+    const imgJobs = unclassified.map(fig => {
+      const img = fig.querySelector('img')
+      if (!img) return null
+      return new Promise(resolve => {
+        const finish = () => {
+          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+            const r = img.naturalWidth / img.naturalHeight
+            const { type, orient } = classifyRatio(r)
+            fig.setAttribute('data-phototype', type)
+            img.setAttribute('data-phototype', type)
+            if (!img.getAttribute('data-orient')) img.setAttribute('data-orient', orient)
+            if (!fig.getAttribute('data-orient')) fig.setAttribute('data-orient', orient)
+            resolve(true)
+          } else {
+            resolve(false)
+          }
+        }
+        if (img.complete) finish()
+        else { img.addEventListener('load', finish, { once: true }); img.addEventListener('error', () => resolve(false), { once: true }) }
+      })
+    }).filter(Boolean)
+
+    const flush = () => {
+      if (!editorRef.current) return
+      onChange({ ...edited, body: editorRef.current.innerHTML })
+    }
+
+    if (imgJobs.length > 0) {
+      Promise.all(imgJobs).then(results => {
+        if (results.some(Boolean) || didModify) flush()
+      })
+    } else if (didModify) {
+      flush()
+    }
+
     bodyInitialized.current = true
   }, [edited, onChange])
 

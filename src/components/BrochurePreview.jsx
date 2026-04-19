@@ -147,7 +147,14 @@ function readFigure(fig) {
   const src = img?.getAttribute('src') || ''
   const caption = (cap?.textContent || '').trim()
   const orient = img?.getAttribute('data-orient') || fig.getAttribute('data-orient') || ''
-  const phototype = img?.getAttribute('data-phototype') || fig.getAttribute('data-phototype') || detectPhotoTypeFromCaption(caption)
+  // 종횡비 기반 폴백 판정 (이미지가 이미 로드된 경우만)
+  let phototype = img?.getAttribute('data-phototype') || fig.getAttribute('data-phototype') || detectPhotoTypeFromCaption(caption)
+  if (!phototype && img && img.naturalWidth > 0 && img.naturalHeight > 0) {
+    const r = img.naturalWidth / img.naturalHeight
+    if (r > 1.8) phototype = 'panorama'
+    else if (r < 0.9) phototype = 'cephalogram'
+    else phototype = 'intraoral'
+  }
   return { src, caption, orient, phototype }
 }
 
