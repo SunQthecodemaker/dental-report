@@ -4,7 +4,7 @@ import StaffForm from '../components/StaffForm'
 import ClinicalForm, { getEmptyClinicalForm, buildAutoSummary } from '../components/ClinicalForm'
 import ContentEditor from '../components/ContentEditor'
 import BrochurePreview from '../components/BrochurePreview'
-import { composeReport, saveCorrections, migrateToNewFormat } from '../lib/gemini'
+import { composeReport, saveCorrections, migrateToNewFormat, extractImagesBySection, reinsertImagesBySection } from '../lib/gemini'
 import { supabase } from '../lib/supabase'
 import { getByChartNumber, updateReport, acquireLock, releaseLock, isOtherPcEditing, PROGRESS_STAGES, STEP_TO_STAGE } from '../lib/reports'
 import { getPcLabel } from '../lib/session'
@@ -146,9 +146,17 @@ export default function Editor() {
   const handleComposeAndNext = async () => {
     setIsComposing(true)
     try {
+      // 기존 body에 삽입된 사진을 섹션별로 보존 (AI 재호출 시 분실 방지)
+      const preservedImages = extractImagesBySection(editedContent?.body || '')
+
       const result = await composeReport({ summary, staffForm })
-      setRefinedContent(result)
-      setEditedContent(JSON.parse(JSON.stringify(result)))
+
+      // 새 body에 이전 섹션별 사진 재삽입
+      const mergedBody = reinsertImagesBySection(result.body || '', preservedImages)
+      const merged = { ...result, body: mergedBody }
+
+      setRefinedContent(merged)
+      setEditedContent(JSON.parse(JSON.stringify(merged)))
       setStep(3)
     } catch (err) {
       alert('AI 작성 실패: ' + err.message)

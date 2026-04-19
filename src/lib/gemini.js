@@ -239,6 +239,132 @@ body HTML은 **치성 → 골격 → 치료계획 → 추가사항** 순서, 비
   }
 }
 
+/**
+ * 기존 body HTML에서 섹션별(h2 기준) figure/img를 수집
+ * AI 재호출 시 새 body에 다시 주입하기 위함
+ * 반환: { '치성 관계': ['<figure>...</figure>', '<img>'], '골격 관계': [...] }
+ */
+export function extractImagesBySection(html) {
+  if (!html || typeof html !== 'string') return {}
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(`<div id="root">${html}</div>`, 'text/html')
+    const root = doc.getElementById('root')
+    if (!root) return {}
+
+    const result = {}
+    let curTitle = '__PREAMBLE__'
+    let curItems = []
+
+    const pushIf = () => {
+      if (curItems.length) {
+        if (!result[curTitle]) result[curTitle] = []
+        result[curTitle].push(...curItems)
+      }
+    }
+
+    for (const node of Array.from(root.childNodes)) {
+      if (node.nodeType === 1 && node.tagName === 'H2') {
+        pushIf()
+        curTitle = node.textContent.trim()
+        curItems = []
+        continue
+      }
+      if (node.nodeType !== 1) continue
+
+      if (node.tagName === 'FIGURE') {
+        curItems.push(node.outerHTML)
+      } else if (node.tagName === 'IMG') {
+        curItems.push(node.outerHTML)
+      } else {
+        // 하위에 figure/img가 있으면 꺼내기
+        const innerFigs = node.querySelectorAll('figure')
+        const innerImgs = node.querySelectorAll('img')
+        innerFigs.forEach(f => curItems.push(f.outerHTML))
+        innerImgs.forEach(img => {
+          if (img.closest('figure')) return
+          curItems.push(img.outerHTML)
+        })
+      }
+    }
+    pushIf()
+    return result
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * 새 body HTML에 이전 섹션별 이미지를 재삽입
+ * - 같은 h2 타이틀이 새 body에 있으면 해당 섹션 끝에 붙임
+ * - 새 body에 없는 섹션은 맨 뒤에 h2+이미지 블록으로 추가 (분실 방지)
+ */
+export function reinsertImagesBySection(newHtml, imagesBySection) {
+  const map = imagesBySection || {}
+  const hasAny = Object.values(map).some(arr => arr && arr.length)
+  if (!hasAny) return newHtml || ''
+
+  try {
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(`<div id="root">${newHtml || ''}</div>`, 'text/html')
+    const root = doc.getElementById('root')
+    if (!root) return newHtml || ''
+
+    // h2 기준 섹션 그룹화
+    const sections = []
+    let cur = { title: null, nodes: [] }
+    for (const node of Array.from(root.childNodes)) {
+      if (node.nodeType === 1 && node.tagName === 'H2') {
+        if (cur.title || cur.nodes.length) sections.push(cur)
+        cur = { title: node.textContent.trim(), nodes: [] }
+      } else {
+        cur.nodes.push(node)
+      }
+    }
+    if (cur.title || cur.nodes.length) sections.push(cur)
+
+    const usedTitles = new Set()
+    const rebuilt = []
+
+    // preamble 영역(타이틀 없는 맨 앞)에는 __PREAMBLE__ 이미지 합치기
+    if (sections.length && !sections[0].title) {
+      const s0 = sections[0]
+      const parts = s0.nodes.map(n => n.nodeType === 1 ? n.outerHTML : (n.textContent || ''))
+      if (map['__PREAMBLE__']?.length) parts.push(...map['__PREAMBLE__'])
+      rebuilt.push(parts.join(''))
+      sections.shift()
+    } else if (map['__PREAMBLE__']?.length) {
+      rebuilt.push(map['__PREAMBLE__'].join(''))
+    }
+
+    for (const sec of sections) {
+      const parts = []
+      if (sec.title) parts.push(`<h2>${escapeHtml(sec.title)}</h2>`)
+      for (const n of sec.nodes) {
+        if (n.nodeType === 1) parts.push(n.outerHTML)
+        else if (n.nodeType === 3) parts.push(n.textContent || '')
+      }
+      if (sec.title && map[sec.title]?.length) {
+        parts.push(...map[sec.title])
+        usedTitles.add(sec.title)
+      }
+      rebuilt.push(parts.join(''))
+    }
+
+    // 새 body에 없는 섹션의 이미지는 분실 방지를 위해 맨 뒤에 추가
+    for (const [title, items] of Object.entries(map)) {
+      if (title === '__PREAMBLE__') continue
+      if (usedTitles.has(title)) continue
+      if (!items?.length) continue
+      rebuilt.push(`<h2>${escapeHtml(title)}</h2>` + items.join(''))
+    }
+
+    return rebuilt.join('')
+  } catch {
+    return newHtml || ''
+  }
+}
+
 export function getEmptyDraft() {
   return {
     body: '',
