@@ -21,7 +21,7 @@ function detectPhotoType(caption) {
   return 'other'
 }
 
-export default function ContentEditor({ original, edited, onChange, onUploadingChange }) {
+export default function ContentEditor({ original, edited, onChange, onUploadingChange, commitRef }) {
   const editorRef = useRef(null)
   const inputTimerRef = useRef(null)
   const [uploading, setUploading] = useState(false)
@@ -32,6 +32,20 @@ export default function ContentEditor({ original, edited, onChange, onUploadingC
   useEffect(() => {
     onUploadingChange?.(uploading)
   }, [uploading, onUploadingChange])
+
+  // 외부에서 commit 강제 호출 가능하도록 ref 노출 (디자인하기 버튼 flush용)
+  useEffect(() => {
+    if (commitRef) {
+      commitRef.current = () => {
+        if (inputTimerRef.current) { clearTimeout(inputTimerRef.current); inputTimerRef.current = null }
+        if (!editorRef.current) return null
+        const html = editorRef.current.innerHTML
+        onChange({ ...edited, body: html })
+        return html
+      }
+    }
+    return () => { if (commitRef) commitRef.current = null }
+  }, [commitRef, edited, onChange])
 
   // 최초 1회만 innerHTML 설정 (이후에는 cursor 점프 방지 위해 React가 건드리지 않음)
   useEffect(() => {

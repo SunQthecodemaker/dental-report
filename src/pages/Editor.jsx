@@ -51,6 +51,8 @@ export default function Editor() {
   const [isSaving, setIsSaving] = useState(false)
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
   const [savedLink, setSavedLink] = useState(null)
+  const [designerKey, setDesignerKey] = useState(0)  // 디자인하기 누를 때마다 증가 → 브로셔 강제 remount
+  const editorCommitRef = useRef(null)
 
   const [saveState, setSaveState] = useState('idle')
   const [lastSavedAt, setLastSavedAt] = useState(null)
@@ -252,6 +254,14 @@ export default function Editor() {
     if (document.activeElement instanceof HTMLElement) {
       try { document.activeElement.blur() } catch { /* noop */ }
     }
+    // ContentEditor의 최신 innerHTML을 강제로 state에 밀어넣음
+    if (editorCommitRef.current) {
+      try { editorCommitRef.current() } catch { /* noop */ }
+    }
+    // 디자인하기(→4)로 이동이면 브로셔 강제 remount
+    if (num === 4) {
+      setDesignerKey(k => k + 1)
+    }
     // 약간의 지연 후 setStep (commit이 동기 setState를 스케줄할 시간 부여)
     setTimeout(() => setStep(num), 0)
   }
@@ -352,7 +362,7 @@ export default function Editor() {
               <div style={infoBoxS.green}>
                 ✨ AI가 정리 소스와 환자 성향을 반영해 작성했습니다. 내용을 최종 확인·수정하세요.
               </div>
-              <ContentEditor original={refinedContent} edited={editedContent} onChange={setEditedContent} onUploadingChange={setIsUploadingPhoto} />
+              <ContentEditor original={refinedContent} edited={editedContent} onChange={setEditedContent} onUploadingChange={setIsUploadingPhoto} commitRef={editorCommitRef} />
               <button
                 onClick={() => changeStep(4)}
                 disabled={isUploadingPhoto}
@@ -384,6 +394,7 @@ export default function Editor() {
           <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
             <div style={{ width: '100%', maxWidth: '800px', background: '#fff', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
               <BrochurePreview
+                key={designerKey}
                 patientName={report.patient_name}
                 consultDate={report.consult_date}
                 content={editedContent}
