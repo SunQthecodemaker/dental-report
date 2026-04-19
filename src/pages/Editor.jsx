@@ -353,8 +353,17 @@ export default function Editor() {
                 ✨ AI가 정리 소스와 환자 성향을 반영해 작성했습니다. 내용을 최종 확인·수정하세요.
               </div>
               <ContentEditor original={refinedContent} edited={editedContent} onChange={setEditedContent} onUploadingChange={setIsUploadingPhoto} />
-              <button onClick={() => setStep(4)} style={{ ...btnStyle('#c45c5c'), width: '100%', padding: '16px', fontSize: '18px', fontWeight: 700, marginTop: '16px' }}>
-                다음: 진단서 디자이너 →
+              <button
+                onClick={() => changeStep(4)}
+                disabled={isUploadingPhoto}
+                style={{
+                  ...btnStyle('#c45c5c'),
+                  width: '100%', padding: '16px', fontSize: '18px', fontWeight: 700, marginTop: '16px',
+                  opacity: isUploadingPhoto ? 0.55 : 1,
+                  cursor: isUploadingPhoto ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {isUploadingPhoto ? '📤 사진 업로드 중... 완료 후 이동됩니다' : '다음: 진단서 디자이너 →'}
               </button>
             </div>
             <div style={{ width: '420px', background: '#1a1a18', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px', overflow: 'auto', flexShrink: 0 }}>
