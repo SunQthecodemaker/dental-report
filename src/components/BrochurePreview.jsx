@@ -406,12 +406,12 @@ const S = {
   empty: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px', color: '#9ca3af', fontSize: '14px', textAlign: 'center', padding: '40px', fontFamily: FONTS.kor },
   page: { fontFamily: FONTS.kor, color: C.ink, lineHeight: 1.95, background: C.paper, WebkitFontSmoothing: 'antialiased' },
 
-  // COVER
+  // COVER — 고정 높이(뷰포트 의존 제거)
   cover: {
-    minHeight: '100vh', background: C.ivory, padding: '60px 48px',
+    minHeight: 560, background: C.ivory, padding: '80px 48px',
     display: 'grid', gridTemplateRows: 'auto 1fr auto', position: 'relative',
   },
-  coverBorder: { position: 'absolute', top: 60, left: 48, right: 48, bottom: 60, border: `1px solid ${C.line}`, pointerEvents: 'none' },
+  coverBorder: { position: 'absolute', top: 80, left: 48, right: 48, bottom: 80, border: `1px solid ${C.line}`, pointerEvents: 'none' },
   coverTop: { display: 'flex', justifyContent: 'space-between', padding: '24px 28px', fontFamily: FONTS.sans, fontSize: 10, letterSpacing: '0.35em', color: C.gold, textTransform: 'uppercase', position: 'relative', zIndex: 1 },
   coverCenter: { display: 'grid', placeItems: 'center', textAlign: 'center', padding: '0 28px', position: 'relative', zIndex: 1 },
   coverEyebrow: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 16, color: C.mid, marginBottom: 24 },
