@@ -191,3 +191,12 @@ input, textarea, button, select {
   .v4-grid3 { gap: 8px; }
   .v4-grid3-text { padding: 4px; }
 }
+
+/* ══ 브로셔 반응형 보정 ══ */
+/* 루트: 가로 overflow 방지 (figFull negative margin이 우측으로 튀어나가는 것 차단) */
+html, body { overflow-x: clip; }
+
+/* 매우 좁은 화면(≤360px): coverName nowrap이 넘치면 자동 축소 */
+@media (max-width: 360px) {
+  .brochure-cover-name { font-size: clamp(32px, 10vw, 40px) !important; }
+}

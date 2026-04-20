@@ -255,7 +255,7 @@ function Cover({ patientName, consultDate, v }) {
         <div style={S.coverRule} />
         <div style={S.coverTitle}>
           <span style={S.coverFor}>for</span>
-          <span style={S.coverName}>{patientName || '○○○'}</span>
+          <span className="brochure-cover-name" style={S.coverName}>{patientName || '○○○'}</span>
         </div>
         <div style={S.coverVolume}>VOL. 01 · 초진 상담 결과서</div>
       </div>
@@ -717,89 +717,136 @@ const FONTS = {
   sans: "'Pretendard', -apple-system, sans-serif",
 }
 
+// 반응형 clamp 기반 토큰
+// ─ 폰트/패딩/간격은 뷰포트(vw)에 비례, min/max는 가독성·디자인 보존
+const SP = {
+  // 섹션 좌우 패딩
+  pageX: 'clamp(20px, 6vw, 48px)',
+  pageY: 'clamp(40px, 9vw, 72px)',
+  // Cover 안쪽 장식 여백
+  coverPad: 'clamp(40px, 9vw, 80px) clamp(20px, 6vw, 48px)',
+  coverBorderInset: 'clamp(40px, 9vw, 80px) clamp(20px, 6vw, 48px)',
+  coverFramePad: 'clamp(14px, 3vw, 24px) clamp(14px, 3vw, 28px)',
+  coverCenterPad: '0 clamp(14px, 3vw, 28px)',
+  // Note / Footer
+  notePad: 'clamp(48px, 12vw, 96px) clamp(20px, 6vw, 48px)',
+  footerPad: 'clamp(24px, 6vw, 48px)',
+  // 사진 풀폭 margin (섹션 좌우 패딩 역(逆)만큼)
+  figFullMargin: '0 calc(-1 * clamp(20px, 6vw, 48px)) 24px',
+}
+
+const FS = {
+  // 본문·레이블
+  label: 'clamp(9px, 2.2vw, 10px)',
+  caption: 'clamp(12px, 3vw, 13px)',
+  body: 'clamp(14px, 3.8vw, 15px)',
+  // 강조
+  noteQuote: 'clamp(16px, 5vw, 22px)',
+  planEffect: 'clamp(15px, 4.5vw, 18px)',
+  // 헤딩
+  planTitle: 'clamp(18px, 5vw, 24px)',
+  secKr: 'clamp(20px, 5vw, 28px)',
+  planRoman: 'clamp(32px, 9vw, 48px)',
+  secNum: 'clamp(52px, 15vw, 96px)',
+  // Cover 디스플레이
+  coverName: 'clamp(40px, 11vw, 68px)',
+  coverFor: 'clamp(22px, 5vw, 30px)',
+  coverEyebrow: 'clamp(13px, 3vw, 16px)',
+  coverDate: 'clamp(14px, 4vw, 20px)',
+  // Footer
+  footerBrand: 'clamp(20px, 5vw, 26px)',
+}
+
+// letterSpacing: 좁은 화면에서 와이드-spacing이 줄바꿈 유발 → 축소
+const LS = {
+  tightWide: 'clamp(0.18em, 0.6vw, 0.35em)',
+  mediumWide: 'clamp(0.22em, 0.8vw, 0.4em)',
+  looseWide: 'clamp(0.28em, 1vw, 0.5em)',
+}
+
 const S = {
   empty: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px', color: '#9ca3af', fontSize: '14px', textAlign: 'center', padding: '40px', fontFamily: FONTS.kor },
   page: { fontFamily: FONTS.kor, color: C.ink, lineHeight: 1.95, background: C.paper, WebkitFontSmoothing: 'antialiased' },
 
-  // COVER — 고정 높이(뷰포트 의존 제거)
+  // COVER — 고정 높이(뷰포트 의존 제거) + 반응형 내부
   cover: {
-    minHeight: 560, background: C.ivory, padding: '80px 48px',
+    minHeight: 560, background: C.ivory, padding: SP.coverPad,
     display: 'grid', gridTemplateRows: 'auto 1fr auto', position: 'relative',
   },
-  coverBorder: { position: 'absolute', top: 80, left: 48, right: 48, bottom: 80, border: `1px solid ${C.line}`, pointerEvents: 'none' },
-  coverTop: { display: 'flex', justifyContent: 'space-between', padding: '24px 28px', fontFamily: FONTS.sans, fontSize: 10, letterSpacing: '0.35em', color: C.gold, textTransform: 'uppercase', position: 'relative', zIndex: 1 },
-  coverCenter: { display: 'grid', placeItems: 'center', textAlign: 'center', padding: '0 28px', position: 'relative', zIndex: 1 },
-  coverEyebrow: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 16, color: C.mid, marginBottom: 24 },
-  coverRule: { width: 1, height: 56, background: C.gold, marginBottom: 24 },
-  coverTitle: { fontFamily: FONTS.serif, fontWeight: 400, lineHeight: 0.9, color: C.dark, display: 'flex', flexDirection: 'column', alignItems: 'center' },
-  coverFor: { fontStyle: 'italic', fontSize: 30, color: C.gold, marginBottom: 14 },
-  coverName: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: 68, letterSpacing: '0.04em' },
-  coverVolume: { marginTop: 32, fontFamily: FONTS.sans, fontSize: 10, letterSpacing: '0.4em', color: C.mid, textTransform: 'uppercase' },
-  coverBottom: { display: 'flex', justifyContent: 'space-between', padding: '24px 28px', fontFamily: FONTS.sans, fontSize: 10, letterSpacing: '0.35em', color: C.gold, textTransform: 'uppercase', position: 'relative', zIndex: 1 },
-  coverDate: { fontFamily: FONTS.serif, fontWeight: 300, fontSize: 20, color: C.dark, letterSpacing: 0, textTransform: 'none' },
+  coverBorder: { position: 'absolute', inset: SP.coverBorderInset, border: `1px solid ${C.line}`, pointerEvents: 'none' },
+  coverTop: { display: 'flex', justifyContent: 'space-between', padding: SP.coverFramePad, fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.tightWide, color: C.gold, textTransform: 'uppercase', position: 'relative', zIndex: 1 },
+  coverCenter: { display: 'grid', placeItems: 'center', textAlign: 'center', padding: SP.coverCenterPad, position: 'relative', zIndex: 1 },
+  coverEyebrow: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.coverEyebrow, color: C.mid, marginBottom: 'clamp(14px, 3vw, 24px)' },
+  coverRule: { width: 1, height: 'clamp(32px, 8vw, 56px)', background: C.gold, marginBottom: 'clamp(14px, 3vw, 24px)' },
+  coverTitle: { fontFamily: FONTS.serif, fontWeight: 400, lineHeight: 0.9, color: C.dark, display: 'flex', flexDirection: 'column', alignItems: 'center', maxWidth: '100%' },
+  coverFor: { fontStyle: 'italic', fontSize: FS.coverFor, color: C.gold, marginBottom: 'clamp(8px, 2vw, 14px)' },
+  coverName: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.coverName, letterSpacing: '0.04em', wordBreak: 'keep-all', whiteSpace: 'nowrap' },
+  coverVolume: { marginTop: 'clamp(18px, 5vw, 32px)', fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.mediumWide, color: C.mid, textTransform: 'uppercase' },
+  coverBottom: { display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', gap: 'clamp(6px, 2vw, 16px)', padding: SP.coverFramePad, fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.tightWide, color: C.gold, textTransform: 'uppercase', position: 'relative', zIndex: 1 },
+  coverDate: { fontFamily: FONTS.serif, fontWeight: 300, fontSize: FS.coverDate, color: C.dark, letterSpacing: 0, textTransform: 'none', whiteSpace: 'nowrap' },
 
   // 공통 섹션
-  sec: { padding: '72px 48px 64px', borderBottom: `1px solid ${C.line}` },
-  secPlan: { padding: '72px 48px', background: C.ivory, borderBottom: `1px solid ${C.line}` },
+  sec: { padding: `${SP.pageY} ${SP.pageX}`, borderBottom: `1px solid ${C.line}` },
+  secPlan: { padding: `${SP.pageY} ${SP.pageX}`, background: C.ivory, borderBottom: `1px solid ${C.line}` },
 
-  secHead: { display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 32, paddingBottom: 28, marginBottom: 40, borderBottom: `1px solid ${C.line}` },
-  secHeadCenter: { maxWidth: 720, margin: '0 auto 40px' },
-  secNum: { fontFamily: FONTS.serif, fontWeight: 300, fontStyle: 'italic', fontSize: 96, lineHeight: 0.82, color: C.gold, letterSpacing: '-0.04em' },
-  secLabels: { textAlign: 'right', flex: 1 },
-  secEn: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 14, color: C.mid, letterSpacing: '0.04em', marginBottom: 6 },
-  secKr: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: 28, color: C.ink, letterSpacing: '-0.01em' },
+  secHead: { display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 'clamp(12px, 3vw, 32px)', paddingBottom: 'clamp(18px, 4vw, 28px)', marginBottom: 'clamp(24px, 5vw, 40px)', borderBottom: `1px solid ${C.line}` },
+  secHeadCenter: { maxWidth: 720, margin: '0 auto clamp(24px, 5vw, 40px)' },
+  secNum: { fontFamily: FONTS.serif, fontWeight: 300, fontStyle: 'italic', fontSize: FS.secNum, lineHeight: 0.82, color: C.gold, letterSpacing: '-0.04em' },
+  secLabels: { textAlign: 'right', flex: 1, minWidth: 0 },
+  secEn: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.caption, color: C.mid, letterSpacing: '0.04em', marginBottom: 6 },
+  secKr: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.secKr, color: C.ink, letterSpacing: '-0.01em' },
 
   // 사진 — 크롭 금지: 자연 비율 유지
   photos: { marginBottom: 40 },
-  figFull: { margin: '0 -48px 24px' },
+  figFull: { margin: SP.figFullMargin },
   figSolo: { margin: '0 0 24px', textAlign: 'center' },
   figCenter: { maxWidth: 480, margin: '0 auto 24px' },
   figGrid: { margin: 0 },
-  grid2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, alignItems: 'start' },
+  grid2: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'clamp(8px, 2vw, 18px)', alignItems: 'start' },
   imgFull: { width: '100%', display: 'block' },
   imgSolo: { maxWidth: '100%', display: 'block', margin: '0 auto', borderRadius: 2 },
   imgPortrait: { maxWidth: '100%', display: 'block', margin: '0 auto', borderRadius: 2 },
   imgGrid: { width: '100%', display: 'block', borderRadius: 2 },
-  figCap: { marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.gold}`, fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 13, lineHeight: 1.7, color: C.mid, textAlign: 'center', letterSpacing: '0.01em' },
+  figCap: { marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.gold}`, fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.caption, lineHeight: 1.7, color: C.mid, textAlign: 'center', letterSpacing: '0.01em' },
 
   // 종합 소견
   summary: { maxWidth: 680, margin: '0 auto', paddingTop: 28, borderTop: `1px solid ${C.line}`, position: 'relative' },
   summaryMark: { position: 'absolute', top: -1, left: '50%', transform: 'translateX(-50%)', width: 72, height: 3, background: C.gold },
   summaryLabel: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginBottom: 22 },
-  summaryEn: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: 10, letterSpacing: '0.4em', color: C.gold, textTransform: 'uppercase' },
-  summaryKr: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: 15, color: C.ink, letterSpacing: '0.02em' },
+  summaryEn: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: FS.label, letterSpacing: LS.mediumWide, color: C.gold, textTransform: 'uppercase' },
+  summaryKr: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.body, color: C.ink, letterSpacing: '0.02em' },
   summaryDot: { width: 4, height: 4, background: C.gold, borderRadius: '50%' },
 
   // 치료 계획
-  planBlock: { maxWidth: 720, margin: '0 auto', padding: '56px 0', position: 'relative' },
+  planBlock: { maxWidth: 720, margin: '0 auto', padding: 'clamp(36px, 7vw, 56px) 0', position: 'relative' },
   planBlockDivider: { borderTop: `1px solid ${C.line}` },
-  planTag: { display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 },
-  planRoman: { fontFamily: FONTS.serif, fontStyle: 'italic', fontWeight: 300, fontSize: 48, lineHeight: 1, color: C.gold },
-  planLabel: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: 11, letterSpacing: '0.4em', color: C.gold, textTransform: 'uppercase', borderBottom: `1px solid ${C.gold}`, paddingBottom: 4 },
-  planTitle: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: 24, lineHeight: 1.45, color: C.ink, letterSpacing: '-0.01em', margin: '0 0 32px', maxWidth: 640 },
+  planTag: { display: 'flex', alignItems: 'center', gap: 'clamp(8px, 2vw, 14px)', marginBottom: 14, flexWrap: 'wrap' },
+  planRoman: { fontFamily: FONTS.serif, fontStyle: 'italic', fontWeight: 300, fontSize: FS.planRoman, lineHeight: 1, color: C.gold },
+  planLabel: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: 'clamp(10px, 2.6vw, 11px)', letterSpacing: LS.mediumWide, color: C.gold, textTransform: 'uppercase', borderBottom: `1px solid ${C.gold}`, paddingBottom: 4 },
+  planTitle: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.planTitle, lineHeight: 1.45, color: C.ink, letterSpacing: '-0.01em', margin: '0 0 clamp(18px, 4vw, 32px)', maxWidth: 640 },
   planMethod: { marginBottom: 24 },
-  planMethodHead: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 15, color: C.gold, marginBottom: 10 },
-  planMethodBody: { fontSize: 15, lineHeight: 2.05, color: C.ink2 },
-  planEffect: { padding: '24px 28px', background: C.dark, color: '#fff', position: 'relative' },
-  planEffectHead: { fontFamily: FONTS.sans, fontSize: 10, letterSpacing: '0.4em', color: C.gold, textTransform: 'uppercase', marginBottom: 12 },
-  planEffectQuote: { fontFamily: FONTS.serif, fontStyle: 'italic', fontWeight: 300, fontSize: 18, lineHeight: 1.75, color: 'rgba(255,255,255,0.92)' },
-  planMeta: { marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.line}`, fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 13, color: C.mid },
-  planMetaKey: { fontFamily: FONTS.sans, fontStyle: 'normal', fontWeight: 500, fontSize: 10, letterSpacing: '0.3em', color: C.gold, textTransform: 'uppercase', marginRight: 10 },
-  planFallback: { maxWidth: 720, margin: '0 auto', fontSize: 15, lineHeight: 2, color: C.ink2 },
+  planMethodHead: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.body, color: C.gold, marginBottom: 10 },
+  planMethodBody: { fontSize: FS.body, lineHeight: 2.05, color: C.ink2 },
+  planEffect: { padding: 'clamp(16px, 4vw, 24px) clamp(18px, 4vw, 28px)', background: C.dark, color: '#fff', position: 'relative' },
+  planEffectHead: { fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.mediumWide, color: C.gold, textTransform: 'uppercase', marginBottom: 12 },
+  planEffectQuote: { fontFamily: FONTS.serif, fontStyle: 'italic', fontWeight: 300, fontSize: FS.planEffect, lineHeight: 1.75, color: 'rgba(255,255,255,0.92)' },
+  planMeta: { marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.line}`, fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.caption, color: C.mid },
+  planMetaKey: { fontFamily: FONTS.sans, fontStyle: 'normal', fontWeight: 500, fontSize: FS.label, letterSpacing: '0.3em', color: C.gold, textTransform: 'uppercase', marginRight: 10 },
+  planFallback: { maxWidth: 720, margin: '0 auto', fontSize: FS.body, lineHeight: 2, color: C.ink2 },
 
   // 맞춤 안내
-  note: { padding: '96px 48px', background: C.dark, color: '#fff', textAlign: 'center', position: 'relative' },
-  noteTopRule: { position: 'absolute', top: 40, left: '50%', transform: 'translateX(-50%)', width: 1, height: 64, background: `linear-gradient(to bottom, transparent, ${C.gold})` },
-  noteLabel: { fontFamily: FONTS.sans, fontSize: 10, letterSpacing: '0.5em', color: C.gold, textTransform: 'uppercase', marginBottom: 36 },
-  noteQuote: { fontFamily: FONTS.serif, fontWeight: 300, fontStyle: 'italic', fontSize: 22, lineHeight: 1.8, color: 'rgba(255,255,255,0.92)', maxWidth: 640, margin: '0 auto 24px', whiteSpace: 'pre-wrap' },
-  noteSign: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 14, color: C.goldL },
+  note: { padding: SP.notePad, background: C.dark, color: '#fff', textAlign: 'center', position: 'relative' },
+  noteTopRule: { position: 'absolute', top: 'clamp(20px, 5vw, 40px)', left: '50%', transform: 'translateX(-50%)', width: 1, height: 'clamp(36px, 8vw, 64px)', background: `linear-gradient(to bottom, transparent, ${C.gold})` },
+  noteLabel: { fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.looseWide, color: C.gold, textTransform: 'uppercase', marginBottom: 'clamp(20px, 5vw, 36px)' },
+  noteQuote: { fontFamily: FONTS.serif, fontWeight: 300, fontStyle: 'italic', fontSize: FS.noteQuote, lineHeight: 1.8, color: 'rgba(255,255,255,0.92)', maxWidth: 640, margin: '0 auto 24px', whiteSpace: 'pre-wrap' },
+  noteSign: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.caption, color: C.goldL },
 
   // 푸터
-  footer: { padding: '48px', background: '#0e0e0c', color: '#fff', textAlign: 'center' },
-  footerBrand: { fontFamily: FONTS.serif, fontSize: 26, letterSpacing: '0.1em', marginBottom: 4 },
-  footerTag: { fontFamily: FONTS.sans, fontSize: 10, letterSpacing: '0.4em', color: C.gold, textTransform: 'uppercase', marginBottom: 20 },
-  footerInfo: { fontFamily: FONTS.kor, fontSize: 12, lineHeight: 2, color: 'rgba(255,255,255,0.45)', marginBottom: 20 },
-  cta: { display: 'flex', gap: 8, maxWidth: 420, margin: '0 auto 20px' },
-  ctaBtn: { flex: 1, padding: 12, textAlign: 'center', fontFamily: FONTS.kor, fontSize: 13, fontWeight: 700 },
-  copy: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: 11, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.15em' },
+  footer: { padding: SP.footerPad, background: '#0e0e0c', color: '#fff', textAlign: 'center' },
+  footerBrand: { fontFamily: FONTS.serif, fontSize: FS.footerBrand, letterSpacing: '0.1em', marginBottom: 4 },
+  footerTag: { fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.mediumWide, color: C.gold, textTransform: 'uppercase', marginBottom: 20 },
+  footerInfo: { fontFamily: FONTS.kor, fontSize: FS.caption, lineHeight: 2, color: 'rgba(255,255,255,0.45)', marginBottom: 20 },
+  cta: { display: 'flex', gap: 8, maxWidth: 420, margin: '0 auto 20px', flexWrap: 'wrap' },
+  ctaBtn: { flex: '1 1 160px', padding: 12, textAlign: 'center', fontFamily: FONTS.kor, fontSize: FS.caption, fontWeight: 700 },
+  copy: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.caption, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.15em' },
 }
