@@ -378,19 +378,13 @@ export default function Editor() {
             {report.patient_name}
             <span style={{ color: '#9ca3af', fontWeight: 400, marginLeft: '6px' }}>· {report.chart_number}</span>
           </span>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '12px', color: '#6b7280' }}>
-            <span>상담일</span>
-            <input
-              type="date"
-              value={report.consult_date || ''}
-              onChange={(e) => {
-                const v = e.target.value
-                setReport(r => ({ ...r, consult_date: v }))
-                if (report.id) updateReport(report.id, { consult_date: v }).catch(() => {})
-              }}
-              style={{ padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '12px', color: '#1f2937', background: '#fff' }}
-            />
-          </label>
+          <ConsultDateButton
+            value={report.consult_date}
+            onChange={(v) => {
+              setReport(r => ({ ...r, consult_date: v }))
+              if (report.id) updateReport(report.id, { consult_date: v }).catch(() => {})
+            }}
+          />
           <span style={{ padding: '2px 8px', borderRadius: '10px', background: stage.color, color: '#fff', fontSize: '11px', fontWeight: 600 }}>
             {stage.label}
           </span>
@@ -564,6 +558,54 @@ export default function Editor() {
         />
       )}
     </div>
+  )
+}
+
+function ConsultDateButton({ value, onChange }) {
+  const inputRef = useRef(null)
+  const open = () => {
+    const el = inputRef.current
+    if (!el) return
+    if (typeof el.showPicker === 'function') {
+      try { el.showPicker(); return } catch { /* fallthrough */ }
+    }
+    el.click()
+  }
+  const display = value || '날짜 선택'
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex' }}>
+      <button
+        type="button"
+        onClick={open}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '4px 10px',
+          background: '#fff',
+          border: '1px solid #d1d5db',
+          borderRadius: 6,
+          fontSize: 12,
+          fontWeight: 500,
+          color: value ? '#1f2937' : '#9ca3af',
+          cursor: 'pointer',
+          fontFamily: 'inherit',
+          lineHeight: 1.6,
+        }}
+        title="상담 날짜 선택"
+      >
+        <span style={{ fontSize: 13 }}>📅</span>
+        <span style={{ color: '#6b7280', fontSize: 11 }}>상담일</span>
+        <span>{display}</span>
+      </button>
+      <input
+        ref={inputRef}
+        type="date"
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, pointerEvents: 'none' }}
+        tabIndex={-1}
+        aria-hidden
+      />
+    </span>
   )
 }
 
