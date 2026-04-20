@@ -182,16 +182,15 @@ export default function Dashboard() {
                 placeholder="이름+생일 자동"
               />
             </div>
-          </div>
-
-          <div style={styles.ccGroup}>
-            <label style={styles.label}>상담 날짜</label>
-            <input
-              type="date"
-              value={form.consultDate}
-              onChange={e => setForm({ ...form, consultDate: e.target.value })}
-              style={styles.input}
-            />
+            <div style={{ flex: 1.4 }}>
+              <label style={styles.label}>상담일</label>
+              <input
+                type="date"
+                value={form.consultDate}
+                onChange={e => setForm({ ...form, consultDate: e.target.value })}
+                style={styles.input}
+              />
+            </div>
           </div>
 
           <div style={styles.ccGroup}>

@@ -90,14 +90,27 @@ const ALL_SECTIONS = [
   { key: 'etc',      label: '기타',      items: ETC_ITEMS },
 ]
 
+// 진단 항목 정도(degree): 'severe' | 'mild' | ''  (하위호환: 기존 _severe:true → 'severe')
+function getSeverity(sectionData, key) {
+  const sev = sectionData?.[`${key}_severity`]
+  if (sev === 'severe' || sev === 'mild') return sev
+  if (sectionData?.[`${key}_severe`] === true) return 'severe'
+  return ''
+}
+
+function severityTag(severity) {
+  if (severity === 'severe') return ' (심함)'
+  if (severity === 'mild') return ' (경미)'
+  return ''
+}
+
 function itemValueToText(section, item, value) {
   const v = value[section]?.[item.key]
-  const severe = value[section]?.[`${item.key}_severe`]
-  const severeTag = severe ? ' (심함)' : ''
-  if (item.type === 'text') return v ? `${item.label}: ${v}${severeTag}` : null
-  if (item.type === 'radio') return v ? `${item.label}: ${v}${severeTag}` : null
+  const tag = severityTag(getSeverity(value[section], item.key))
+  if (item.type === 'text') return v ? `${item.label}: ${v}${tag}` : null
+  if (item.type === 'radio') return v ? `${item.label}: ${v}${tag}` : null
   if (item.type === 'checkbox') {
-    if (Array.isArray(v) && v.length > 0) return `${item.label}: ${v.join(', ')}${severeTag}`
+    if (Array.isArray(v) && v.length > 0) return `${item.label}: ${v.join(', ')}${tag}`
     return null
   }
   if (item.type === 'checkbox_text') {
@@ -106,7 +119,7 @@ function itemValueToText(section, item, value) {
     if (arr.length === 0 && !text) return null
     const parts = [...arr]
     if (text) parts.push(text)
-    return `${item.label}: ${parts.join(', ')}${severeTag}`
+    return `${item.label}: ${parts.join(', ')}${tag}`
   }
   return null
 }
@@ -165,10 +178,20 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
     })
   }
 
-  const updateSevere = (section, key, severe) => {
+  // severity: 'severe' | 'mild' | '' — 같은 버튼 재클릭 시 해제
+  const updateSeverity = (section, key, next) => {
+    const currentSev = value[section]?.[`${key}_severity`]
+    const legacySevere = value[section]?.[`${key}_severe`] === true
+    const current = currentSev || (legacySevere ? 'severe' : '')
+    const nextVal = current === next ? '' : next
     onChange({
       ...value,
-      [section]: { ...value[section], [`${key}_severe`]: severe },
+      [section]: {
+        ...value[section],
+        [`${key}_severity`]: nextVal,
+        // legacy boolean 정리
+        [`${key}_severe`]: nextVal === 'severe' ? true : false,
+      },
     })
   }
 
@@ -309,14 +332,25 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
                       })
                     )}
 
-                    {item.severe && hasValue(section.key, item.key, item) && (
-                      <button
-                        onClick={() => updateSevere(section.key, item.key, !value[section.key]?.[`${item.key}_severe`])}
-                        style={severeStyle(value[section.key]?.[`${item.key}_severe`])}
-                      >
-                        심함
-                      </button>
-                    )}
+                    {item.severe && hasValue(section.key, item.key, item) && (() => {
+                      const sev = getSeverity(value[section.key], item.key)
+                      return (
+                        <>
+                          <button
+                            onClick={() => updateSeverity(section.key, item.key, 'mild')}
+                            style={severityStyle(sev === 'mild', 'mild')}
+                          >
+                            경미
+                          </button>
+                          <button
+                            onClick={() => updateSeverity(section.key, item.key, 'severe')}
+                            style={severityStyle(sev === 'severe', 'severe')}
+                          >
+                            심함
+                          </button>
+                        </>
+                      )
+                    })()}
                   </div>
                 </div>
               ))}
@@ -827,18 +861,24 @@ const chipStyle = (selected, color) => ({
   whiteSpace: 'nowrap',
 })
 
-const severeStyle = (active) => ({
-  padding: '3px 10px',
-  borderRadius: '12px',
-  border: active ? '2px solid #dc2626' : '1px dashed #d1d5db',
-  background: active ? '#fef2f2' : 'transparent',
-  color: active ? '#dc2626' : '#9ca3af',
-  fontSize: '11px',
-  fontWeight: '600',
-  cursor: 'pointer',
-  transition: 'all 0.15s',
-  marginLeft: '4px',
-})
+// kind: 'severe' → 빨강, 'mild' → 주황
+const severityStyle = (active, kind) => {
+  const palette = kind === 'severe'
+    ? { fg: '#dc2626', bg: '#fef2f2', border: '#dc2626' }
+    : { fg: '#d97706', bg: '#fffbeb', border: '#d97706' }
+  return {
+    padding: '3px 10px',
+    borderRadius: '12px',
+    border: active ? `2px solid ${palette.border}` : '1px dashed #d1d5db',
+    background: active ? palette.bg : 'transparent',
+    color: active ? palette.fg : '#9ca3af',
+    fontSize: '11px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.15s',
+    marginLeft: '4px',
+  }
+}
 
 const textInputStyle = {
   flex: 1,
