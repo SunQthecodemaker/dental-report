@@ -5,6 +5,8 @@
  * - 치료 계획: 각 계획 독립 블록 (목표 추출 불가시 방법·효과만)
  * - 실 입력 데이터만 렌더 (추측 필드 없음)
  */
+import MarkingOverlay from './MarkingOverlay'
+import { parseMarkingsAttr } from '../lib/markings'
 
 const EN_LABEL = {
   '치성 관계': 'Dental Relationship',
@@ -13,44 +15,55 @@ const EN_LABEL = {
   '추가 사항': 'Additional Notes',
 }
 
-export default function BrochurePreview({ patientName, consultDate, content, photos = [], mode = 'preview', onUpdateCaption, onUpdateNote }) {
+export default function BrochurePreview({ patientName, consultDate, content, photos = [], mode = 'preview', onUpdateCaption, onUpdateNote, onOpenMarker, cases = [], strengths = [] }) {
   const v = mode === 'view' || mode === 'design'
   const design = mode === 'design'
   const bodyHtml = content?.body || ''
   const hasBody = !!bodyHtml && bodyHtml.replace(/<[^>]+>/g, '').trim().length > 0
   const hasNote = !!content?.personalNote
   const hasPhotos = Array.isArray(photos) && photos.length > 0
+  const hasCases = Array.isArray(cases) && cases.length > 0
+  const hasStrengths = Array.isArray(strengths) && strengths.length > 0
 
-  if (!hasBody && !hasNote && !hasPhotos) {
+  if (!hasBody && !hasNote && !hasPhotos && !hasCases && !hasStrengths) {
     return (
       <div style={S.empty}>AI 텍스트를 생성하면<br />여기에 미리보기가 표시됩니다</div>
     )
   }
 
   const sections = parseSections(bodyHtml)
+  // 치료 계획 뒤에 케이스/장점 삽입. 그 뒤 나머지 섹션(예: 추가사항) → 맞춤안내 → 푸터.
+  const tIdx = sections.findIndex(s => s.title === '치료 계획')
+  const secBefore = tIdx >= 0 ? sections.slice(0, tIdx + 1) : sections
+  const secAfter  = tIdx >= 0 ? sections.slice(tIdx + 1) : []
+  const renderSection = (sec, globalNum) => {
+    const num = String(globalNum).padStart(2, '0')
+    const en = EN_LABEL[sec.title] || ''
+    if (sec.title === '치료 계획') {
+      return <TreatmentSection key={`t-${globalNum}`} num={num} en={en} kr={sec.title} summaryHtml={sec.summaryHtml} v={v} />
+    }
+    return (
+      <DiagnosticSection
+        key={`s-${globalNum}`} num={num} en={en} kr={sec.title}
+        figures={sec.figures} summaryHtml={sec.summaryHtml} v={v}
+        design={design} onUpdateCaption={onUpdateCaption} onOpenMarker={onOpenMarker}
+      />
+    )
+  }
+
+  let n = 0
+  const blocks = []
+  for (const sec of secBefore) { n++; blocks.push(renderSection(sec, n)) }
+  if (hasCases)     { n++; blocks.push(<CasesSection    key={`cases-${n}`}     num={String(n).padStart(2, '0')} cases={cases} />) }
+  if (hasStrengths) { n++; blocks.push(<StrengthsSection key={`strengths-${n}`} num={String(n).padStart(2, '0')} strengths={strengths} />) }
+  for (const sec of secAfter)  { n++; blocks.push(renderSection(sec, n)) }
 
   return (
     <div style={S.page}>
       {/* COVER */}
       <Cover patientName={patientName} consultDate={consultDate} v={v} />
 
-      {/* 각 섹션 */}
-      {sections.map((sec, i) => {
-        const num = String(i + 1).padStart(2, '0')
-        const en = EN_LABEL[sec.title] || ''
-        if (sec.title === '치료 계획') {
-          return (
-            <TreatmentSection key={i} num={num} en={en} kr={sec.title} summaryHtml={sec.summaryHtml} v={v} />
-          )
-        }
-        return (
-          <DiagnosticSection
-            key={i} num={num} en={en} kr={sec.title}
-            figures={sec.figures} summaryHtml={sec.summaryHtml} v={v}
-            design={design} onUpdateCaption={onUpdateCaption}
-          />
-        )
-      })}
+      {blocks}
 
       {/* 맞춤 안내 */}
       {hasNote && <PersonalNote patientName={patientName} note={content.personalNote} v={v} design={design} onUpdateNote={onUpdateNote} />}
@@ -155,7 +168,8 @@ function readFigure(fig) {
     else if (r < 0.9) phototype = 'cephalogram'
     else phototype = 'intraoral'
   }
-  return { src, caption, orient, phototype }
+  const markings = parseMarkingsAttr(img?.getAttribute('data-markings') || fig.getAttribute('data-markings'))
+  return { src, caption, orient, phototype, markings }
 }
 
 // 캡션 텍스트로 타입 폴백 판정 (레거시 데이터용)
@@ -247,7 +261,42 @@ function Cover({ patientName, consultDate, v }) {
   )
 }
 
-function DiagnosticSection({ num, en, kr, figures, summaryHtml, v, design, onUpdateCaption }) {
+/**
+ * MarkedImage — 이미지 + 마킹 오버레이 + (design 모드에서) 📍 편집 버튼
+ * 모든 figure 렌더링에서 공용으로 사용
+ */
+function MarkedImage({ f, imgStyle, design, onOpenMarker }) {
+  const hasMarkings = Array.isArray(f.markings) && f.markings.length > 0
+  return (
+    <div style={{ position: 'relative', display: 'block' }}>
+      <img src={f.src} alt={f.caption || ''} style={imgStyle} />
+      <MarkingOverlay markings={f.markings || []} />
+      {design && onOpenMarker && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onOpenMarker(f.src, f.markings || []) }}
+          style={markerBtnStyle}
+          title="사진 마킹"
+        >
+          {hasMarkings ? `📍 ${f.markings.length}` : '📍 마킹'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+const markerBtnStyle = {
+  position: 'absolute', top: 8, right: 8,
+  padding: '4px 10px',
+  background: 'rgba(26,26,24,0.85)', color: '#d4c8b4',
+  border: '1px solid rgba(181,151,106,0.4)', borderRadius: 6,
+  fontSize: 11, fontWeight: 600, cursor: 'pointer',
+  fontFamily: "'Pretendard', sans-serif",
+  backdropFilter: 'blur(4px)',
+  zIndex: 2,
+}
+
+function DiagnosticSection({ num, en, kr, figures, summaryHtml, v, design, onUpdateCaption, onOpenMarker }) {
   const hasFigs = figures.length > 0
   const hasSummary = !!summaryHtml && summaryHtml.replace(/<[^>]+>/g, '').trim().length > 0
   if (!hasFigs && !hasSummary) return null
@@ -267,7 +316,7 @@ function DiagnosticSection({ num, en, kr, figures, summaryHtml, v, design, onUpd
       {/* 1단: 파노라마 풀폭 */}
       {panoramas.map((f, i) => (
         <figure key={`pano-${i}`} style={S.figFull}>
-          <img src={f.src} alt={f.caption || ''} style={S.imgFull} />
+          <MarkedImage f={f} imgStyle={S.imgFull} design={design} onOpenMarker={onOpenMarker} />
           <EditableCaption caption={f.caption} src={f.src} design={design} onUpdateCaption={onUpdateCaption} full />
         </figure>
       ))}
@@ -275,13 +324,13 @@ function DiagnosticSection({ num, en, kr, figures, summaryHtml, v, design, onUpd
       {/* 2단: 기타(셉, 얼굴 등) - 사용자 지정: "따로 배치" */}
       {others.map((f, i) => (
         <figure key={`oth-${i}`} style={S.figCenter}>
-          <img src={f.src} alt={f.caption || ''} style={S.imgPortrait} />
+          <MarkedImage f={f} imgStyle={S.imgPortrait} design={design} onOpenMarker={onOpenMarker} />
           <EditableCaption caption={f.caption} src={f.src} design={design} onUpdateCaption={onUpdateCaption} />
         </figure>
       ))}
 
       {/* 3단: 구내 그룹 + 텍스트 */}
-      <IntraoralGroup figures={intraorals} summaryHtml={summaryHtml} design={design} onUpdateCaption={onUpdateCaption} />
+      <IntraoralGroup figures={intraorals} summaryHtml={summaryHtml} design={design} onUpdateCaption={onUpdateCaption} onOpenMarker={onOpenMarker} />
 
       {/* 구내가 텍스트를 소비 안 했고 텍스트만 남아있으면 단독 렌더 */}
       {!intraoralConsumesText && hasSummary && <Summary html={summaryHtml} />}
@@ -308,7 +357,7 @@ function EditableCaption({ caption, src, design, onUpdateCaption, full }) {
 }
 
 // 구내 그룹 + 텍스트 통합 레이아웃
-function IntraoralGroup({ figures, summaryHtml, design, onUpdateCaption }) {
+function IntraoralGroup({ figures, summaryHtml, design, onUpdateCaption, onOpenMarker }) {
   const count = figures.length
   const hasSummary = !!summaryHtml && summaryHtml.replace(/<[^>]+>/g, '').trim().length > 0
 
@@ -316,7 +365,7 @@ function IntraoralGroup({ figures, summaryHtml, design, onUpdateCaption }) {
 
   const img = (f, i) => (
     <figure key={i} style={S.figGrid}>
-      <img src={f.src} alt={f.caption || ''} style={S.imgGrid} />
+      <MarkedImage f={f} imgStyle={S.imgGrid} design={design} onOpenMarker={onOpenMarker} />
       <EditableCaption caption={f.caption} src={f.src} design={design} onUpdateCaption={onUpdateCaption} />
     </figure>
   )
@@ -374,6 +423,95 @@ function IntraoralGroup({ figures, summaryHtml, design, onUpdateCaption }) {
       <div className="v4-grid2">{figures.map(img)}</div>
       {hasSummary && <Summary html={summaryHtml} />}
     </>
+  )
+}
+
+function CasesSection({ num, cases }) {
+  if (!cases?.length) return null
+  return (
+    <div style={S.secPlan}>
+      <SecHead num={num} en="Similar Cases" kr="유사 치료 사례" center />
+      {cases.map((c, i) => (
+        <div key={c.id || i} style={{ ...S.planBlock, ...(i > 0 ? S.planBlockDivider : {}) }}>
+          {c.title && <h3 style={S.planTitle}>{c.title}</h3>}
+          {(c.pairs || []).map((p, pi) => (
+            <div key={pi} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+              <CasePhoto label="Before" url={p.before_url} />
+              <CasePhoto label="After" url={p.after_url} />
+            </div>
+          ))}
+          {c.description && (
+            <div style={{ ...S.planMethodBody, maxWidth: 640, margin: '0 auto', whiteSpace: 'pre-wrap' }}>
+              {c.description}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function CasePhoto({ label, url }) {
+  if (!url) return null
+  return (
+    <figure style={{ margin: 0 }}>
+      <div style={{ position: 'relative' }}>
+        <img src={url} alt={label} style={{ width: '100%', display: 'block', borderRadius: 2 }} />
+        <div style={{
+          position: 'absolute', top: 10, left: 10,
+          padding: '3px 10px', background: 'rgba(26,26,24,0.85)',
+          color: '#fff', fontSize: 10, fontWeight: 700, letterSpacing: '0.2em',
+          textTransform: 'uppercase', borderRadius: 2,
+        }}>{label}</div>
+      </div>
+    </figure>
+  )
+}
+
+function StrengthsSection({ num, strengths }) {
+  if (!strengths?.length) return null
+  return (
+    <div style={S.sec}>
+      <SecHead num={num} en="Why Choose Us" kr="프라임에스의 강점" />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 24, maxWidth: 720, margin: '0 auto' }}>
+        {strengths.map((s, i) => (
+          <StrengthCard key={s.id || i} card={s} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function StrengthCard({ card }) {
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: card.photo_url ? '160px 1fr' : '1fr',
+      gap: 18, alignItems: 'start',
+      padding: '18px 0', borderTop: `1px solid ${C.line}`,
+    }}>
+      {card.photo_url && (
+        <img src={card.photo_url} alt={card.title || ''}
+             style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover', borderRadius: 2 }} />
+      )}
+      <div>
+        {card.title && (
+          <div style={{ fontFamily: FONTS.kor, fontWeight: 700, fontSize: 17, color: C.ink, marginBottom: 8 }}>
+            {card.title}
+          </div>
+        )}
+        {card.description && (
+          <div style={{ fontSize: 14, lineHeight: 1.85, color: C.ink2, whiteSpace: 'pre-wrap', marginBottom: card.detail_url ? 10 : 0 }}>
+            {card.description}
+          </div>
+        )}
+        {card.detail_url && (
+          <a href={card.detail_url} target="_blank" rel="noreferrer"
+             style={{ fontFamily: FONTS.sans, fontSize: 11, letterSpacing: '0.3em', textTransform: 'uppercase', color: C.gold, textDecoration: 'none', borderBottom: `1px solid ${C.gold}`, paddingBottom: 2 }}>
+            자세히 보기 →
+          </a>
+        )}
+      </div>
+    </div>
   )
 }
 

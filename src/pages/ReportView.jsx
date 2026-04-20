@@ -3,10 +3,13 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import BrochurePreview from '../components/BrochurePreview'
 import { migrateToNewFormat } from '../lib/gemini'
+import { loadTreatmentCases, loadStrengthCards } from '../lib/library'
 
 export default function ReportView() {
   const { reportId } = useParams()
   const [report, setReport] = useState(null)
+  const [selectedCases, setSelectedCases] = useState([])
+  const [selectedStrengths, setSelectedStrengths] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -30,6 +33,20 @@ export default function ReportView() {
       }
 
       setReport(data)
+
+      // 선택된 케이스/장점 해결
+      const caseIds = Array.isArray(data.selected_case_ids) ? data.selected_case_ids : []
+      const strengthIds = Array.isArray(data.selected_strength_ids) ? data.selected_strength_ids : []
+      if (caseIds.length || strengthIds.length) {
+        const [allCases, allStrengths] = await Promise.all([
+          caseIds.length ? loadTreatmentCases() : Promise.resolve([]),
+          strengthIds.length ? loadStrengthCards() : Promise.resolve([]),
+        ])
+        const caseMap = new Map(allCases.map(c => [c.id, c]))
+        const strengthMap = new Map(allStrengths.map(c => [c.id, c]))
+        setSelectedCases(caseIds.map(id => caseMap.get(id)).filter(Boolean))
+        setSelectedStrengths(strengthIds.map(id => strengthMap.get(id)).filter(Boolean))
+      }
     } catch {
       setError('진단서를 찾을 수 없습니다.')
     } finally {
@@ -66,6 +83,8 @@ export default function ReportView() {
           consultDate={report.consult_date}
           content={content}
           photos={report.photos || []}
+          cases={selectedCases}
+          strengths={selectedStrengths}
           mode="view"
         />
       </div>

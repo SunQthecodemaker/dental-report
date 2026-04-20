@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
+import { saveTreatmentCases, saveStrengthCards, uploadLibraryPhoto, newCaseId } from '../lib/library'
+import { useId } from 'react'
 
 const TABS = [
   { id: 'guidelines', label: '작성 지침' },
   { id: 'terminology', label: '용어 사전' },
-  { id: 'strengths', label: '치과 특장점' },
+  { id: 'strengths', label: 'AI 특장점' },
+  { id: 'cases', label: '유사 케이스' },
+  { id: 'strengthCards', label: '장점 카드' },
   { id: 'staffForm', label: '상담 폼 항목' },
 ]
 
@@ -15,6 +19,8 @@ export default function Settings() {
   const [guidelines, setGuidelines] = useState([])
   const [terms, setTerms] = useState([])
   const [strengths, setStrengths] = useState([])
+  const [cases, setCases] = useState([])
+  const [strengthCards, setStrengthCards] = useState([])
   const [formConfig, setFormConfig] = useState(null)
   const [saving, setSaving] = useState(false)
   const [loaded, setLoaded] = useState(false)
@@ -28,10 +34,17 @@ export default function Settings() {
         if (row.id === 'writing_guidelines') setGuidelines(row.value.items || [])
         if (row.id === 'terminology') setTerms(row.value.items || [])
         if (row.id === 'clinic_strengths') setStrengths(row.value.items || [])
+        if (row.id === 'treatment_cases') setCases(row.value.items || [])
+        if (row.id === 'strength_cards') setStrengthCards(row.value.items || [])
         if (row.id === 'staff_form_config') setFormConfig(row.value)
       }
     }
     setLoaded(true)
+  }
+
+  const saveAsync = async (saver, items) => {
+    setSaving(true)
+    try { await saver(items) } finally { setSaving(false) }
   }
 
   const save = async (id, value) => {
@@ -89,6 +102,18 @@ export default function Settings() {
             <StrengthsTab
               items={strengths}
               onChange={(v) => { setStrengths(v); save('clinic_strengths', v) }}
+            />
+          )}
+          {tab === 'cases' && (
+            <CasesTab
+              items={cases}
+              onChange={(v) => { setCases(v); saveAsync(saveTreatmentCases, v) }}
+            />
+          )}
+          {tab === 'strengthCards' && (
+            <StrengthCardsTab
+              items={strengthCards}
+              onChange={(v) => { setStrengthCards(v); saveAsync(saveStrengthCards, v) }}
             />
           )}
           {tab === 'staffForm' && formConfig && (
@@ -193,6 +218,188 @@ function StrengthsTab({ items, onChange }) {
         <button onClick={add} style={S.addBtn}>추가</button>
       </div>
     </>
+  )
+}
+
+// ─── 유사 케이스 탭 (전후 사진 1~2 set + 설명) ───
+function CasesTab({ items, onChange }) {
+  const [expanded, setExpanded] = useState(null)
+
+  const addCase = () => {
+    const item = { id: newCaseId(), title: '', description: '', pairs: [{ before_url: '', after_url: '' }] }
+    onChange([...items, item])
+    setExpanded(item.id)
+  }
+
+  const updateCase = (id, patch) => {
+    onChange(items.map(c => c.id === id ? { ...c, ...patch } : c))
+  }
+
+  const removeCase = (id) => {
+    if (!confirm('이 케이스를 삭제할까요?')) return
+    onChange(items.filter(c => c.id !== id))
+  }
+
+  const addPair = (id) => {
+    const c = items.find(x => x.id === id)
+    if (!c) return
+    if ((c.pairs || []).length >= 2) return
+    updateCase(id, { pairs: [...(c.pairs || []), { before_url: '', after_url: '' }] })
+  }
+
+  const removePair = (id, pairIdx) => {
+    const c = items.find(x => x.id === id)
+    if (!c) return
+    updateCase(id, { pairs: (c.pairs || []).filter((_, i) => i !== pairIdx) })
+  }
+
+  const uploadPairPhoto = async (id, pairIdx, key, file) => {
+    try {
+      const url = await uploadLibraryPhoto(file, 'cases')
+      const c = items.find(x => x.id === id)
+      if (!c) return
+      const pairs = (c.pairs || []).slice()
+      pairs[pairIdx] = { ...pairs[pairIdx], [key]: url }
+      updateCase(id, { pairs })
+    } catch (err) { alert('업로드 실패: ' + err.message) }
+  }
+
+  return (
+    <>
+      <p style={S.desc}>
+        Before/After 사진 1~2세트와 간단한 설명. 환자별 진단서에서 <strong>원하는 케이스를 선택</strong>해 삽입합니다.
+      </p>
+      {items.map(c => {
+        const open = expanded === c.id
+        return (
+          <div key={c.id} style={S.catCard}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: open ? 12 : 0 }}>
+              <button onClick={() => setExpanded(open ? null : c.id)} style={{ ...S.addBtn, padding: '4px 10px', background: '#6b7280' }}>
+                {open ? '접기' : '펼치기'}
+              </button>
+              <input
+                value={c.title} onChange={(e) => updateCase(c.id, { title: e.target.value })}
+                placeholder="케이스 제목 (예: 성인 돌출입 비발치 교정)"
+                style={{ ...S.input, flex: 1 }}
+              />
+              <button onClick={() => removeCase(c.id)} style={S.delBtn}>삭제</button>
+            </div>
+            {open && (
+              <>
+                <textarea
+                  value={c.description} onChange={(e) => updateCase(c.id, { description: e.target.value })}
+                  placeholder="간단한 설명 (치료 기간/특징/결과 등 1~3줄)"
+                  style={{ ...S.input, minHeight: 60, resize: 'vertical', marginTop: 8 }}
+                />
+                {(c.pairs || []).map((p, i) => (
+                  <div key={i} style={S.pairBox}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#6b7280' }}>세트 {i + 1}</div>
+                      {(c.pairs || []).length > 1 && (
+                        <button onClick={() => removePair(c.id, i)} style={S.delBtn}>세트 삭제</button>
+                      )}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <PhotoSlot label="Before" url={p.before_url} onFile={(f) => uploadPairPhoto(c.id, i, 'before_url', f)} onClear={() => {
+                        const pairs = c.pairs.slice(); pairs[i] = { ...pairs[i], before_url: '' }; updateCase(c.id, { pairs })
+                      }} />
+                      <PhotoSlot label="After" url={p.after_url} onFile={(f) => uploadPairPhoto(c.id, i, 'after_url', f)} onClear={() => {
+                        const pairs = c.pairs.slice(); pairs[i] = { ...pairs[i], after_url: '' }; updateCase(c.id, { pairs })
+                      }} />
+                    </div>
+                  </div>
+                ))}
+                {(c.pairs || []).length < 2 && (
+                  <button onClick={() => addPair(c.id)} style={{ ...S.addBtn, background: '#6b7280', marginTop: 8 }}>
+                    + 세트 추가 (최대 2)
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )
+      })}
+      <button onClick={addCase} style={{ ...S.addBtn, width: '100%', padding: '12px' }}>+ 케이스 추가</button>
+    </>
+  )
+}
+
+// ─── 장점 카드 탭 (사진 1 + 설명 + 상세 링크) ───
+function StrengthCardsTab({ items, onChange }) {
+  const addCard = () => {
+    onChange([...items, { id: newCaseId(), title: '', description: '', photo_url: '', detail_url: '' }])
+  }
+  const updateCard = (id, patch) => onChange(items.map(c => c.id === id ? { ...c, ...patch } : c))
+  const removeCard = (id) => {
+    if (!confirm('이 장점 카드를 삭제할까요?')) return
+    onChange(items.filter(c => c.id !== id))
+  }
+  const uploadPhoto = async (id, file) => {
+    try {
+      const url = await uploadLibraryPhoto(file, 'strengths')
+      updateCard(id, { photo_url: url })
+    } catch (err) { alert('업로드 실패: ' + err.message) }
+  }
+
+  return (
+    <>
+      <p style={S.desc}>
+        우리 치과의 장점을 카드로 관리합니다. 환자별 진단서에서 <strong>원하는 장점만 선택</strong>해 삽입합니다.
+      </p>
+      {items.map(c => (
+        <div key={c.id} style={S.catCard}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+            <input
+              value={c.title} onChange={(e) => updateCard(c.id, { title: e.target.value })}
+              placeholder="장점 제목 (예: 교정과 전문의가 직접)"
+              style={{ ...S.input, flex: 1 }}
+            />
+            <button onClick={() => removeCard(c.id)} style={S.delBtn}>삭제</button>
+          </div>
+          <textarea
+            value={c.description} onChange={(e) => updateCard(c.id, { description: e.target.value })}
+            placeholder="간단한 설명 (1~3줄)"
+            style={{ ...S.input, minHeight: 60, resize: 'vertical', marginBottom: 8 }}
+          />
+          <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr', gap: 10, alignItems: 'start' }}>
+            <PhotoSlot label="대표 사진" url={c.photo_url} onFile={(f) => uploadPhoto(c.id, f)} onClear={() => updateCard(c.id, { photo_url: '' })} />
+            <div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4, fontWeight: 600 }}>홈페이지 상세 링크</div>
+              <input
+                value={c.detail_url} onChange={(e) => updateCard(c.id, { detail_url: e.target.value })}
+                placeholder="https://..."
+                style={S.input}
+              />
+            </div>
+          </div>
+        </div>
+      ))}
+      <button onClick={addCard} style={{ ...S.addBtn, width: '100%', padding: '12px' }}>+ 장점 카드 추가</button>
+    </>
+  )
+}
+
+function PhotoSlot({ label, url, onFile, onClear }) {
+  const inputId = useId()
+  return (
+    <div style={{ border: '1px dashed #d1d5db', borderRadius: 8, padding: 8, background: '#fff' }}>
+      <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 700, marginBottom: 6 }}>{label}</div>
+      {url ? (
+        <div style={{ position: 'relative' }}>
+          <img src={url} alt="" style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 6, display: 'block' }} />
+          <button onClick={onClear} style={{ position: 'absolute', top: 4, right: 4, padding: '2px 8px', background: 'rgba(0,0,0,0.6)', color: '#fff', border: 'none', borderRadius: 4, fontSize: 11, cursor: 'pointer' }}>제거</button>
+        </div>
+      ) : (
+        <label htmlFor={inputId} style={{ display: 'block', padding: '24px 8px', textAlign: 'center', background: '#f9fafb', borderRadius: 6, fontSize: 12, color: '#6b7280', cursor: 'pointer' }}>
+          + 사진 업로드
+        </label>
+      )}
+      <input
+        id={inputId} type="file" accept="image/*"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = '' }}
+        style={{ display: 'none' }}
+      />
+    </div>
   )
 }
 
@@ -365,6 +572,7 @@ const S = {
   strengthCard: { padding: '14px 16px', background: '#f0f7ff', borderRadius: '10px', marginBottom: '10px', border: '1px solid #bfdbfe' },
   formBox: { marginTop: '12px', padding: '16px', background: '#fafafa', borderRadius: '10px', border: '1px dashed #d1d5db' },
   catCard: { padding: '16px', background: '#f9fafb', borderRadius: '10px', marginBottom: '12px', border: '1px solid #e5e7eb' },
+  pairBox: { padding: '10px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 10 },
   optionChip: { display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 12px', background: '#ede9fe', borderRadius: '16px', fontSize: '13px', color: '#7c3aed', fontWeight: '500' },
   chipDel: { background: 'none', border: 'none', color: '#a78bfa', fontSize: '14px', cursor: 'pointer', padding: '0 2px', fontWeight: '700' },
 }

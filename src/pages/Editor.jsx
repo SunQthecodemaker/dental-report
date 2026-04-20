@@ -4,6 +4,10 @@ import StaffForm from '../components/StaffForm'
 import ClinicalForm, { getEmptyClinicalForm, buildAutoSummary } from '../components/ClinicalForm'
 import ContentEditor from '../components/ContentEditor'
 import BrochurePreview from '../components/BrochurePreview'
+import PhotoMarkerModal from '../components/PhotoMarkerModal'
+import { serializeMarkings } from '../lib/markings'
+import { loadTreatmentCases, loadStrengthCards } from '../lib/library'
+import CaseStrengthSelector from '../components/CaseStrengthSelector'
 import { composeReport, saveCorrections, migrateToNewFormat, extractImagesBySection, reinsertImagesBySection } from '../lib/gemini'
 import { supabase } from '../lib/supabase'
 import { getByChartNumber, updateReport, acquireLock, releaseLock, isOtherPcEditing, PROGRESS_STAGES, STEP_TO_STAGE } from '../lib/reports'
@@ -19,7 +23,8 @@ const STEP_LABELS = [
   { num: 1, label: '진단 & 치료 계획' },
   { num: 2, label: '상담 관리' },
   { num: 3, label: '초안' },
-  { num: 4, label: '진단서 디자이너' },
+  { num: 4, label: '케이스 · 장점' },
+  { num: 5, label: '진단서 디자이너' },
 ]
 
 function timeAgo(date) {
@@ -47,11 +52,18 @@ export default function Editor() {
   const [photos, setPhotos] = useState([])
   const [step, setStep] = useState(1)
 
+  // 라이브러리(전체) + 선택된 id
+  const [allCases, setAllCases] = useState([])
+  const [allStrengths, setAllStrengths] = useState([])
+  const [selectedCaseIds, setSelectedCaseIds] = useState([])
+  const [selectedStrengthIds, setSelectedStrengthIds] = useState([])
+
   const [isComposing, setIsComposing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
   const [savedLink, setSavedLink] = useState(null)
   const [designerKey, setDesignerKey] = useState(0)  // 디자인하기 누를 때마다 증가 → 브로셔 강제 remount
+  const [markerTarget, setMarkerTarget] = useState(null)  // { src, markings } or null
   const editorCommitRef = useRef(null)
 
   const [saveState, setSaveState] = useState('idle')
@@ -75,8 +87,14 @@ export default function Editor() {
         setEditedContent(JSON.parse(JSON.stringify(migrated)))
       }
       setPhotos(data.photos || [])
+      setSelectedCaseIds(Array.isArray(data.selected_case_ids) ? data.selected_case_ids : [])
+      setSelectedStrengthIds(Array.isArray(data.selected_strength_ids) ? data.selected_strength_ids : [])
       hydratedRef.current = true
     }).catch(err => { if (mounted) setLoadError(err.message) })
+    // 라이브러리는 병렬 로드
+    Promise.all([loadTreatmentCases(), loadStrengthCards()])
+      .then(([c, s]) => { if (mounted) { setAllCases(c); setAllStrengths(s) } })
+      .catch(() => {})
     return () => { mounted = false }
   }, [chartNumber])
 
@@ -114,6 +132,8 @@ export default function Editor() {
       const patch = {
         clinical_form: clinicalForm,
         staff_form: staffForm,
+        selected_case_ids: selectedCaseIds,
+        selected_strength_ids: selectedStrengthIds,
         progress_stage: report.progress_stage === 'done' ? 'done' : progress,
       }
       if (editedContent) patch.sections = editedContent
@@ -128,9 +148,19 @@ export default function Editor() {
       }
     }, 1500)
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
-  }, [clinicalForm, staffForm, editedContent, step, report?.id])
+  }, [clinicalForm, staffForm, editedContent, selectedCaseIds, selectedStrengthIds, step, report?.id])
 
   const otherPcEditing = useMemo(() => isOtherPcEditing(report, `step${step}`), [report, step])
+
+  // 선택된 id → 실제 객체 배열 (순서 유지)
+  const selectedCases = useMemo(() => {
+    const map = new Map(allCases.map(c => [c.id, c]))
+    return selectedCaseIds.map(id => map.get(id)).filter(Boolean)
+  }, [allCases, selectedCaseIds])
+  const selectedStrengths = useMemo(() => {
+    const map = new Map(allStrengths.map(s => [s.id, s]))
+    return selectedStrengthIds.map(id => map.get(id)).filter(Boolean)
+  }, [allStrengths, selectedStrengthIds])
 
   const summary = useMemo(() => {
     const auto = buildAutoSummary(clinicalForm)
@@ -191,6 +221,8 @@ export default function Editor() {
         photos: uploadedPhotos,
         clinical_form: clinicalForm,
         staff_form: staffForm,
+        selected_case_ids: selectedCaseIds,
+        selected_strength_ids: selectedStrengthIds,
         expires_at: expiresAt.toISOString(),
         progress_stage: 'done',
       })
@@ -243,6 +275,56 @@ export default function Editor() {
     setEditedContent({ ...editedContent, personalNote: newNote })
   }
 
+  // "디자인하기" 버튼 (step 4) — AI 재호출해서 레이아웃 새로 생성.
+  // 기존 body의 섹션별 사진은 보존, 텍스트와 섹션 구조는 새로 생성.
+  // 헤더 탭 클릭은 그냥 changeStep(5)로 이동만 (재생성 없음).
+  const handleRedesign = async () => {
+    setIsComposing(true)
+    try {
+      const preservedImages = extractImagesBySection(editedContent?.body || '')
+      const result = await composeReport({ summary, staffForm })
+      const mergedBody = reinsertImagesBySection(result.body || '', preservedImages)
+      const merged = { ...result, body: mergedBody }
+      setRefinedContent(merged)
+      setEditedContent(JSON.parse(JSON.stringify(merged)))
+      setDesignerKey(k => k + 1)
+      setStep(5)
+    } catch (err) {
+      alert('디자인 재생성 실패: ' + err.message)
+    } finally { setIsComposing(false) }
+  }
+
+  // 📍 마킹 모달 열기 (이미지 src + 현재 마킹 전달)
+  const handleOpenMarker = (src, markings) => {
+    if (!src) return
+    setMarkerTarget({ src, markings: Array.isArray(markings) ? markings : [] })
+  }
+
+  // 📍 마킹 저장: body HTML에서 해당 img 찾아 data-markings 속성 갱신
+  const handleSaveMarkings = (markings) => {
+    const target = markerTarget
+    if (!target || !editedContent?.body) { setMarkerTarget(null); return }
+    try {
+      const parser = new DOMParser()
+      const doc = parser.parseFromString(`<div id="root">${editedContent.body}</div>`, 'text/html')
+      const root = doc.getElementById('root')
+      if (!root) { setMarkerTarget(null); return }
+      const imgs = root.querySelectorAll(`img[src="${target.src}"]`)
+      const serialized = serializeMarkings(markings)
+      let changed = false
+      imgs.forEach(img => {
+        if (serialized) img.setAttribute('data-markings', serialized)
+        else img.removeAttribute('data-markings')
+        changed = true
+      })
+      if (changed) {
+        setEditedContent({ ...editedContent, body: root.innerHTML })
+        setDesignerKey(k => k + 1)  // 브로셔 강제 remount (parseSections 재실행)
+      }
+    } catch (err) { console.warn('markings update failed', err) }
+    setMarkerTarget(null)
+  }
+
   // 단계 전환 핸들러: 업로드 중 차단 + 편집 flush
   const changeStep = (num) => {
     if (num === step) return
@@ -258,8 +340,8 @@ export default function Editor() {
     if (editorCommitRef.current) {
       try { editorCommitRef.current() } catch { /* noop */ }
     }
-    // 디자인하기(→4)로 이동이면 브로셔 강제 remount
-    if (num === 4) {
+    // 디자이너(→5)로 이동이면 브로셔 강제 remount
+    if (num === 5) {
       setDesignerKey(k => k + 1)
     }
     // 약간의 지연 후 setStep (commit이 동기 setState를 스케줄할 시간 부여)
@@ -311,7 +393,7 @@ export default function Editor() {
                 color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700,
               }}>{num < step ? '✓' : num}</div>
               <span style={{ fontSize: '13px', fontWeight: num === step ? 600 : 400, color: num === step ? '#1a1a18' : '#9ca3af' }}>{label}</span>
-              {num < 4 && <span style={{ color: '#d1d5db', margin: '0 2px' }}>→</span>}
+              {num < STEP_LABELS.length && <span style={{ color: '#d1d5db', margin: '0 2px' }}>→</span>}
             </div>
           ))}
         </div>
@@ -319,12 +401,12 @@ export default function Editor() {
         <div style={headerS.right}>
           <span style={{ fontSize: '12px', color: '#9ca3af' }}>{getPcLabel()}</span>
           <button onClick={() => navigate('/settings')} style={{ ...btnStyle('#374151'), fontSize: '13px', padding: '8px 14px' }}>AI 설정</button>
-          {step === 4 && savedLink && <button onClick={handleCopyLink} style={btnStyle('#6a9b7a')}>링크 복사</button>}
-          {step === 4 && <button onClick={handleSave} disabled={isSaving} style={btnStyle('#b5976a')}>{isSaving ? '저장 중...' : '저장 + 링크 생성'}</button>}
+          {step === 5 && savedLink && <button onClick={handleCopyLink} style={btnStyle('#6a9b7a')}>링크 복사</button>}
+          {step === 5 && <button onClick={handleSave} disabled={isSaving} style={btnStyle('#b5976a')}>{isSaving ? '저장 중...' : '저장 + 링크 생성'}</button>}
         </div>
       </div>
 
-      <div style={{ flex: 1, overflow: 'auto', background: step === 4 ? '#1a1a18' : '#fafafa' }}>
+      <div style={{ flex: 1, overflow: 'auto', background: step === 5 ? '#1a1a18' : '#fafafa' }}>
 
         {step === 1 && (
           <div style={{ maxWidth: '860px', margin: '0 auto', padding: '24px' }}>
@@ -373,7 +455,7 @@ export default function Editor() {
                   cursor: isUploadingPhoto ? 'not-allowed' : 'pointer',
                 }}
               >
-                {isUploadingPhoto ? '📤 사진 업로드 중... 완료 후 이동됩니다' : '디자인하기'}
+                {isUploadingPhoto ? '📤 사진 업로드 중... 완료 후 이동됩니다' : '다음: 케이스 · 장점 →'}
               </button>
             </div>
             <div style={{ width: '420px', background: '#1a1a18', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px', overflow: 'auto', flexShrink: 0 }}>
@@ -383,6 +465,8 @@ export default function Editor() {
                   consultDate={report.consult_date}
                   content={editedContent}
                   photos={photos}
+                  cases={selectedCases}
+                  strengths={selectedStrengths}
                   mode="preview"
                 />
               </div>
@@ -390,7 +474,54 @@ export default function Editor() {
           </div>
         )}
 
-        {step === 4 && editedContent && (
+        {step === 4 && (
+          <div style={{ display: 'flex', height: 'calc(100vh - 60px)' }}>
+            <div style={{ flex: 1, overflow: 'auto', padding: '24px', borderRight: '1px solid #e5e7eb' }}>
+              <div style={infoBoxS.amber}>
+                💡 이 환자의 진단서에 포함할 <strong>유사 치료 사례</strong>와 <strong>우리 치과 장점</strong>을 선택하세요. (복수 선택 / 선택 안 함 모두 가능)
+              </div>
+              <CaseStrengthSelector
+                cases={allCases}
+                strengths={allStrengths}
+                selectedCaseIds={selectedCaseIds}
+                selectedStrengthIds={selectedStrengthIds}
+                onChangeCases={setSelectedCaseIds}
+                onChangeStrengths={setSelectedStrengthIds}
+              />
+              <button
+                onClick={handleRedesign}
+                disabled={isComposing}
+                style={{
+                  ...btnStyle('#c45c5c'),
+                  width: '100%', padding: '16px', fontSize: '18px', fontWeight: 700, marginTop: '16px',
+                  opacity: isComposing ? 0.6 : 1,
+                  cursor: isComposing ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {isComposing ? '🤖 AI가 디자인 재생성 중…' : '디자인하기 🪄 (AI 재생성)'}
+              </button>
+              <div style={{ fontSize: 12, color: '#9ca3af', textAlign: 'center', marginTop: 8 }}>
+                버튼 클릭 시 AI가 누락된 섹션 확인하고 레이아웃 새로 생성. 기존 삽입 사진은 섹션별로 보존.<br />
+                이미 디자인된 결과를 다시 보려면 위 헤더의 <strong>"진단서 디자이너"</strong> 탭을 클릭하세요.
+              </div>
+            </div>
+            <div style={{ width: '420px', background: '#1a1a18', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px', overflow: 'auto', flexShrink: 0 }}>
+              <div style={{ width: '375px', minHeight: '667px', background: '#fff', borderRadius: '24px', overflow: 'hidden', boxShadow: '0 25px 50px rgba(0,0,0,0.3)' }}>
+                <BrochurePreview
+                  patientName={report.patient_name}
+                  consultDate={report.consult_date}
+                  content={editedContent}
+                  photos={photos}
+                  cases={selectedCases}
+                  strengths={selectedStrengths}
+                  mode="preview"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {step === 5 && editedContent && (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
             <div style={{ width: '100%', maxWidth: '800px', background: '#fff', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
               <BrochurePreview
@@ -399,14 +530,26 @@ export default function Editor() {
                 consultDate={report.consult_date}
                 content={editedContent}
                 photos={photos}
+                cases={selectedCases}
+                strengths={selectedStrengths}
                 mode="design"
                 onUpdateCaption={handleUpdateCaption}
                 onUpdateNote={handleUpdateNote}
+                onOpenMarker={handleOpenMarker}
               />
             </div>
           </div>
         )}
       </div>
+
+      {markerTarget && (
+        <PhotoMarkerModal
+          src={markerTarget.src}
+          initialMarkings={markerTarget.markings}
+          onSave={handleSaveMarkings}
+          onClose={() => setMarkerTarget(null)}
+        />
+      )}
     </div>
   )
 }

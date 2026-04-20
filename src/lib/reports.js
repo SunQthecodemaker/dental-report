@@ -15,7 +15,8 @@ export const STEP_TO_STAGE = {
   1: 'diagnosis',
   2: 'draft',
   3: 'consultation',
-  4: 'finalizing',
+  4: 'finalizing',  // 케이스 & 장점 선택
+  5: 'finalizing',  // 진단서 디자이너
 }
 
 export async function createPatient({ name, birth, suffix = '', cc = '', phone = '', chartNumber }) {
