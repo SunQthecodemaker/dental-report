@@ -378,6 +378,19 @@ export default function Editor() {
             {report.patient_name}
             <span style={{ color: '#9ca3af', fontWeight: 400, marginLeft: '6px' }}>· {report.chart_number}</span>
           </span>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '12px', color: '#6b7280' }}>
+            <span>상담일</span>
+            <input
+              type="date"
+              value={report.consult_date || ''}
+              onChange={(e) => {
+                const v = e.target.value
+                setReport(r => ({ ...r, consult_date: v }))
+                if (report.id) updateReport(report.id, { consult_date: v }).catch(() => {})
+              }}
+              style={{ padding: '4px 6px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: '12px', color: '#1f2937', background: '#fff' }}
+            />
+          </label>
           <span style={{ padding: '2px 8px', borderRadius: '10px', background: stage.color, color: '#fff', fontSize: '11px', fontWeight: 600 }}>
             {stage.label}
           </span>

@@ -19,7 +19,16 @@ export const STEP_TO_STAGE = {
   5: 'finalizing',  // 진단서 디자이너
 }
 
-export async function createPatient({ name, birth, suffix = '', cc = '', phone = '', chartNumber }) {
+// 로컬 타임존 기준 오늘 YYYY-MM-DD (UTC 변환으로 인한 자정 부근 날짜 밀림 방지)
+export function todayYMD() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+export async function createPatient({ name, birth, suffix = '', cc = '', phone = '', chartNumber, consultDate }) {
   const finalChart = chartNumber || (await findAvailableChartNumber(name, birth))
   if (!finalChart) throw new Error('차트번호를 생성할 수 없습니다.')
 
@@ -37,7 +46,7 @@ export async function createPatient({ name, birth, suffix = '', cc = '', phone =
       cc: cc || null,
       phone: phone || null,
       progress_stage: 'registered',
-      consult_date: new Date().toISOString().split('T')[0],
+      consult_date: consultDate || todayYMD(),
       sections: {},
       photos: [],
       modules: [],

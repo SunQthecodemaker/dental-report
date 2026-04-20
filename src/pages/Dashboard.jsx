@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { createPatient, listReports, isOtherPcEditing, isLockStale, PROGRESS_STAGES } from '../lib/reports'
+import { createPatient, listReports, isOtherPcEditing, isLockStale, PROGRESS_STAGES, todayYMD } from '../lib/reports'
 import { findAvailableChartNumber, makeBaseChartNumber, isChartNumberTaken, normalizeBirth } from '../lib/chartNumber'
 import { getSessionId, getPcName, setPcName, getPcLabel } from '../lib/session'
 
@@ -15,7 +15,7 @@ export default function Dashboard() {
   const [dateRange, setDateRange] = useState('all')
   const [hideCompleted, setHideCompleted] = useState(false)
 
-  const [form, setForm] = useState({ name: '', birth: '', chartNumber: '', cc: '' })
+  const [form, setForm] = useState({ name: '', birth: '', chartNumber: '', cc: '', consultDate: todayYMD() })
   const [chartManual, setChartManual] = useState(false)
   const [creating, setCreating] = useState(false)
   const [chartLookup, setChartLookup] = useState(false)
@@ -85,8 +85,9 @@ export default function Dashboard() {
         birth,
         chartNumber,
         cc: form.cc.trim(),
+        consultDate: form.consultDate || todayYMD(),
       })
-      setForm({ name: '', birth: '', chartNumber: '', cc: '' })
+      setForm({ name: '', birth: '', chartNumber: '', cc: '', consultDate: todayYMD() })
       setChartManual(false)
       reload()
     } catch (err) {
@@ -181,6 +182,16 @@ export default function Dashboard() {
                 placeholder="이름+생일 자동"
               />
             </div>
+          </div>
+
+          <div style={styles.ccGroup}>
+            <label style={styles.label}>상담 날짜</label>
+            <input
+              type="date"
+              value={form.consultDate}
+              onChange={e => setForm({ ...form, consultDate: e.target.value })}
+              style={styles.input}
+            />
           </div>
 
           <div style={styles.ccGroup}>
