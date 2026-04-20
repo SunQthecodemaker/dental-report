@@ -29,10 +29,10 @@ export function Arrow({ m, selected, onPick }) {
   const lx2 = x2 - tipCut * Math.cos(angle)
   const ly2 = y2 - tipCut * Math.sin(angle)
 
-  const onClick = onPick ? (e) => { e.stopPropagation(); onPick(m.id) } : undefined
+  const handler = onPick ? (e) => { e.stopPropagation(); onPick(e, m) } : undefined
   const hit = selected ? STROKE * 2 : STROKE
   return (
-    <g onMouseDown={onClick} style={{ cursor: onPick ? 'pointer' : 'default' }}>
+    <g onMouseDown={handler} style={{ cursor: onPick ? 'move' : 'default' }}>
       {/* 보이지 않는 hit 영역 */}
       {onPick && (
         <line x1={x1} y1={y1} x2={x2} y2={y2}
@@ -55,16 +55,19 @@ export function Arrow({ m, selected, onPick }) {
 
 export function CircleMark({ m, selected, onPick }) {
   const { cx, cy, rx, ry, color = DEFAULT_COLOR } = m
-  const onClick = onPick ? (e) => { e.stopPropagation(); onPick(m.id) } : undefined
+  const handler = onPick ? (e) => { e.stopPropagation(); onPick(e, m) } : undefined
   const hit = selected ? STROKE * 2 : STROKE
   return (
-    <g onMouseDown={onClick} style={{ cursor: onPick ? 'pointer' : 'default' }}>
+    <g onMouseDown={handler} style={{ cursor: onPick ? 'move' : 'default' }}>
       {onPick && (
         <ellipse cx={cx} cy={cy} rx={rx} ry={ry}
                  stroke="transparent" strokeWidth={STROKE * 4} fill="none" />
       )}
       <ellipse cx={cx} cy={cy} rx={rx} ry={ry}
                stroke={color} strokeWidth={hit} fill="none" />
+      {selected && (
+        <circle cx={cx} cy={cy} r={STROKE * 1.5} fill="#fff" stroke={color} strokeWidth={STROKE * 0.5} />
+      )}
     </g>
   )
 }
@@ -86,9 +89,10 @@ export default function MarkingOverlay({ markings, editable = false, selectedId 
       }}
     >
       {list.map(m => {
-        const common = { key: m.id, m, selected: selectedId === m.id, onPick: editable ? onPickShape : null }
-        if (m.type === 'arrow') return <Arrow {...common} />
-        if (m.type === 'circle') return <CircleMark {...common} />
+        const selected = selectedId === m.id
+        const onPick = editable ? onPickShape : null
+        if (m.type === 'arrow') return <Arrow key={m.id} m={m} selected={selected} onPick={onPick} />
+        if (m.type === 'circle') return <CircleMark key={m.id} m={m} selected={selected} onPick={onPick} />
         return null
       })}
       {children}

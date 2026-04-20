@@ -23,7 +23,7 @@ const STEP_LABELS = [
   { num: 1, label: '진단 & 치료 계획' },
   { num: 2, label: '상담 관리' },
   { num: 3, label: '초안' },
-  { num: 4, label: '케이스 · 장점' },
+  { num: 4, label: '케이스 · 어필포인트' },
   { num: 5, label: '진단서 디자이너' },
 ]
 
@@ -455,7 +455,7 @@ export default function Editor() {
                   cursor: isUploadingPhoto ? 'not-allowed' : 'pointer',
                 }}
               >
-                {isUploadingPhoto ? '📤 사진 업로드 중... 완료 후 이동됩니다' : '다음: 케이스 · 장점 →'}
+                {isUploadingPhoto ? '📤 사진 업로드 중... 완료 후 이동됩니다' : '다음: 케이스 · 어필포인트 →'}
               </button>
             </div>
             <div style={{ width: '420px', background: '#1a1a18', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px', overflow: 'auto', flexShrink: 0 }}>
@@ -478,7 +478,7 @@ export default function Editor() {
           <div style={{ display: 'flex', height: 'calc(100vh - 60px)' }}>
             <div style={{ flex: 1, overflow: 'auto', padding: '24px', borderRight: '1px solid #e5e7eb' }}>
               <div style={infoBoxS.amber}>
-                💡 이 환자의 진단서에 포함할 <strong>유사 치료 사례</strong>와 <strong>우리 치과 장점</strong>을 선택하세요. (복수 선택 / 선택 안 함 모두 가능)
+                💡 이 환자의 진단서에 포함할 <strong>유사 치료 사례</strong>와 <strong>어필포인트</strong>를 선택하세요. (복수 선택 / 선택 안 함 모두 가능)
               </div>
               <CaseStrengthSelector
                 cases={allCases}

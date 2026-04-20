@@ -18,7 +18,7 @@ export default function CaseStrengthSelector({
       <section>
         <SectionHead label="유사 치료 사례" count={selectedCaseIds.length} total={cases.length} />
         {cases.length === 0 ? (
-          <Empty hint="Settings → 유사 케이스 탭에서 등록해주세요." />
+          <Empty hint="Settings → 유사 케이스 탭에서 등록해주세요 (각 케이스는 전후 사진 1~2 세트 + 간단 설명)." />
         ) : (
           <div style={S.grid}>
             {cases.map(c => {
@@ -45,9 +45,9 @@ export default function CaseStrengthSelector({
       </section>
 
       <section>
-        <SectionHead label="우리 치과 장점" count={selectedStrengthIds.length} total={strengths.length} />
+        <SectionHead label="어필포인트" count={selectedStrengthIds.length} total={strengths.length} />
         {strengths.length === 0 ? (
-          <Empty hint="Settings → 장점 카드 탭에서 등록해주세요." />
+          <Empty hint="Settings → 어필포인트 탭에서 등록해주세요." />
         ) : (
           <div style={S.grid}>
             {strengths.map(s => {

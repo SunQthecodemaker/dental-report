@@ -472,7 +472,7 @@ function StrengthsSection({ num, strengths }) {
   if (!strengths?.length) return null
   return (
     <div style={S.sec}>
-      <SecHead num={num} en="Why Choose Us" kr="프라임에스의 강점" />
+      <SecHead num={num} en="Why Choose Us" kr="프라임에스가 특별한 이유" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 24, maxWidth: 720, margin: '0 auto' }}>
         {strengths.map((s, i) => (
           <StrengthCard key={s.id || i} card={s} />

@@ -9,7 +9,7 @@ const TABS = [
   { id: 'terminology', label: '용어 사전' },
   { id: 'strengths', label: 'AI 특장점' },
   { id: 'cases', label: '유사 케이스' },
-  { id: 'strengthCards', label: '장점 카드' },
+  { id: 'strengthCards', label: '어필포인트' },
   { id: 'staffForm', label: '상담 폼 항목' },
 ]
 
@@ -324,14 +324,14 @@ function CasesTab({ items, onChange }) {
   )
 }
 
-// ─── 장점 카드 탭 (사진 1 + 설명 + 상세 링크) ───
+// ─── 어필포인트 탭 (사진 1 + 설명 + 상세 링크) ───
 function StrengthCardsTab({ items, onChange }) {
   const addCard = () => {
     onChange([...items, { id: newCaseId(), title: '', description: '', photo_url: '', detail_url: '' }])
   }
   const updateCard = (id, patch) => onChange(items.map(c => c.id === id ? { ...c, ...patch } : c))
   const removeCard = (id) => {
-    if (!confirm('이 장점 카드를 삭제할까요?')) return
+    if (!confirm('이 어필포인트를 삭제할까요?')) return
     onChange(items.filter(c => c.id !== id))
   }
   const uploadPhoto = async (id, file) => {
@@ -344,14 +344,14 @@ function StrengthCardsTab({ items, onChange }) {
   return (
     <>
       <p style={S.desc}>
-        우리 치과의 장점을 카드로 관리합니다. 환자별 진단서에서 <strong>원하는 장점만 선택</strong>해 삽입합니다.
+        우리 치과의 어필포인트를 카드로 관리합니다. 환자별 진단서에서 <strong>원하는 항목만 선택</strong>해 삽입합니다.
       </p>
       {items.map(c => (
         <div key={c.id} style={S.catCard}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
             <input
               value={c.title} onChange={(e) => updateCard(c.id, { title: e.target.value })}
-              placeholder="장점 제목 (예: 교정과 전문의가 직접)"
+              placeholder="어필포인트 제목 (예: 교정과 전문의가 직접)"
               style={{ ...S.input, flex: 1 }}
             />
             <button onClick={() => removeCard(c.id)} style={S.delBtn}>삭제</button>
@@ -374,7 +374,7 @@ function StrengthCardsTab({ items, onChange }) {
           </div>
         </div>
       ))}
-      <button onClick={addCard} style={{ ...S.addBtn, width: '100%', padding: '12px' }}>+ 장점 카드 추가</button>
+      <button onClick={addCard} style={{ ...S.addBtn, width: '100%', padding: '12px' }}>+ 어필포인트 추가</button>
     </>
   )
 }
