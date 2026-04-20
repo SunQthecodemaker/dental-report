@@ -203,8 +203,14 @@ function parseTreatmentPlans(summaryHtml) {
 
       if (isPlanHeader) {
         if (cur) plans.push(cur)
-        const title = strongText.replace(/^계획\s*#?\d+\s*[:：]\s*/, '')
-        cur = { title, methodHtml: '', effect: '', duration: '' }
+        // strong 안의 텍스트에서 "계획 #N:" 제거한 나머지 → 제목으로 사용
+        const titleFromStrong = strongText.replace(/^계획\s*#?\d+\s*[:：]\s*/, '').trim()
+        // <p> 전체에서 <strong>...</strong>를 제거한 나머지 HTML → method 본문으로 사용
+        // (AI가 같은 <p> 안에 본문을 함께 쓴 경우 파싱 누락 방지)
+        const fullHtml = node.innerHTML || ''
+        const afterStrong = fullHtml.replace(/<strong>[\s\S]*?<\/strong>\s*:?\s*/i, '').trim()
+        const methodHtml = afterStrong ? `<p>${afterStrong}</p>` : ''
+        cur = { title: titleFromStrong, methodHtml, effect: '', duration: '' }
         continue
       }
       if (!cur) continue
