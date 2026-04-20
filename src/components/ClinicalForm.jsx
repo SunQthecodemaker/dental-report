@@ -386,6 +386,16 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
                 )}
               </div>
 
+              {/* 교정 단계 (제일 위) */}
+              <div style={itemRowStyle}>
+                <div style={labelStyle}>교정 단계</div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {['1차', '2차'].map(p => (
+                    <button key={p} onClick={() => updatePlan(idx, 'phase', plan.phase === p ? '' : p)} style={chipStyle(plan.phase === p, '#b5976a')}>{p} 교정</button>
+                  ))}
+                </div>
+              </div>
+
               {/* 치료 목표 */}
               <FieldRow label="치료 목표">
                 <textarea
@@ -396,16 +406,6 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
                   rows={2}
                 />
               </FieldRow>
-
-              {/* 교정 단계 (먼저) */}
-              <div style={itemRowStyle}>
-                <div style={labelStyle}>교정 단계</div>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  {['1차', '2차'].map(p => (
-                    <button key={p} onClick={() => updatePlan(idx, 'phase', plan.phase === p ? '' : p)} style={chipStyle(plan.phase === p, '#b5976a')}>{p} 교정</button>
-                  ))}
-                </div>
-              </div>
 
               {/* 단계 선택 시 → 교정 범위 + 세부 */}
               {plan.phase && (
@@ -426,7 +426,7 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
                       <div style={itemRowStyle}>
                         <div style={{ ...labelStyle, width: '160px' }}>근기능 / 골격 성장치료</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', flex: 1 }}>
-                          {['프리올소', '구내 고정식 장치', '착탈식 장치', '구외 장치'].map(item => (
+                          {['프리올소', '구내 고정식 장치', '가철식 장치', '구외 장치'].map(item => (
                             <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
                           ))}
                         </div>
@@ -436,7 +436,7 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
                       <div style={itemRowStyle}>
                         <div style={{ ...labelStyle, width: '160px' }}>악궁확장</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', flex: 1 }}>
-                          {['고정식', '착탈식'].map(item => (
+                          {['고정식', '가철식'].map(item => (
                             <button key={item} onClick={() => togglePlanArray(idx, 'primary', `악궁확장 — ${item}`)} style={chipStyle((plan.primary || []).includes(`악궁확장 — ${item}`), '#7c3aed')}>{item}</button>
                           ))}
                         </div>

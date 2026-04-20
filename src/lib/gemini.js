@@ -122,17 +122,27 @@ function summaryIsEmpty(summary) {
   return !summary.skeletal && !summary.dental && !summary.etc && plans.length === 0 && !summary.overall
 }
 
+// 성향 키 → 한국어 라벨 매핑 (AI 프롬프트 가독성용, 본문에는 절대 노출되면 안 됨)
+const STAFF_KEY_LABEL = {
+  personality: '성격·반응 성향',
+  anxiety: '불안 요소',
+  costReaction: '비용 반응',
+  interests: '주요 관심사',
+  willingness: '치료 의지(5점)',
+  understanding: '이해도(5점)',
+}
+
 function buildStaffLines(staffForm = {}) {
   const lines = []
   for (const key of ['personality', 'anxiety', 'costReaction', 'interests']) {
     const arr = staffForm[key]
     if (Array.isArray(arr) && arr.length > 0) {
-      lines.push(`- ${key}: ${arr.join(', ')}`)
+      lines.push(`- ${STAFF_KEY_LABEL[key]}: ${arr.join(', ')}`)
     }
   }
   for (const key of ['willingness', 'understanding']) {
     if (typeof staffForm[key] === 'number') {
-      lines.push(`- ${key}: ${staffForm[key]}/5`)
+      lines.push(`- ${STAFF_KEY_LABEL[key]}: ${staffForm[key]}/5`)
     }
   }
   return lines.length > 0 ? lines.join('\n') : '(성향 정보 없음)'
@@ -186,17 +196,29 @@ export async function composeReport({ summary, staffForm }) {
 6. 치료 기간/비용/예후/장치명은 입력에 명시된 경우에만 언급.
 7. 치료 계획이 여러 개면 순서대로 모두 서술(#1, #2…).
 
-**✅ 톤 규칙 (환자 성향 반영 — 내용은 추가하지 않고 표현만 조절):**
-- 감성적 → 따뜻하고 공감하는 표현
-- 꼼꼼한 편 → 근거와 이유 포함
-- 바쁜 분 → 핵심만 짧고 명확
-- 불안 요소 있으면 → 해당 부분에 안심 문구 (새 내용 아님, 기존 내용 재표현)
-- 비용 부담 있으면 → 가치 중심 표현
-- 치료 의지 1~2 → 부드럽게 권유
-- 치료 의지 4~5 → 구체적 다음 단계
-- 이해도 1~2 → 비유와 쉬운 표현
-- 이해도 4~5 → 전문적이고 구체적
-- 특이 상황에 내원 여건(거리/시간 등) 있으면 → personalNote에 접근성 고려 문구
+**✅ 톤 규칙 (환자 성향은 "서술 방식"만 바꿉니다 — 내용 추가·라벨 노출 모두 금지):**
+
+⛔ 절대 금지: 성향 라벨(꼼꼼함, 감성적, 바쁨, 불안, 꼼꼼한 편, 의지 높음 등)을 본문이나 personalNote에 **단어 그대로 노출하지 마시오**. 성향은 문장의 **상세도·어조·비유 사용 여부·설명 순서**만 결정합니다. "환자분은 꼼꼼하시니…", "바쁘신 만큼…" 같은 서술은 오답입니다.
+
+| 선택된 성향 | 반영 방법 (문체 조절) |
+|---|---|
+| 꼼꼼함 / 신중함 | 각 판단의 **근거와 과정**을 한 문장 이상 덧붙여 서술. 왜 그런 진단인지·왜 그 치료가 필요한지 이유를 풀어 설명. |
+| 감성적 / 공감 필요 | 기능·수치 대신 **환자가 체감할 변화**를 따뜻하게 표현. 안심 가능한 어조. |
+| 바쁨 / 효율 중시 | 핵심만 짧게, **핵심 결론을 문단 앞에** 두고 부연은 최소화. |
+| 불안 요소 있음 | 해당 부분에 **우려를 인지하는 문구** + 기존 내용의 안전장치 재서술(새 내용 아님). |
+| 비용 부담 있음 | 기능·심미 **가치와 장기 효과** 중심으로 서술. 금액·할인 언급 금지. |
+| 치료 의지 1~2 | 부드럽게 권유하는 어조, 단정 표현 줄이기. |
+| 치료 의지 4~5 | 단정적이고 구체적인 다음 단계 제시. |
+| 이해도 1~2 | 일상 비유 사용, 전문용어는 한 번 풀어서 설명. |
+| 이해도 4~5 | 전문 용어 유지, 메커니즘까지 구체적으로. |
+
+특이 상황(내원 거리·시간 등)은 personalNote에 **접근성 고려 문구**로만 반영. 어느 쪽이든 성향 라벨 자체는 본문에 쓰지 않습니다.
+
+**Do/Don't (성향 반영 예시):**
+입력 [성향: 꼼꼼함, 이해도 4]  · 소스: "돌출전치, Class II"
+✅ Good: "앞니가 앞쪽으로 기울어져 있어 입술 돌출감이 나타납니다. 앞니의 각도를 뒤로 당겨 정상 위치로 옮기면 기능과 심미 모두 개선됩니다."
+❌ Bad: "환자분은 꼼꼼하신 성향이시니 아래와 같이 상세히 설명드리겠습니다."
+❌ Bad: "이해도가 높은 환자분께…"
 
 **언어:** 100% 한국어. 영어 병기 금지. 괄호 안 영어 설명 금지.
 
