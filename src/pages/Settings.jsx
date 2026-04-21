@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { saveTreatmentCases, saveStrengthCards, uploadLibraryPhoto, newCaseId } from '../lib/library'
 import { useId } from 'react'
+import { validateNewGuideline, cleanupGuidelines } from '../lib/gemini'
 
 const TABS = [
   { id: 'absoluteRules', label: '절대 규칙' },
@@ -78,7 +79,6 @@ export default function Settings() {
   const [strengthCards, setStrengthCards] = useState([])
   const [formConfig, setFormConfig] = useState(null)
   const [toneRules, setToneRules] = useState([])
-  const [doDontExamples, setDoDontExamples] = useState([])
   const [corrections, setCorrections] = useState([])
   const [saving, setSaving] = useState(false)
   const [loaded, setLoaded] = useState(false)
@@ -99,7 +99,6 @@ export default function Settings() {
         if (row.id === 'strength_cards') setStrengthCards(row.value.items || [])
         if (row.id === 'staff_form_config') setFormConfig(row.value)
         if (row.id === 'tone_rules_table') setToneRules(row.value.items || [])
-        if (row.id === 'do_dont_examples') setDoDontExamples(row.value.items || [])
       }
     }
     setCorrections(corrRes.data || [])
@@ -165,8 +164,6 @@ export default function Settings() {
               onToneRulesChange={(v) => { setToneRules(v); save('tone_rules_table', v) }}
               guidelines={guidelines}
               onGuidelinesChange={(v) => { setGuidelines(v); save('writing_guidelines', v) }}
-              doDontExamples={doDontExamples}
-              onDoDontChange={(v) => { setDoDontExamples(v); save('do_dont_examples', v) }}
             />
           )}
           {tab === 'learning' && (
@@ -245,7 +242,7 @@ function AbsoluteRulesTab() {
 }
 
 // ─── 톤 규칙 탭 ───
-function ToneRulesTab({ toneRules, onToneRulesChange, guidelines, onGuidelinesChange, doDontExamples, onDoDontChange }) {
+function ToneRulesTab({ toneRules, onToneRulesChange, guidelines, onGuidelinesChange }) {
   return (
     <>
       <p style={S.desc}>AI가 환자 성향에 맞춰 <strong>문체·상세도·어조</strong>를 조절하는 규칙. 내용 추가는 하지 않고 서술 방식만 바꿉니다.</p>
@@ -253,11 +250,8 @@ function ToneRulesTab({ toneRules, onToneRulesChange, guidelines, onGuidelinesCh
       <h3 style={S.subTitle}>① 성향별 서술 방식</h3>
       <ToneTableEditor items={toneRules} onChange={onToneRulesChange} />
 
-      <h3 style={{ ...S.subTitle, marginTop: 28 }}>② 자유 작성 지침</h3>
+      <h3 style={{ ...S.subTitle, marginTop: 28 }}>② 작성 지침 <span style={{ fontSize: 12, fontWeight: 500, color: '#9ca3af' }}>— AI가 중복·충돌 자동 점검</span></h3>
       <GuidelineListEditor items={guidelines} onChange={onGuidelinesChange} />
-
-      <h3 style={{ ...S.subTitle, marginTop: 28 }}>③ Do/Don't 예시 (few-shot)</h3>
-      <DoDontEditor items={doDontExamples} onChange={onDoDontChange} />
     </>
   )
 }
@@ -307,78 +301,211 @@ function ToneTableEditor({ items, onChange }) {
 
 function GuidelineListEditor({ items, onChange }) {
   const [text, setText] = useState('')
-  const add = () => {
-    if (!text.trim()) return
-    onChange([...items, text.trim()])
-    setText('')
+  const [checking, setChecking] = useState(false)
+  const [toast, setToast] = useState(null) // { kind, text }
+  const [conflict, setConflict] = useState(null) // { newText, existingText, idx, reason, mergedText, kind }
+  const [cleaning, setCleaning] = useState(false)
+  const [cleanupPreview, setCleanupPreview] = useState(null) // { before, after, summary }
+
+  const showToast = (kind, msg) => {
+    setToast({ kind, text: msg })
+    setTimeout(() => setToast(null), 3000)
   }
+
+  const appendItem = (t) => {
+    onChange([...items, t])
+  }
+
+  const replaceItem = (idx, t) => {
+    const copy = [...items]
+    copy[idx] = t
+    onChange(copy)
+  }
+
+  const tryAdd = async () => {
+    const t = text.trim()
+    if (!t) return
+    setChecking(true)
+    try {
+      const result = await validateNewGuideline(items, t)
+      if (result.status === 'ok') {
+        appendItem(t)
+        setText('')
+        showToast('ok', '지침 추가됨')
+      } else if (result.status === 'duplicate') {
+        const idx = typeof result.conflictIndex === 'number' ? result.conflictIndex : -1
+        showToast('warn', `이미 유사한 지침이 있습니다${idx >= 0 ? ` — "${items[idx]}"` : ''}`)
+      } else if (result.status === 'conflict' || result.status === 'similar') {
+        const idx = typeof result.conflictIndex === 'number' ? result.conflictIndex : -1
+        setConflict({
+          kind: result.status,
+          newText: t,
+          existingText: idx >= 0 ? items[idx] : '',
+          idx,
+          reason: result.reason || '',
+          mergedText: result.mergedText || '',
+        })
+      } else {
+        appendItem(t)
+        setText('')
+      }
+    } catch (err) {
+      console.warn(err)
+      appendItem(t)
+      setText('')
+      showToast('warn', 'AI 검수 실패 — 그대로 추가했습니다.')
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  const forceAdd = () => {
+    appendItem(conflict.newText)
+    setText('')
+    setConflict(null)
+    showToast('ok', '추가됨 (둘 다 유지)')
+  }
+  const replaceExisting = () => {
+    replaceItem(conflict.idx, conflict.newText)
+    setText('')
+    setConflict(null)
+    showToast('ok', '기존 지침을 새 지침으로 교체')
+  }
+  const keepExisting = () => {
+    setConflict(null)
+    showToast('warn', '기존 지침 유지 — 새 지침 버림')
+  }
+  const mergeBoth = () => {
+    const merged = conflict.mergedText || `${conflict.existingText} / ${conflict.newText}`
+    replaceItem(conflict.idx, merged)
+    setText('')
+    setConflict(null)
+    showToast('ok', '병합 완료')
+  }
+
+  const runCleanup = async () => {
+    if (items.length < 2) {
+      showToast('warn', '정리할 지침이 2개 이상 있어야 합니다.')
+      return
+    }
+    setCleaning(true)
+    try {
+      const { cleaned, summary } = await cleanupGuidelines(items)
+      setCleanupPreview({ before: items, after: cleaned, summary })
+    } catch (err) {
+      showToast('warn', 'AI 정리 실패: ' + (err.message || '네트워크 오류'))
+    } finally {
+      setCleaning(false)
+    }
+  }
+  const applyCleanup = () => {
+    onChange(cleanupPreview.after)
+    setCleanupPreview(null)
+    showToast('ok', '지침을 새로 정리했습니다.')
+  }
+
   return (
     <>
-      {items.length === 0 && <div style={{ ...S.desc, fontSize: 13 }}>아직 등록된 지침이 없습니다.</div>}
+      {items.length === 0 && <div style={{ ...S.desc, fontSize: 13 }}>아직 등록된 지침이 없습니다. 한 줄씩 자유롭게 추가하세요.</div>}
       {items.map((g, i) => (
         <div key={i} style={S.itemRow}>
-          <div style={S.itemText}>{g}</div>
+          <div style={S.itemText}><span style={{ color: '#9ca3af', marginRight: 8 }}>{i + 1}.</span>{g}</div>
           <button onClick={() => onChange(items.filter((_, idx) => idx !== i))} style={S.delBtn}>삭제</button>
         </div>
       ))}
-      <div style={S.addRow}>
+
+      <div style={{ ...S.addRow, marginTop: 12 }}>
         <input value={text} onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && add()}
-          placeholder="예: 불안해하는 환자엔 안심 문구를 반드시 추가" style={S.input} />
-        <button onClick={add} style={S.addBtn}>추가</button>
+          onKeyDown={(e) => e.key === 'Enter' && !checking && tryAdd()}
+          placeholder="예: 불안해하는 환자엔 안심 문구를 반드시 추가"
+          disabled={checking}
+          style={{ ...S.input, opacity: checking ? 0.6 : 1 }} />
+        <button onClick={tryAdd} disabled={checking || !text.trim()} style={{ ...S.addBtn, opacity: (checking || !text.trim()) ? 0.5 : 1 }}>
+          {checking ? '검수 중…' : '추가'}
+        </button>
       </div>
-    </>
-  )
-}
 
-function DoDontEditor({ items, onChange }) {
-  const [draft, setDraft] = useState({ label: '', input: '', good: '', bad: '' })
-  const add = () => {
-    if (!draft.label.trim() || (!draft.good.trim() && !draft.bad.trim())) return
-    onChange([...items, { id: crypto.randomUUID(), ...draft, enabled: true }])
-    setDraft({ label: '', input: '', good: '', bad: '' })
-  }
-  const toggle = (id) => onChange(items.map(it => it.id === id ? { ...it, enabled: it.enabled === false ? true : false } : it))
-  const remove = (id) => onChange(items.filter(it => it.id !== id))
-  const updateField = (id, field, v) => onChange(items.map(it => it.id === id ? { ...it, [field]: v } : it))
-
-  return (
-    <>
-      {items.map((it) => (
-        <div key={it.id} style={{ ...S.catCard, opacity: it.enabled === false ? 0.5 : 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <input value={it.label} onChange={(e) => updateField(it.id, 'label', e.target.value)}
-              placeholder="라벨 (예: 성향 반영)"
-              style={{ ...S.input, fontWeight: 700, flex: 1 }} />
-            <button onClick={() => toggle(it.id)} style={{ ...S.delBtn, color: it.enabled === false ? '#059669' : '#6b7280', borderColor: it.enabled === false ? '#a7f3d0' : '#d1d5db' }}>
-              {it.enabled === false ? '활성' : '끄기'}
-            </button>
-            <button onClick={() => remove(it.id)} style={S.delBtn}>삭제</button>
-          </div>
-          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>입력 상황</div>
-          <textarea value={it.input} onChange={(e) => updateField(it.id, 'input', e.target.value)}
-            placeholder="예: [성향: 꼼꼼함] · 소스: 돌출전치"
-            style={{ ...S.input, minHeight: 40, resize: 'vertical', marginBottom: 8 }} />
-          <div style={{ fontSize: 12, color: '#059669', marginBottom: 4 }}>✅ Good</div>
-          <textarea value={it.good} onChange={(e) => updateField(it.id, 'good', e.target.value)}
-            style={{ ...S.input, minHeight: 50, resize: 'vertical', marginBottom: 8, borderColor: '#a7f3d0' }} />
-          <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 4 }}>❌ Bad</div>
-          <textarea value={it.bad} onChange={(e) => updateField(it.id, 'bad', e.target.value)}
-            style={{ ...S.input, minHeight: 50, resize: 'vertical', borderColor: '#fecaca' }} />
+      <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', background: '#eff6ff', borderRadius: 8, border: '1px solid #bfdbfe' }}>
+        <div style={{ fontSize: 12, color: '#1d4ed8' }}>
+          🤖 지침이 쌓이면 AI가 중복·모호한 문장을 정리해줍니다.
         </div>
-      ))}
-      <div style={S.formBox}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>새 예시 추가</div>
-        <input value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })}
-          placeholder="라벨" style={{ ...S.input, marginBottom: 6 }} />
-        <textarea value={draft.input} onChange={(e) => setDraft({ ...draft, input: e.target.value })}
-          placeholder="입력 상황" style={{ ...S.input, minHeight: 40, resize: 'vertical', marginBottom: 6 }} />
-        <textarea value={draft.good} onChange={(e) => setDraft({ ...draft, good: e.target.value })}
-          placeholder="✅ Good 예시" style={{ ...S.input, minHeight: 40, resize: 'vertical', marginBottom: 6, borderColor: '#a7f3d0' }} />
-        <textarea value={draft.bad} onChange={(e) => setDraft({ ...draft, bad: e.target.value })}
-          placeholder="❌ Bad 예시" style={{ ...S.input, minHeight: 40, resize: 'vertical', marginBottom: 8, borderColor: '#fecaca' }} />
-        <button onClick={add} style={{ ...S.addBtn, width: '100%' }}>+ 추가</button>
+        <button onClick={runCleanup} disabled={cleaning || items.length < 2} style={{ ...S.addBtn, padding: '8px 14px', background: '#1d4ed8', opacity: (cleaning || items.length < 2) ? 0.5 : 1 }}>
+          {cleaning ? '정리 중…' : 'AI 정리'}
+        </button>
       </div>
+
+      {toast && (
+        <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+          background: toast.kind === 'ok' ? '#ecfdf5' : '#fef3c7',
+          color: toast.kind === 'ok' ? '#065f46' : '#78350f',
+          border: `1px solid ${toast.kind === 'ok' ? '#a7f3d0' : '#fcd34d'}` }}>
+          {toast.text}
+        </div>
+      )}
+
+      {conflict && (
+        <div style={S.modalBackdrop}>
+          <div style={S.modalCard}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 16, color: '#1e3a5f' }}>
+              {conflict.kind === 'conflict' ? '⚠️ 기존 지침과 충돌합니다' : '🔗 기존 지침과 의미가 겹칩니다'}
+            </h3>
+            {conflict.reason && <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>{conflict.reason}</p>}
+            <div style={{ padding: 10, background: '#f9fafb', borderRadius: 6, fontSize: 13, marginBottom: 8 }}>
+              <div style={{ color: '#6b7280', fontSize: 11, fontWeight: 700, marginBottom: 4 }}>기존 #{conflict.idx + 1}</div>
+              <div style={{ color: '#374151' }}>{conflict.existingText}</div>
+            </div>
+            <div style={{ padding: 10, background: '#f0f9ff', borderRadius: 6, fontSize: 13, marginBottom: 8, border: '1px solid #bfdbfe' }}>
+              <div style={{ color: '#1d4ed8', fontSize: 11, fontWeight: 700, marginBottom: 4 }}>새 지침</div>
+              <div style={{ color: '#1e3a5f' }}>{conflict.newText}</div>
+            </div>
+            {conflict.mergedText && (
+              <div style={{ padding: 10, background: '#ecfdf5', borderRadius: 6, fontSize: 13, marginBottom: 12, border: '1px solid #a7f3d0' }}>
+                <div style={{ color: '#059669', fontSize: 11, fontWeight: 700, marginBottom: 4 }}>AI 병합안</div>
+                <div style={{ color: '#065f46' }}>{conflict.mergedText}</div>
+              </div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {conflict.mergedText && (
+                <button onClick={mergeBoth} style={{ ...S.addBtn, background: '#059669' }}>✅ 병합안 적용</button>
+              )}
+              <button onClick={replaceExisting} style={{ ...S.addBtn, background: '#7c3aed' }}>🔁 기존 교체</button>
+              <button onClick={keepExisting} style={{ ...S.delBtn, padding: '10px 16px' }}>❌ 기존 유지</button>
+              <button onClick={forceAdd} style={{ ...S.delBtn, padding: '10px 16px', color: '#1d4ed8', borderColor: '#bfdbfe' }}>➕ 둘 다 유지</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cleanupPreview && (
+        <div style={S.modalBackdrop}>
+          <div style={{ ...S.modalCard, maxWidth: 680 }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 16, color: '#1e3a5f' }}>🤖 AI 정리 미리보기</h3>
+            {cleanupPreview.summary && <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 12 }}>{cleanupPreview.summary}</p>}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', marginBottom: 6 }}>BEFORE ({cleanupPreview.before.length}개)</div>
+                <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 6, padding: 8, background: '#f9fafb', fontSize: 12, lineHeight: 1.5 }}>
+                  {cleanupPreview.before.map((g, i) => (
+                    <div key={i} style={{ padding: '4px 0', borderBottom: i < cleanupPreview.before.length - 1 ? '1px dashed #e5e7eb' : 'none' }}>{i + 1}. {g}</div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#059669', marginBottom: 6 }}>AFTER ({cleanupPreview.after.length}개)</div>
+                <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid #a7f3d0', borderRadius: 6, padding: 8, background: '#ecfdf5', fontSize: 12, lineHeight: 1.5 }}>
+                  {cleanupPreview.after.map((g, i) => (
+                    <div key={i} style={{ padding: '4px 0', borderBottom: i < cleanupPreview.after.length - 1 ? '1px dashed #a7f3d0' : 'none' }}>{i + 1}. {g}</div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setCleanupPreview(null)} style={{ ...S.delBtn, padding: '10px 16px' }}>취소</button>
+              <button onClick={applyCleanup} style={{ ...S.addBtn, background: '#059669' }}>✅ 이대로 교체</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
@@ -387,8 +514,13 @@ function DoDontEditor({ items, onChange }) {
 function LearningTab({ terms, onTermsChange, corrections, onReloadCorrections }) {
   const [showProcessed, setShowProcessed] = useState(false)
 
-  const pending = corrections.filter(c => (c.status || 'pending') === 'pending')
-  const processed = corrections.filter(c => (c.status || 'pending') !== 'pending')
+  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim()
+  const meaningful = corrections.filter(c => {
+    const o = norm(c.original_term), e = norm(c.corrected_term)
+    return o && e && o !== e
+  })
+  const pending = meaningful.filter(c => (c.status || 'pending') === 'pending')
+  const processed = meaningful.filter(c => (c.status || 'pending') !== 'pending')
   const visible = showProcessed ? processed : pending
 
   const setStatus = async (id, status) => {
@@ -871,4 +1003,6 @@ const S = {
   chipDel: { background: 'none', border: 'none', color: '#a78bfa', fontSize: '14px', cursor: 'pointer', padding: '0 2px', fontWeight: '700' },
   warnBox: { padding: '12px 16px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 13, color: '#78350f', marginBottom: 16, lineHeight: 1.6 },
   sectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '8px 4px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 15, fontWeight: 700, color: '#1e3a5f' },
+  modalBackdrop: { position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 },
+  modalCard: { background: '#fff', borderRadius: 12, padding: 20, maxWidth: 480, width: '100%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.25)' },
 }

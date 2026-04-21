@@ -6,14 +6,13 @@ const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/generate-text`
 
 async function loadClinicSettings() {
   const { data } = await supabase.from('clinic_settings').select('*')
-  const settings = { guidelines: [], terminology: [], strengths: [], toneRules: [], doDontExamples: [] }
+  const settings = { guidelines: [], terminology: [], strengths: [], toneRules: [] }
   if (data) {
     for (const row of data) {
       if (row.id === 'writing_guidelines') settings.guidelines = row.value.items || []
       if (row.id === 'terminology') settings.terminology = row.value.items || []
       if (row.id === 'clinic_strengths') settings.strengths = row.value.items || []
       if (row.id === 'tone_rules_table') settings.toneRules = row.value.items || []
-      if (row.id === 'do_dont_examples') settings.doDontExamples = row.value.items || []
     }
   }
   return settings
@@ -96,25 +95,145 @@ export async function generateImageCaption(file) {
   }
 }
 
+function normalizeForCompare(s) {
+  return (s || '').replace(/\s+/g, ' ').replace(/[\u200B-\u200D\uFEFF]/g, '').trim()
+}
+
 export async function saveCorrections(originalText, editedText) {
   const orig = stripHtml(originalText)
   const edit = stripHtml(editedText)
-  if (!orig || !edit || orig === edit) return
-  const origSentences = orig.split(/[.。]\s*/).filter(Boolean)
-  const editSentences = edit.split(/[.。]\s*/).filter(Boolean)
+  if (!orig || !edit) return
+  if (normalizeForCompare(orig) === normalizeForCompare(edit)) return
+  const origSentences = orig.split(/(?<=[.。!?])\s+/).map(s => s.trim()).filter(Boolean)
+  const editSentences = edit.split(/(?<=[.。!?])\s+/).map(s => s.trim()).filter(Boolean)
   const corrections = []
   const len = Math.min(origSentences.length, editSentences.length)
   for (let i = 0; i < len; i++) {
-    if (origSentences[i].trim() !== editSentences[i].trim()) {
+    const o = origSentences[i], e = editSentences[i]
+    if (normalizeForCompare(o) !== normalizeForCompare(e)) {
       corrections.push({
-        original_term: origSentences[i].trim(),
-        corrected_term: editSentences[i].trim(),
+        original_term: o,
+        corrected_term: e,
         context: 'AI생성 텍스트 수동 교정',
       })
     }
   }
   if (corrections.length > 0) {
     await supabase.from('charting_corrections').insert(corrections)
+  }
+}
+
+/**
+ * 새 지침이 기존 지침과 중복/충돌하는지 AI에 검수 요청.
+ * 반환: { status: 'ok' | 'duplicate' | 'conflict' | 'similar', reason, conflictIndex?, mergedText? }
+ *  - ok: 추가해도 무방
+ *  - duplicate: 이미 같은 의미가 있음
+ *  - conflict: 기존과 모순 (사용자에게 선택 요청)
+ *  - similar: 의미가 겹쳐 병합 제안
+ */
+export async function validateNewGuideline(existing, newText) {
+  const text = (newText || '').trim()
+  if (!text) return { status: 'ok', reason: '' }
+  if (!existing || existing.length === 0) return { status: 'ok', reason: '' }
+
+  const systemPrompt = `당신은 치과 진단서 AI 작성 지침을 관리하는 검수관입니다.
+새로 추가하려는 지침이 기존 지침 목록과 중복되거나 충돌하는지 판단하세요.
+
+판단 기준:
+- duplicate: 기존 지침 중 **거의 같은 의미**의 항목이 있음 (표현만 다를 뿐)
+- conflict: 기존 지침과 **서로 모순되는** 내용 (예: "짧게 써" vs "자세히 써")
+- similar: 주제가 겹쳐 **하나로 합치는 편이** 더 명확한 경우
+- ok: 독립적인 새 지침, 그대로 추가 가능
+
+반드시 JSON만 출력하시오:
+{ "status": "ok" | "duplicate" | "conflict" | "similar", "reason": "짧은 한국어 설명", "conflictIndex": <기존 배열의 0-based 인덱스, 해당 시>, "mergedText": "similar인 경우 병합된 문장" }`
+
+  const userMessage = `기존 지침 목록(0-based):
+${existing.map((g, i) => `${i}. ${g}`).join('\n')}
+
+새로 추가하려는 지침:
+"${text}"`
+
+  try {
+    const response = await fetch(EDGE_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ parts: [{ text: userMessage }] }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 400,
+          responseMimeType: 'application/json',
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      }),
+    })
+    const data = await response.json()
+    if (data.error) return { status: 'ok', reason: '' }
+    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!raw) return { status: 'ok', reason: '' }
+    const parsed = JSON.parse(raw)
+    if (!['ok', 'duplicate', 'conflict', 'similar'].includes(parsed.status)) {
+      return { status: 'ok', reason: '' }
+    }
+    return parsed
+  } catch (err) {
+    console.warn('validateNewGuideline failed:', err)
+    return { status: 'ok', reason: '' }
+  }
+}
+
+/**
+ * 기존 지침 전체를 AI가 중복 제거·주제별로 재구성해 간결한 배열로 반환.
+ * 반환: { cleaned: string[], summary: string }
+ */
+export async function cleanupGuidelines(existing) {
+  const items = (existing || []).filter(Boolean)
+  if (items.length < 2) return { cleaned: items, summary: '정리할 지침이 충분하지 않습니다.' }
+
+  const systemPrompt = `당신은 치과 진단서 AI 작성 지침을 정리하는 편집자입니다.
+주어진 지침 목록에서 **의미가 겹치는 항목은 하나로 병합**하고, **모호한 문장은 구체적으로** 다듬고, **순서는 주제별**로 재정렬하세요.
+
+엄격한 원칙:
+- 원래 지침의 의도를 바꾸지 마시오
+- 모순되는 지침이 있으면 둘 다 유지하되 순서를 인접시키시오
+- 각 지침은 한 줄(최대 80자 권장), 명령형·구체적 표현
+- 개수는 가능하면 줄이되, 합쳐도 의미가 흐려지면 따로 두시오
+
+반드시 JSON만 출력:
+{ "cleaned": ["지침1", "지침2", ...], "summary": "어떤 정리를 했는지 1~2문장 한국어 요약" }`
+
+  const userMessage = `정리 대상 지침 (${items.length}개):
+${items.map((g, i) => `${i + 1}. ${g}`).join('\n')}`
+
+  try {
+    const response = await fetch(EDGE_FUNCTION_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ parts: [{ text: userMessage }] }],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 2000,
+          responseMimeType: 'application/json',
+          thinkingConfig: { thinkingBudget: 0 },
+        },
+      }),
+    })
+    const data = await response.json()
+    if (data.error) throw new Error(data.error.message)
+    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!raw) throw new Error('AI 응답 비어있음')
+    const parsed = JSON.parse(raw)
+    const cleaned = Array.isArray(parsed.cleaned)
+      ? parsed.cleaned.map(s => String(s || '').trim()).filter(Boolean)
+      : items
+    return { cleaned, summary: parsed.summary || '' }
+  } catch (err) {
+    console.warn('cleanupGuidelines failed:', err)
+    throw err
   }
 }
 
@@ -193,19 +312,6 @@ export async function composeReport({ summary, staffForm }) {
     ? `\n\n| 선택된 성향 | 반영 방법 (문체 조절) |\n|---|---|\n${enabledToneRules.map(r => `| ${r.trait} | ${r.rule} |`).join('\n')}`
     : ''
 
-  // Do/Don't 예시 (DB 관리 — Settings '톤 규칙' 탭에서 편집)
-  const enabledDoDont = (settings.doDontExamples || []).filter(e => e.enabled !== false && (e.good || e.bad))
-  const doDontBlock = enabledDoDont.length > 0
-    ? `\n\n**Do/Don't 예시:**\n${enabledDoDont.map(e => {
-        const parts = []
-        if (e.label) parts.push(`[${e.label}]`)
-        if (e.input) parts.push(`입력: ${e.input}`)
-        if (e.good) parts.push(`✅ Good: ${e.good}`)
-        if (e.bad) parts.push(`❌ Bad: ${e.bad}`)
-        return parts.join('\n')
-      }).join('\n\n')}`
-    : ''
-
   const systemPrompt = `당신은 한국 치과 진단서를 환자 친화적 문장으로 **재서술**하는 AI입니다. 글을 창작하는 게 아니라 소스를 옮겨 쓰는 역할입니다.
 
 **⛔ 절대 규칙 (위반 시 전체 출력 오답):**
@@ -221,7 +327,7 @@ export async function composeReport({ summary, staffForm }) {
 
 ⛔ 절대 금지: 성향 라벨(꼼꼼함, 감성적, 바쁨, 불안, 꼼꼼한 편, 의지 높음 등)을 본문이나 personalNote에 **단어 그대로 노출하지 마시오**. 성향은 문장의 **상세도·어조·비유 사용 여부·설명 순서**만 결정합니다. "환자분은 꼼꼼하시니…", "바쁘신 만큼…" 같은 서술은 오답입니다.${toneTableBlock}
 
-특이 상황(내원 거리·시간 등)은 personalNote에 **접근성 고려 문구**로만 반영. 어느 쪽이든 성향 라벨 자체는 본문에 쓰지 않습니다.${doDontBlock}
+특이 상황(내원 거리·시간 등)은 personalNote에 **접근성 고려 문구**로만 반영. 어느 쪽이든 성향 라벨 자체는 본문에 쓰지 않습니다.
 
 **언어:** 100% 한국어. 영어 병기 금지. 괄호 안 영어 설명 금지.
 
