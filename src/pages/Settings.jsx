@@ -5,41 +5,113 @@ import { saveTreatmentCases, saveStrengthCards, uploadLibraryPhoto, newCaseId } 
 import { useId } from 'react'
 
 const TABS = [
-  { id: 'guidelines', label: '작성 지침' },
-  { id: 'terminology', label: '용어 사전' },
+  { id: 'absoluteRules', label: '절대 규칙' },
+  { id: 'toneRules', label: '톤 규칙' },
+  { id: 'learning', label: '학습' },
   { id: 'strengths', label: 'AI 특장점' },
   { id: 'cases', label: '유사 케이스' },
   { id: 'strengthCards', label: '어필포인트' },
   { id: 'staffForm', label: '상담 폼 항목' },
 ]
 
+// 읽기 전용 절대 규칙 (gemini.js L190-234 하드코딩과 일치)
+const ABSOLUTE_RULES = [
+  {
+    title: '환각 방지 7규칙',
+    body: [
+      '1. [입력 소스]에 글자 단위로 명시된 내용만 사용',
+      '2. 입력에 없는 치아 문제(과개교합·개방교합·반대교합·정중선 편위·총생·공간·매복치·잇몸 문제 등) 언급 금지',
+      '3. 입력에 없는 치료(임플란트·보철·크라운·미백·사랑니 발치 등) 추가 금지',
+      '4. 추측 표현 금지 (아마도, 가능성이, ~할 수도 있습니다, 추정됩니다, 예상됩니다)',
+      '5. 해당 섹션 입력이 비어있으면 h2 헤딩째 출력에서 생략',
+      '6. 치료 기간/비용/예후/장치명은 입력에 명시된 경우에만 언급',
+      '7. 치료 계획이 여러 개면 순서대로 모두 서술 (#1, #2…)',
+    ],
+  },
+  {
+    title: '언어 규칙',
+    body: [
+      '100% 한국어만 사용',
+      '영어 병기 금지, 괄호 안 영어 설명 금지',
+    ],
+  },
+  {
+    title: '치아번호 → 한글 부위명 변환',
+    body: [
+      '#16 → 오른쪽 위 첫 번째 큰어금니',
+      '#26 → 왼쪽 위 첫 번째 큰어금니',
+      '#36 → 왼쪽 아래 첫 번째 큰어금니',
+      '#46 → 오른쪽 아래 첫 번째 큰어금니',
+      '끝자리: 1=중앙 앞니 · 2=옆 앞니 · 3=송곳니 · 4=첫 번째 작은어금니 · 5=두 번째 작은어금니 · 6=첫 번째 큰어금니 · 7=두 번째 큰어금니 · 8=사랑니',
+      '사분면(#10/#20/#30/#40)만 있으면 "오른쪽 위 / 왼쪽 위 / 왼쪽 아래 / 오른쪽 아래" 영역으로',
+      '출력에 "#숫자"가 그대로 남으면 안 됨',
+    ],
+  },
+  {
+    title: '출력 형식 (body HTML)',
+    body: [
+      '섹션 순서 고정: 치성 관계 → 골격 관계 → 치료 계획 → 추가 사항',
+      '각 섹션은 <h2>섹션명</h2> + <p>문단</p> 구조',
+      '비어있는 섹션은 h2 자체를 생략',
+      '치료 계획 여러 개면 <p><strong>계획 #1:</strong> …</p><p><strong>계획 #2:</strong> …</p>',
+      '<img>, <script>, <style> 태그 절대 금지 (이미지는 사용자가 나중 삽입)',
+      '줄바꿈/공백 없는 한 줄 HTML 문자열',
+    ],
+  },
+  {
+    title: 'JSON 응답 스키마',
+    body: [
+      '{ "body": "HTML 문자열", "personalNote": "환자 맞춤 3~5문장", "appealPoints": [{ "title": "...", "description": "..." }] }',
+      'body HTML 안 모든 치과 용어/문제/치료가 입력 소스에 있는지 최종 재확인',
+      '비어있는 섹션 h2가 지워졌는지, "#숫자"가 남아있지 않은지 최종 재확인',
+    ],
+  },
+]
+
 export default function Settings() {
   const navigate = useNavigate()
-  const [tab, setTab] = useState('guidelines')
+  const [tab, setTab] = useState('absoluteRules')
   const [guidelines, setGuidelines] = useState([])
   const [terms, setTerms] = useState([])
   const [strengths, setStrengths] = useState([])
   const [cases, setCases] = useState([])
   const [strengthCards, setStrengthCards] = useState([])
   const [formConfig, setFormConfig] = useState(null)
+  const [toneRules, setToneRules] = useState([])
+  const [doDontExamples, setDoDontExamples] = useState([])
+  const [corrections, setCorrections] = useState([])
   const [saving, setSaving] = useState(false)
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => { loadSettings() }, [])
 
   const loadSettings = async () => {
-    const { data } = await supabase.from('clinic_settings').select('*')
-    if (data) {
-      for (const row of data) {
+    const [settingsRes, corrRes] = await Promise.all([
+      supabase.from('clinic_settings').select('*'),
+      supabase.from('charting_corrections').select('*').order('created_at', { ascending: false }),
+    ])
+    if (settingsRes.data) {
+      for (const row of settingsRes.data) {
         if (row.id === 'writing_guidelines') setGuidelines(row.value.items || [])
         if (row.id === 'terminology') setTerms(row.value.items || [])
         if (row.id === 'clinic_strengths') setStrengths(row.value.items || [])
         if (row.id === 'treatment_cases') setCases(row.value.items || [])
         if (row.id === 'strength_cards') setStrengthCards(row.value.items || [])
         if (row.id === 'staff_form_config') setFormConfig(row.value)
+        if (row.id === 'tone_rules_table') setToneRules(row.value.items || [])
+        if (row.id === 'do_dont_examples') setDoDontExamples(row.value.items || [])
       }
     }
+    setCorrections(corrRes.data || [])
     setLoaded(true)
+  }
+
+  const reloadCorrections = async () => {
+    const { data } = await supabase
+      .from('charting_corrections')
+      .select('*')
+      .order('created_at', { ascending: false })
+    setCorrections(data || [])
   }
 
   const saveAsync = async (saver, items) => {
@@ -86,16 +158,23 @@ export default function Settings() {
 
         {/* 탭 내용 */}
         <div style={S.tabContent}>
-          {tab === 'guidelines' && (
-            <GuidelinesTab
-              items={guidelines}
-              onChange={(v) => { setGuidelines(v); save('writing_guidelines', v) }}
+          {tab === 'absoluteRules' && <AbsoluteRulesTab />}
+          {tab === 'toneRules' && (
+            <ToneRulesTab
+              toneRules={toneRules}
+              onToneRulesChange={(v) => { setToneRules(v); save('tone_rules_table', v) }}
+              guidelines={guidelines}
+              onGuidelinesChange={(v) => { setGuidelines(v); save('writing_guidelines', v) }}
+              doDontExamples={doDontExamples}
+              onDoDontChange={(v) => { setDoDontExamples(v); save('do_dont_examples', v) }}
             />
           )}
-          {tab === 'terminology' && (
-            <TerminologyTab
-              items={terms}
-              onChange={(v) => { setTerms(v); save('terminology', v) }}
+          {tab === 'learning' && (
+            <LearningTab
+              terms={terms}
+              onTermsChange={(v) => { setTerms(v); save('terminology', v) }}
+              corrections={corrections}
+              onReloadCorrections={reloadCorrections}
             />
           )}
           {tab === 'strengths' && (
@@ -128,8 +207,105 @@ export default function Settings() {
   )
 }
 
-// ─── 작성 지침 탭 ───
-function GuidelinesTab({ items, onChange }) {
+// ─── 절대 규칙 탭 (읽기 전용) ───
+function AbsoluteRulesTab() {
+  const [open, setOpen] = useState(() => new Set([0]))
+  const toggle = (i) => {
+    const next = new Set(open)
+    if (next.has(i)) next.delete(i); else next.add(i)
+    setOpen(next)
+  }
+  return (
+    <>
+      <div style={S.warnBox}>
+        <strong>⛔ 편집 불가</strong> — 이 규칙들은 AI 환각 방지의 핵심 장치입니다. 잘못 바꾸면 진단서가 사고로 직결되므로
+        코드에 하드코딩되어 있으며, 변경은 개발자 검토 후 반영됩니다.
+      </div>
+      {ABSOLUTE_RULES.map((sec, i) => {
+        const isOpen = open.has(i)
+        return (
+          <div key={i} style={S.catCard}>
+            <button onClick={() => toggle(i)} style={S.sectionHeader}>
+              <span>{isOpen ? '▼' : '▶'} {sec.title}</span>
+              <span style={{ color: '#9ca3af', fontSize: 12 }}>{sec.body.length}항목</span>
+            </button>
+            {isOpen && (
+              <ul style={{ margin: '10px 0 0', paddingLeft: 20, color: '#374151', fontSize: 14, lineHeight: 1.6 }}>
+                {sec.body.map((line, j) => (<li key={j} style={{ marginBottom: 4 }}>{line}</li>))}
+              </ul>
+            )}
+          </div>
+        )
+      })}
+      <div style={{ ...S.desc, marginTop: 16, fontSize: 12 }}>
+        위치: <code>src/lib/gemini.js</code> · composeReport() systemPrompt
+      </div>
+    </>
+  )
+}
+
+// ─── 톤 규칙 탭 ───
+function ToneRulesTab({ toneRules, onToneRulesChange, guidelines, onGuidelinesChange, doDontExamples, onDoDontChange }) {
+  return (
+    <>
+      <p style={S.desc}>AI가 환자 성향에 맞춰 <strong>문체·상세도·어조</strong>를 조절하는 규칙. 내용 추가는 하지 않고 서술 방식만 바꿉니다.</p>
+
+      <h3 style={S.subTitle}>① 성향별 서술 방식</h3>
+      <ToneTableEditor items={toneRules} onChange={onToneRulesChange} />
+
+      <h3 style={{ ...S.subTitle, marginTop: 28 }}>② 자유 작성 지침</h3>
+      <GuidelineListEditor items={guidelines} onChange={onGuidelinesChange} />
+
+      <h3 style={{ ...S.subTitle, marginTop: 28 }}>③ Do/Don't 예시 (few-shot)</h3>
+      <DoDontEditor items={doDontExamples} onChange={onDoDontChange} />
+    </>
+  )
+}
+
+function ToneTableEditor({ items, onChange }) {
+  const [trait, setTrait] = useState('')
+  const [rule, setRule] = useState('')
+  const add = () => {
+    if (!trait.trim() || !rule.trim()) return
+    onChange([...items, { id: crypto.randomUUID(), trait: trait.trim(), rule: rule.trim(), enabled: true }])
+    setTrait(''); setRule('')
+  }
+  const toggle = (id) => onChange(items.map(it => it.id === id ? { ...it, enabled: it.enabled === false ? true : false } : it))
+  const remove = (id) => onChange(items.filter(it => it.id !== id))
+  const updateField = (id, field, v) => onChange(items.map(it => it.id === id ? { ...it, [field]: v } : it))
+
+  return (
+    <>
+      {items.map((it) => (
+        <div key={it.id} style={{ ...S.catCard, padding: 12, opacity: it.enabled === false ? 0.5 : 1 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr auto auto', gap: 8, alignItems: 'start' }}>
+            <input value={it.trait} onChange={(e) => updateField(it.id, 'trait', e.target.value)}
+              placeholder="성향 (예: 꼼꼼함)"
+              style={{ ...S.input, fontWeight: 600 }}
+              onBlur={() => onChange(items)} />
+            <textarea value={it.rule} onChange={(e) => updateField(it.id, 'rule', e.target.value)}
+              placeholder="반영 방법 (문체 조절)"
+              style={{ ...S.input, minHeight: 44, resize: 'vertical' }}
+              onBlur={() => onChange(items)} />
+            <button onClick={() => toggle(it.id)} style={{ ...S.delBtn, color: it.enabled === false ? '#059669' : '#6b7280', borderColor: it.enabled === false ? '#a7f3d0' : '#d1d5db' }}>
+              {it.enabled === false ? '활성' : '끄기'}
+            </button>
+            <button onClick={() => remove(it.id)} style={S.delBtn}>삭제</button>
+          </div>
+        </div>
+      ))}
+      <div style={{ ...S.formBox, display: 'grid', gridTemplateColumns: '180px 1fr auto', gap: 8 }}>
+        <input value={trait} onChange={(e) => setTrait(e.target.value)} placeholder="성향 이름" style={S.input} />
+        <input value={rule} onChange={(e) => setRule(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add()}
+          placeholder="반영 방법 (예: 핵심만 짧게, 결론 앞에)" style={S.input} />
+        <button onClick={add} style={S.addBtn}>추가</button>
+      </div>
+    </>
+  )
+}
+
+function GuidelineListEditor({ items, onChange }) {
   const [text, setText] = useState('')
   const add = () => {
     if (!text.trim()) return
@@ -138,7 +314,7 @@ function GuidelinesTab({ items, onChange }) {
   }
   return (
     <>
-      <p style={S.desc}>AI가 진단서를 작성할 때 따라야 할 규칙입니다.</p>
+      {items.length === 0 && <div style={{ ...S.desc, fontSize: 13 }}>아직 등록된 지침이 없습니다.</div>}
       {items.map((g, i) => (
         <div key={i} style={S.itemRow}>
           <div style={S.itemText}>{g}</div>
@@ -148,15 +324,133 @@ function GuidelinesTab({ items, onChange }) {
       <div style={S.addRow}>
         <input value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && add()}
-          placeholder="예: 환자가 불안해하면 반드시 안심 문구를 넣어줘" style={S.input} />
+          placeholder="예: 불안해하는 환자엔 안심 문구를 반드시 추가" style={S.input} />
         <button onClick={add} style={S.addBtn}>추가</button>
       </div>
     </>
   )
 }
 
-// ─── 용어 사전 탭 ───
-function TerminologyTab({ items, onChange }) {
+function DoDontEditor({ items, onChange }) {
+  const [draft, setDraft] = useState({ label: '', input: '', good: '', bad: '' })
+  const add = () => {
+    if (!draft.label.trim() || (!draft.good.trim() && !draft.bad.trim())) return
+    onChange([...items, { id: crypto.randomUUID(), ...draft, enabled: true }])
+    setDraft({ label: '', input: '', good: '', bad: '' })
+  }
+  const toggle = (id) => onChange(items.map(it => it.id === id ? { ...it, enabled: it.enabled === false ? true : false } : it))
+  const remove = (id) => onChange(items.filter(it => it.id !== id))
+  const updateField = (id, field, v) => onChange(items.map(it => it.id === id ? { ...it, [field]: v } : it))
+
+  return (
+    <>
+      {items.map((it) => (
+        <div key={it.id} style={{ ...S.catCard, opacity: it.enabled === false ? 0.5 : 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <input value={it.label} onChange={(e) => updateField(it.id, 'label', e.target.value)}
+              placeholder="라벨 (예: 성향 반영)"
+              style={{ ...S.input, fontWeight: 700, flex: 1 }} />
+            <button onClick={() => toggle(it.id)} style={{ ...S.delBtn, color: it.enabled === false ? '#059669' : '#6b7280', borderColor: it.enabled === false ? '#a7f3d0' : '#d1d5db' }}>
+              {it.enabled === false ? '활성' : '끄기'}
+            </button>
+            <button onClick={() => remove(it.id)} style={S.delBtn}>삭제</button>
+          </div>
+          <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>입력 상황</div>
+          <textarea value={it.input} onChange={(e) => updateField(it.id, 'input', e.target.value)}
+            placeholder="예: [성향: 꼼꼼함] · 소스: 돌출전치"
+            style={{ ...S.input, minHeight: 40, resize: 'vertical', marginBottom: 8 }} />
+          <div style={{ fontSize: 12, color: '#059669', marginBottom: 4 }}>✅ Good</div>
+          <textarea value={it.good} onChange={(e) => updateField(it.id, 'good', e.target.value)}
+            style={{ ...S.input, minHeight: 50, resize: 'vertical', marginBottom: 8, borderColor: '#a7f3d0' }} />
+          <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 4 }}>❌ Bad</div>
+          <textarea value={it.bad} onChange={(e) => updateField(it.id, 'bad', e.target.value)}
+            style={{ ...S.input, minHeight: 50, resize: 'vertical', borderColor: '#fecaca' }} />
+        </div>
+      ))}
+      <div style={S.formBox}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>새 예시 추가</div>
+        <input value={draft.label} onChange={(e) => setDraft({ ...draft, label: e.target.value })}
+          placeholder="라벨" style={{ ...S.input, marginBottom: 6 }} />
+        <textarea value={draft.input} onChange={(e) => setDraft({ ...draft, input: e.target.value })}
+          placeholder="입력 상황" style={{ ...S.input, minHeight: 40, resize: 'vertical', marginBottom: 6 }} />
+        <textarea value={draft.good} onChange={(e) => setDraft({ ...draft, good: e.target.value })}
+          placeholder="✅ Good 예시" style={{ ...S.input, minHeight: 40, resize: 'vertical', marginBottom: 6, borderColor: '#a7f3d0' }} />
+        <textarea value={draft.bad} onChange={(e) => setDraft({ ...draft, bad: e.target.value })}
+          placeholder="❌ Bad 예시" style={{ ...S.input, minHeight: 40, resize: 'vertical', marginBottom: 8, borderColor: '#fecaca' }} />
+        <button onClick={add} style={{ ...S.addBtn, width: '100%' }}>+ 추가</button>
+      </div>
+    </>
+  )
+}
+
+// ─── 학습 탭 ───
+function LearningTab({ terms, onTermsChange, corrections, onReloadCorrections }) {
+  const [showProcessed, setShowProcessed] = useState(false)
+
+  const pending = corrections.filter(c => (c.status || 'pending') === 'pending')
+  const processed = corrections.filter(c => (c.status || 'pending') !== 'pending')
+  const visible = showProcessed ? processed : pending
+
+  const setStatus = async (id, status) => {
+    await supabase.from('charting_corrections').update({ status }).eq('id', id)
+    onReloadCorrections()
+  }
+
+  const promoteToTerm = async (c) => {
+    const from = (c.original_term || '').trim()
+    const to = (c.corrected_term || '').trim()
+    if (!from || !to) return
+    const exists = terms.some(t => t.from === from)
+    if (!exists) onTermsChange([...terms, { from, to }])
+    await setStatus(c.id, 'promoted')
+  }
+
+  return (
+    <>
+      <p style={S.desc}>환자별 수정 기록을 AI에 반영시키는 탭입니다.</p>
+
+      <h3 style={S.subTitle}>① 용어 사전</h3>
+      <TermDictionaryEditor items={terms} onChange={onTermsChange} />
+
+      <h3 style={{ ...S.subTitle, marginTop: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>② 누적 교정 기록 ({pending.length}건 대기)</span>
+        <button onClick={() => setShowProcessed(!showProcessed)} style={{ ...S.delBtn, color: '#6b7280', borderColor: '#d1d5db' }}>
+          {showProcessed ? `대기만 보기` : `처리됨 ${processed.length}건 보기`}
+        </button>
+      </h3>
+
+      {visible.length === 0 && (
+        <div style={{ ...S.desc, padding: 16, textAlign: 'center' }}>
+          {showProcessed ? '처리된 교정 기록이 없습니다.' : '대기 중인 교정 기록이 없습니다. AI 초안을 수동으로 수정하면 여기에 쌓입니다.'}
+        </div>
+      )}
+
+      {visible.map((c) => (
+        <div key={c.id} style={S.catCard}>
+          <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>
+            {c.created_at?.slice(0, 10)} · {c.context || '수동 교정'} · 상태: {c.status || 'pending'}
+          </div>
+          <div style={{ padding: '8px 12px', background: '#fef2f2', borderRadius: 6, fontSize: 13, color: '#991b1b', marginBottom: 4 }}>
+            원본: {c.original_term}
+          </div>
+          <div style={{ padding: '8px 12px', background: '#f0fdf4', borderRadius: 6, fontSize: 13, color: '#166534', marginBottom: 10 }}>
+            수정: {c.corrected_term}
+          </div>
+          {(c.status || 'pending') === 'pending' ? (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => promoteToTerm(c)} style={{ ...S.addBtn, background: '#059669' }}>용어 사전에 추가</button>
+              <button onClick={() => setStatus(c.id, 'ignored')} style={{ ...S.delBtn, color: '#6b7280', borderColor: '#d1d5db' }}>무시</button>
+            </div>
+          ) : (
+            <button onClick={() => setStatus(c.id, 'pending')} style={{ ...S.delBtn, color: '#6b7280', borderColor: '#d1d5db' }}>대기로 되돌리기</button>
+          )}
+        </div>
+      ))}
+    </>
+  )
+}
+
+function TermDictionaryEditor({ items, onChange }) {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const add = () => {
@@ -166,7 +460,7 @@ function TerminologyTab({ items, onChange }) {
   }
   return (
     <>
-      <p style={S.desc}>특정 용어를 AI가 항상 원하는 방식으로 변환합니다.</p>
+      {items.length === 0 && <div style={{ ...S.desc, fontSize: 13 }}>아직 등록된 용어가 없습니다.</div>}
       {items.map((t, i) => (
         <div key={i} style={S.itemRow}>
           <div style={S.itemText}>
@@ -575,4 +869,6 @@ const S = {
   pairBox: { padding: '10px', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, marginTop: 10 },
   optionChip: { display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '5px 12px', background: '#ede9fe', borderRadius: '16px', fontSize: '13px', color: '#7c3aed', fontWeight: '500' },
   chipDel: { background: 'none', border: 'none', color: '#a78bfa', fontSize: '14px', cursor: 'pointer', padding: '0 2px', fontWeight: '700' },
+  warnBox: { padding: '12px 16px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 13, color: '#78350f', marginBottom: 16, lineHeight: 1.6 },
+  sectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '8px 4px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 15, fontWeight: 700, color: '#1e3a5f' },
 }

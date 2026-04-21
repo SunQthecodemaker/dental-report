@@ -6,12 +6,14 @@ const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/generate-text`
 
 async function loadClinicSettings() {
   const { data } = await supabase.from('clinic_settings').select('*')
-  const settings = { guidelines: [], terminology: [], strengths: [] }
+  const settings = { guidelines: [], terminology: [], strengths: [], toneRules: [], doDontExamples: [] }
   if (data) {
     for (const row of data) {
       if (row.id === 'writing_guidelines') settings.guidelines = row.value.items || []
       if (row.id === 'terminology') settings.terminology = row.value.items || []
       if (row.id === 'clinic_strengths') settings.strengths = row.value.items || []
+      if (row.id === 'tone_rules_table') settings.toneRules = row.value.items || []
+      if (row.id === 'do_dont_examples') settings.doDontExamples = row.value.items || []
     }
   }
   return settings
@@ -185,6 +187,25 @@ export async function composeReport({ summary, staffForm }) {
     }).join('\n')}`
   }
 
+  // 톤 규칙 표 (DB 관리 — Settings '톤 규칙' 탭에서 편집)
+  const enabledToneRules = (settings.toneRules || []).filter(r => r.enabled !== false && r.trait && r.rule)
+  const toneTableBlock = enabledToneRules.length > 0
+    ? `\n\n| 선택된 성향 | 반영 방법 (문체 조절) |\n|---|---|\n${enabledToneRules.map(r => `| ${r.trait} | ${r.rule} |`).join('\n')}`
+    : ''
+
+  // Do/Don't 예시 (DB 관리 — Settings '톤 규칙' 탭에서 편집)
+  const enabledDoDont = (settings.doDontExamples || []).filter(e => e.enabled !== false && (e.good || e.bad))
+  const doDontBlock = enabledDoDont.length > 0
+    ? `\n\n**Do/Don't 예시:**\n${enabledDoDont.map(e => {
+        const parts = []
+        if (e.label) parts.push(`[${e.label}]`)
+        if (e.input) parts.push(`입력: ${e.input}`)
+        if (e.good) parts.push(`✅ Good: ${e.good}`)
+        if (e.bad) parts.push(`❌ Bad: ${e.bad}`)
+        return parts.join('\n')
+      }).join('\n\n')}`
+    : ''
+
   const systemPrompt = `당신은 한국 치과 진단서를 환자 친화적 문장으로 **재서술**하는 AI입니다. 글을 창작하는 게 아니라 소스를 옮겨 쓰는 역할입니다.
 
 **⛔ 절대 규칙 (위반 시 전체 출력 오답):**
@@ -198,27 +219,9 @@ export async function composeReport({ summary, staffForm }) {
 
 **✅ 톤 규칙 (환자 성향은 "서술 방식"만 바꿉니다 — 내용 추가·라벨 노출 모두 금지):**
 
-⛔ 절대 금지: 성향 라벨(꼼꼼함, 감성적, 바쁨, 불안, 꼼꼼한 편, 의지 높음 등)을 본문이나 personalNote에 **단어 그대로 노출하지 마시오**. 성향은 문장의 **상세도·어조·비유 사용 여부·설명 순서**만 결정합니다. "환자분은 꼼꼼하시니…", "바쁘신 만큼…" 같은 서술은 오답입니다.
+⛔ 절대 금지: 성향 라벨(꼼꼼함, 감성적, 바쁨, 불안, 꼼꼼한 편, 의지 높음 등)을 본문이나 personalNote에 **단어 그대로 노출하지 마시오**. 성향은 문장의 **상세도·어조·비유 사용 여부·설명 순서**만 결정합니다. "환자분은 꼼꼼하시니…", "바쁘신 만큼…" 같은 서술은 오답입니다.${toneTableBlock}
 
-| 선택된 성향 | 반영 방법 (문체 조절) |
-|---|---|
-| 꼼꼼함 / 신중함 | 각 판단의 **근거와 과정**을 한 문장 이상 덧붙여 서술. 왜 그런 진단인지·왜 그 치료가 필요한지 이유를 풀어 설명. |
-| 감성적 / 공감 필요 | 기능·수치 대신 **환자가 체감할 변화**를 따뜻하게 표현. 안심 가능한 어조. |
-| 바쁨 / 효율 중시 | 핵심만 짧게, **핵심 결론을 문단 앞에** 두고 부연은 최소화. |
-| 불안 요소 있음 | 해당 부분에 **우려를 인지하는 문구** + 기존 내용의 안전장치 재서술(새 내용 아님). |
-| 비용 부담 있음 | 기능·심미 **가치와 장기 효과** 중심으로 서술. 금액·할인 언급 금지. |
-| 치료 의지 1~2 | 부드럽게 권유하는 어조, 단정 표현 줄이기. |
-| 치료 의지 4~5 | 단정적이고 구체적인 다음 단계 제시. |
-| 이해도 1~2 | 일상 비유 사용, 전문용어는 한 번 풀어서 설명. |
-| 이해도 4~5 | 전문 용어 유지, 메커니즘까지 구체적으로. |
-
-특이 상황(내원 거리·시간 등)은 personalNote에 **접근성 고려 문구**로만 반영. 어느 쪽이든 성향 라벨 자체는 본문에 쓰지 않습니다.
-
-**Do/Don't (성향 반영 예시):**
-입력 [성향: 꼼꼼함, 이해도 4]  · 소스: "돌출전치, Class II"
-✅ Good: "앞니가 앞쪽으로 기울어져 있어 입술 돌출감이 나타납니다. 앞니의 각도를 뒤로 당겨 정상 위치로 옮기면 기능과 심미 모두 개선됩니다."
-❌ Bad: "환자분은 꼼꼼하신 성향이시니 아래와 같이 상세히 설명드리겠습니다."
-❌ Bad: "이해도가 높은 환자분께…"
+특이 상황(내원 거리·시간 등)은 personalNote에 **접근성 고려 문구**로만 반영. 어느 쪽이든 성향 라벨 자체는 본문에 쓰지 않습니다.${doDontBlock}
 
 **언어:** 100% 한국어. 영어 병기 금지. 괄호 안 영어 설명 금지.
 
@@ -247,15 +250,6 @@ export async function composeReport({ summary, staffForm }) {
 - \`<img>\`, \`<script>\`, \`<style>\` 태그 절대 쓰지 말 것 (이미지는 사용자가 나중에 삽입)
 - 다른 태그(ul, li, strong, em) 최소 사용
 - 줄바꿈이나 공백 없는 한 줄 HTML 문자열
-
-**Do/Don't 예시:**
-입력 [골격]: "- 전후방 골격 관계: Class II (심함)\\n- 상악 위치: 전돌"
-✅ Good: "<h2>골격 관계</h2><p>전후방 골격 관계가 Class II 상태이며 심한 편으로, 상악이 앞쪽으로 많이 나와 있는 경향이 관찰됩니다.</p>"
-❌ Bad: "<h2>골격 관계</h2><p>Class II에 과개교합이 동반됩니다.</p>" (과개교합 없음)
-
-입력 [치성]: "(비어있음)"
-✅ Good: (치성 관계 블록 자체를 생략, 다른 섹션부터 시작)
-❌ Bad: "<h2>치성 관계</h2><p>별다른 이상 없습니다.</p>" (지어냄 금지)
 
 **appealPoints 규칙:**
 - 치과 특장점 중 **위 소스와 직접 관련된** 것만 2~3개 선별
