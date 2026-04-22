@@ -627,18 +627,11 @@ function SummaryPage({ value, onChange, onPageChange }) {
       ].map(({ key, label }) => (
         <div key={key} style={sectionStyle}>
           <SectionHeader label={label} color="#b5976a" />
-          {auto[key] && (
-            <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '6px' }}>자동 정리:</div>
-          )}
-          {auto[key] && (
-            <pre style={autoPreStyle}>{auto[key]}</pre>
-          )}
-          <textarea
-            value={getValue(key, auto[key])}
-            onChange={e => setValue(key, e.target.value)}
-            placeholder="자동 정리된 내용을 그대로 쓰거나 수정하세요."
-            style={{ ...memoStyle, minHeight: '80px', background: '#fff' }}
-            rows={4}
+          <SummaryPair
+            autoText={auto[key]}
+            value={summary[key] || ''}
+            onChange={val => setValue(key, val)}
+            placeholder="빈 칸으로 두면 자동 정리 내용이 그대로 다음 단계로 전달됩니다. 보완할 내용이 있으면 여기에 적으세요."
           />
         </div>
       ))}
@@ -646,18 +639,11 @@ function SummaryPage({ value, onChange, onPageChange }) {
       {(value.treatmentPlans || []).map((_, idx) => (
         <div key={idx} style={sectionStyle}>
           <SectionHeader label={`📋 치료 계획 #${idx + 1}`} color="#b5976a" />
-          {auto.treatmentPlans[idx] && (
-            <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '6px' }}>자동 정리:</div>
-          )}
-          {auto.treatmentPlans[idx] && (
-            <pre style={autoPreStyle}>{auto.treatmentPlans[idx]}</pre>
-          )}
-          <textarea
-            value={getValue('treatmentPlans', []).concat()[idx] !== undefined ? summary.treatmentPlans[idx] : auto.treatmentPlans[idx]}
-            onChange={e => setPlanValue(idx, e.target.value)}
-            placeholder="치료 계획 정리"
-            style={{ ...memoStyle, minHeight: '80px', background: '#fff' }}
-            rows={4}
+          <SummaryPair
+            autoText={auto.treatmentPlans[idx]}
+            value={(summary.treatmentPlans || [])[idx] ?? ''}
+            onChange={val => setPlanValue(idx, val)}
+            placeholder="빈 칸으로 두면 자동 정리 내용이 그대로 다음 단계로 전달됩니다. 보완할 내용이 있으면 여기에 적으세요."
           />
         </div>
       ))}
@@ -682,12 +668,59 @@ const autoPreStyle = {
   background: '#faf8f5',
   border: '1px dashed #e5d4b8',
   borderRadius: '6px',
-  padding: '8px 12px',
-  fontSize: '12px',
+  padding: '10px 12px',
+  fontSize: '13px',
   color: '#5a5a55',
-  margin: '0 0 8px 0',
+  margin: 0,
+  minHeight: '120px',
   whiteSpace: 'pre-wrap',
   fontFamily: 'inherit',
+  lineHeight: 1.6,
+  overflowY: 'auto',
+}
+
+const pairGridStyle = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+  gap: '12px',
+  alignItems: 'stretch',
+}
+
+const pairColLabelStyle = {
+  fontSize: '12px',
+  fontWeight: 600,
+  color: '#9ca3af',
+  marginBottom: '6px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '4px',
+}
+
+function SummaryPair({ autoText, value, onChange, placeholder }) {
+  const hasAuto = !!(autoText && autoText.trim())
+  return (
+    <div style={pairGridStyle}>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div style={pairColLabelStyle}>📝 자동 정리</div>
+        {hasAuto ? (
+          <pre style={autoPreStyle}>{autoText}</pre>
+        ) : (
+          <pre style={{ ...autoPreStyle, color: '#c7b9a2', fontStyle: 'italic' }}>
+            (자동 정리된 내용이 없습니다)
+          </pre>
+        )}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div style={pairColLabelStyle}>✏️ 수정 / 보완 <span style={{ color: '#d1d5db', fontWeight: 400 }}>(선택)</span></div>
+        <textarea
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          style={{ ...memoStyle, background: '#fff', minHeight: '120px', flex: 1 }}
+        />
+      </div>
+    </div>
+  )
 }
 
 /* ═══ 서브 컴포넌트 ═══ */
