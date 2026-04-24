@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import StaffForm from '../components/StaffForm'
-import ClinicalForm, { getEmptyClinicalForm, buildAutoSummary } from '../components/ClinicalForm'
+import ClinicalForm, { getEmptyClinicalForm, buildAutoSummary, buildCombinedSummary } from '../components/ClinicalForm'
 import ContentEditor from '../components/ContentEditor'
 import BrochurePreview from '../components/BrochurePreview'
 import PhotoMarkerModal from '../components/PhotoMarkerModal'
@@ -172,7 +172,12 @@ export default function Editor() {
   const summary = useMemo(() => {
     const auto = buildAutoSummary(clinicalForm, formConfig?.diagnosis)
     const saved = clinicalForm.summary || {}
+    const combined = (saved.combined && saved.combined.length > 0)
+      ? saved.combined
+      : buildCombinedSummary(clinicalForm, formConfig?.diagnosis)
     return {
+      combined,
+      // 하위호환: 구 코드 경로/브로셔 등이 섹션별 필드 참조할 수 있어 유지
       skeletal: saved.skeletal !== undefined && saved.skeletal !== '' ? saved.skeletal : auto.skeletal,
       dental:   saved.dental   !== undefined && saved.dental   !== '' ? saved.dental   : auto.dental,
       etc:      saved.etc      !== undefined && saved.etc      !== '' ? saved.etc      : auto.etc,

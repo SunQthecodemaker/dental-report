@@ -91,6 +91,7 @@ export function replaceToothCodesInText(text) {
 export function summaryWithKoreanTeeth(summary) {
   if (!summary) return summary
   return {
+    combined: replaceToothCodesInText(summary.combined || ''),
     skeletal: replaceToothCodesInText(summary.skeletal || ''),
     dental:   replaceToothCodesInText(summary.dental || ''),
     etc:      replaceToothCodesInText(summary.etc || ''),

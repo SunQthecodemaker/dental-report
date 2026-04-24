@@ -239,6 +239,7 @@ ${items.map((g, i) => `${i + 1}. ${g}`).join('\n')}`
 
 function summaryIsEmpty(summary) {
   if (!summary) return true
+  if (summary.combined && summary.combined.trim()) return false
   const plans = (summary.treatmentPlans || []).filter(Boolean)
   return !summary.skeletal && !summary.dental && !summary.etc && plans.length === 0 && !summary.overall
 }
@@ -366,13 +367,14 @@ export async function composeReport({ summary, staffForm }) {
 - 비어있는 섹션의 h2를 지웠는가?
 - "#숫자"가 남아있지 않은가?${guidelinesBlock}${terminologyBlock}${strengthsBlock}`
 
-  const planLines = (koreanSummary.treatmentPlans || [])
-    .map((p, i) => `계획 ${i + 1}:\n${p || '(빈 계획)'}`).join('\n\n') || '(치료 계획 없음)'
-
-  const userMessage = `## 입력 소스 (아래 내용만 사용 — 외부 지식·추측·확장 모두 금지)
-※ 치아번호는 이미 환자 친화적 한글 부위명으로 변환되어 있습니다. 그대로 사용하시면 됩니다.
-
-### [치성 문제]
+  // 정리 탭에서 사용자가 편집한 통합 텍스트가 있으면 단일 블록으로 그대로 전달
+  // (`## 골격 문제` / `## 치성 문제` / `## 치료 계획 #1` / `## 전체 추가 메모` 헤더 포함)
+  const sourceBlock = (koreanSummary.combined && koreanSummary.combined.trim())
+    ? koreanSummary.combined
+    : (() => {
+        const planLines = (koreanSummary.treatmentPlans || [])
+          .map((p, i) => `계획 ${i + 1}:\n${p || '(빈 계획)'}`).join('\n\n') || '(치료 계획 없음)'
+        return `### [치성 문제]
 ${koreanSummary.dental || '(비어있음 → 치성 관계 섹션 생략)'}
 
 ### [골격 문제]
@@ -385,7 +387,14 @@ ${planLines}
 ${koreanSummary.etc || '(비어있음)'}
 
 ### [전체 추가 메모]
-${koreanSummary.overall || '(비어있음 → 추가 사항 섹션 생략)'}
+${koreanSummary.overall || '(비어있음 → 추가 사항 섹션 생략)'}`
+      })()
+
+  const userMessage = `## 입력 소스 (아래 내용만 사용 — 외부 지식·추측·확장 모두 금지)
+※ 치아번호는 이미 환자 친화적 한글 부위명으로 변환되어 있습니다. 그대로 사용하시면 됩니다.
+※ 섹션 헤더(## 골격 문제 / ## 치성 문제 / ## 치료 계획 #N / ## 전체 추가 메모 등)를 기준으로 내용을 읽고, body HTML의 **치성 → 골격 → 치료계획 → 추가사항** 순서로 재구성하시오. 헤더 자체는 출력에 쓰지 말 것.
+
+${sourceBlock}
 
 ---
 
@@ -399,7 +408,7 @@ ${staffForm?.specialCircumstances || '(없음)'}
 
 **최종 지시:**
 위 입력 소스에 **명시적으로 적힌 내용만** 환자 친화적 문장으로 재서술하여 JSON으로 출력하시오.
-body HTML은 **치성 → 골격 → 치료계획 → 추가사항** 순서, 비어있는 섹션은 h2째 생략.
+body HTML은 **치성 → 골격 → 치료계획 → 추가사항** 순서, 해당 내용이 없는 섹션은 h2째 생략.
 입력에 없는 치아 문제/치료 옵션은 단 하나도 추가하지 마시오.`
 
   const response = await fetch(EDGE_FUNCTION_URL, {

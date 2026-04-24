@@ -44,8 +44,9 @@ export function getEmptyClinicalForm() {
     // page 2: 치료계획
     treatmentPlans: [getEmptyTxOption()],
     treatmentMemo: '',
-    // page 3: 정리 (사용자 편집 반영, 없으면 자동 생성)
-    summary: { skeletal: '', dental: '', etc: '', treatmentPlans: [], overall: '' },
+    // page 3: 정리 (combined — 사용자 편집 통합본. 비어있으면 자동 생성 사용)
+    // skeletal/dental/etc/treatmentPlans/overall 은 하위호환용(구 리포트 로드).
+    summary: { combined: '', skeletal: '', dental: '', etc: '', treatmentPlans: [], overall: '' },
   }
 }
 
@@ -127,6 +128,37 @@ export function buildAutoSummary(clinicalForm, diagnosisConfig = DEFAULT_DIAGNOS
     treatmentPlans: (clinicalForm.treatmentPlans || []).map(planToText),
     overall: clinicalForm.treatmentMemo || '',
   }
+}
+
+// 섹션별 자동 정리 + 사용자 per-section 편집값(있으면 우선) → 하나의 통합 텍스트
+// 하류에 단일 블록으로 넘길 때와 정리 탭 우측 textarea 초기값 둘 다 여기서 생성.
+export function buildCombinedSummary(clinicalForm, diagnosisConfig = DEFAULT_DIAGNOSIS_CONFIG) {
+  const sections = diagnosisConfig?.sections || DEFAULT_DIAGNOSIS_CONFIG.sections
+  const labelOf = (key, fallback) => sections.find(s => s.key === key)?.label || fallback
+  const auto = buildAutoSummary(clinicalForm, diagnosisConfig)
+  const saved = clinicalForm.summary || {}
+  const pick = (key) => {
+    const v = saved[key]
+    if (v !== undefined && v !== null && String(v).trim() !== '') return String(v)
+    return auto[key] || ''
+  }
+  const parts = []
+  const skel = pick('skeletal')
+  const dent = pick('dental')
+  const etc = pick('etc')
+  if (skel) parts.push(`## ${labelOf('skeletal', '골격 문제')}\n${skel}`)
+  if (dent) parts.push(`## ${labelOf('dental', '치성 문제')}\n${dent}`)
+  if (etc) parts.push(`## ${labelOf('etc', '기타')}\n${etc}`)
+  ;(clinicalForm.treatmentPlans || []).forEach((_, i) => {
+    const savedPlan = (saved.treatmentPlans || [])[i]
+    const planText = (savedPlan && String(savedPlan).trim())
+      ? String(savedPlan)
+      : (auto.treatmentPlans[i] || '')
+    if (planText) parts.push(`## 치료 계획 #${i + 1}\n${planText}`)
+  })
+  const overall = pick('overall')
+  if (overall) parts.push(`## 전체 추가 메모\n${overall}`)
+  return parts.join('\n\n')
 }
 
 /* ═══ 메인 컴포넌트 ═══ */
@@ -523,45 +555,55 @@ export default function ClinicalForm({
 
 function SummaryPage({ value, onChange, onPageChange, diagnosisConfig }) {
   const auto = buildAutoSummary(value, diagnosisConfig)
-  const summary = value.summary || { skeletal: '', dental: '', etc: '', treatmentPlans: [], overall: '' }
+  const summary = value.summary || { combined: '', skeletal: '', dental: '', etc: '', treatmentPlans: [], overall: '' }
+  const combinedInitial = buildCombinedSummary(value, diagnosisConfig)
+  const combined = (summary.combined && summary.combined.length > 0) ? summary.combined : combinedInitial
 
-  const getValue = (key, fallback) => {
-    const v = summary[key]
-    return (v === undefined || v === null) ? fallback : v
-  }
-  const setValue = (key, val) => {
-    onChange({ ...value, summary: { ...summary, [key]: val } })
-  }
-  const setPlanValue = (idx, val) => {
-    const plans = [...(summary.treatmentPlans || [])]
-    plans[idx] = val
-    onChange({ ...value, summary: { ...summary, treatmentPlans: plans } })
+  const setCombined = (val) => {
+    onChange({ ...value, summary: { ...summary, combined: val } })
   }
   const regenerate = () => {
-    onChange({ ...value, summary: { ...auto } })
+    onChange({ ...value, summary: { ...summary, combined: combinedInitial } })
   }
 
   const hasAny = auto.skeletal || auto.dental || auto.etc ||
     auto.treatmentPlans.some(t => t) || auto.overall
 
-  // 요약 페이지 섹션 라벨 — diagnosisConfig 에서 읽어온 라벨을 이모지와 함께 표시
   const sectionLabels = (diagnosisConfig?.sections || DEFAULT_DIAGNOSIS_CONFIG.sections).reduce((acc, s) => {
     acc[s.key] = s.label
     return acc
   }, {})
-  const summarySections = [
-    { key: 'skeletal', label: `🩻 ${sectionLabels.skeletal || '골격문제'}` },
-    { key: 'dental',   label: `🦷 ${sectionLabels.dental   || '치성문제'}` },
-    { key: 'etc',      label: `📝 ${sectionLabels.etc      || '기타'}` },
+  const autoSections = [
+    { key: 'skeletal', label: `🩻 ${sectionLabels.skeletal || '골격문제'}`, text: auto.skeletal },
+    { key: 'dental',   label: `🦷 ${sectionLabels.dental   || '치성문제'}`, text: auto.dental },
+    { key: 'etc',      label: `📝 ${sectionLabels.etc      || '기타'}`,      text: auto.etc },
+    ...auto.treatmentPlans.map((t, i) => ({ key: `plan_${i}`, label: `📋 치료 계획 #${i + 1}`, text: t })),
   ]
+  if (auto.overall) autoSections.push({ key: 'overall', label: '📝 전체 추가 메모', text: auto.overall })
+
+  const [copied, setCopied] = useState(false)
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(combined)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    } catch {
+      // fallback
+      const ta = document.createElement('textarea')
+      ta.value = combined
+      document.body.appendChild(ta)
+      ta.select()
+      try { document.execCommand('copy') } catch { /* ignore */ }
+      document.body.removeChild(ta)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1800)
+    }
+  }
 
   return (
     <div style={pageStyle}>
-      <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '10px', padding: '12px 16px', color: '#0369a1', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-        <span>💡 진단/치료 계획에서 <strong>선택한 항목만</strong> 자동 정리되어 아래 표시됩니다. 그대로 수정하거나 보완하세요. 이 내용이 다음 단계(상담 관리 → AI 작성)의 소스가 됩니다.</span>
-        <button onClick={regenerate} style={{ padding: '6px 12px', background: '#fff', border: '1px solid #bae6fd', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-          🔄 자동 다시 생성
-        </button>
+      <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '10px', padding: '12px 16px', color: '#0369a1', fontSize: '13px' }}>
+        💡 왼쪽은 진단/치료계획에서 <strong>선택한 항목</strong>의 자동 정리(참고용)입니다. 오른쪽 통합 박스에서 자유롭게 수정하세요. 이 통합 내용이 다음 단계(상담 관리 → AI 작성)의 소스가 되며, <strong>복사하기</strong> 버튼으로 전자차트에 바로 붙여넣을 수 있습니다.
       </div>
 
       {!hasAny && (
@@ -570,40 +612,43 @@ function SummaryPage({ value, onChange, onPageChange, diagnosisConfig }) {
         </div>
       )}
 
-      {summarySections.map(({ key, label }) => (
-        <div key={key} style={sectionStyle}>
-          <SectionHeader label={label} color="#b5976a" />
-          <SummaryPair
-            autoText={auto[key]}
-            value={summary[key] || ''}
-            onChange={val => setValue(key, val)}
-            placeholder="빈 칸으로 두면 자동 정리 내용이 그대로 다음 단계로 전달됩니다. 보완할 내용이 있으면 여기에 적으세요."
-          />
-        </div>
-      ))}
+      {hasAny && (
+        <div style={summaryGridStyle}>
+          {/* 좌: 자동 정리 스택 (읽기 전용 참고) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={pairColLabelStyle}>📝 자동 정리 (참고용)</div>
+            {autoSections.map(({ key, label, text }) => (
+              <div key={key} style={autoCardStyle}>
+                <div style={autoCardLabel}>{label}</div>
+                {text ? (
+                  <pre style={autoPreStyle}>{text}</pre>
+                ) : (
+                  <pre style={{ ...autoPreStyle, color: '#c7b9a2', fontStyle: 'italic' }}>(없음)</pre>
+                )}
+              </div>
+            ))}
+          </div>
 
-      {(value.treatmentPlans || []).map((_, idx) => (
-        <div key={idx} style={sectionStyle}>
-          <SectionHeader label={`📋 치료 계획 #${idx + 1}`} color="#b5976a" />
-          <SummaryPair
-            autoText={auto.treatmentPlans[idx]}
-            value={(summary.treatmentPlans || [])[idx] ?? ''}
-            onChange={val => setPlanValue(idx, val)}
-            placeholder="빈 칸으로 두면 자동 정리 내용이 그대로 다음 단계로 전달됩니다. 보완할 내용이 있으면 여기에 적으세요."
-          />
+          {/* 우: 통합 편집 + 복사 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+              <div style={pairColLabelStyle}>✏️ 통합 편집 (이 내용이 저장·전달됩니다)</div>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button onClick={regenerate} style={summaryActionBtn}>🔄 자동에서 다시 생성</button>
+                <button onClick={copyToClipboard} style={{ ...summaryActionBtn, background: copied ? '#dcfce7' : '#fff', borderColor: copied ? '#86efac' : '#d1d5db', color: copied ? '#166534' : '#374151' }}>
+                  {copied ? '✅ 복사됨' : '📋 복사하기'}
+                </button>
+              </div>
+            </div>
+            <textarea
+              value={combined}
+              onChange={e => setCombined(e.target.value)}
+              placeholder="섹션 헤더(## 골격 문제 등)를 유지하면서 자유롭게 수정하세요."
+              style={combinedTextareaStyle}
+            />
+          </div>
         </div>
-      ))}
-
-      <div style={sectionStyle}>
-        <SectionHeader label="📝 전체 추가 메모" color="#6b7280" />
-        <textarea
-          value={getValue('overall', auto.overall)}
-          onChange={e => setValue('overall', e.target.value)}
-          placeholder="전체 치료에 대한 추가사항 (선택)"
-          style={{ ...memoStyle, minHeight: '60px', background: '#fff' }}
-          rows={2}
-        />
-      </div>
+      )}
 
       <NavButtons page={3} onPageChange={onPageChange} lastPage />
     </div>
@@ -625,11 +670,54 @@ const autoPreStyle = {
   overflowY: 'auto',
 }
 
-const pairGridStyle = {
+const summaryGridStyle = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-  gap: '12px',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+  gap: '16px',
   alignItems: 'stretch',
+}
+
+const autoCardStyle = {
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  borderRadius: '10px',
+  padding: '12px 14px',
+}
+
+const autoCardLabel = {
+  fontSize: '12px',
+  fontWeight: 700,
+  color: '#b5976a',
+  marginBottom: '6px',
+}
+
+const combinedTextareaStyle = {
+  width: '100%',
+  minHeight: '480px',
+  padding: '14px 16px',
+  border: '1px solid #d1d5db',
+  borderRadius: '10px',
+  fontSize: '14px',
+  lineHeight: 1.7,
+  fontFamily: 'inherit',
+  color: '#1f2937',
+  background: '#fff',
+  outline: 'none',
+  boxSizing: 'border-box',
+  resize: 'vertical',
+  flex: 1,
+}
+
+const summaryActionBtn = {
+  padding: '6px 12px',
+  background: '#fff',
+  border: '1px solid #d1d5db',
+  borderRadius: '8px',
+  fontSize: '12px',
+  fontWeight: 600,
+  color: '#374151',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
 }
 
 const pairColLabelStyle = {
@@ -640,33 +728,6 @@ const pairColLabelStyle = {
   display: 'flex',
   alignItems: 'center',
   gap: '4px',
-}
-
-function SummaryPair({ autoText, value, onChange, placeholder }) {
-  const hasAuto = !!(autoText && autoText.trim())
-  return (
-    <div style={pairGridStyle}>
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        <div style={pairColLabelStyle}>📝 자동 정리</div>
-        {hasAuto ? (
-          <pre style={autoPreStyle}>{autoText}</pre>
-        ) : (
-          <pre style={{ ...autoPreStyle, color: '#c7b9a2', fontStyle: 'italic' }}>
-            (자동 정리된 내용이 없습니다)
-          </pre>
-        )}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        <div style={pairColLabelStyle}>✏️ 수정 / 보완 <span style={{ color: '#d1d5db', fontWeight: 400 }}>(선택)</span></div>
-        <textarea
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          placeholder={placeholder}
-          style={{ ...memoStyle, background: '#fff', minHeight: '120px', flex: 1 }}
-        />
-      </div>
-    </div>
-  )
 }
 
 /* ═══ 서브 컴포넌트 ═══ */
