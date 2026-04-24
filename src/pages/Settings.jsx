@@ -4,15 +4,19 @@ import { useNavigate } from 'react-router-dom'
 import { saveTreatmentCases, saveStrengthCards, uploadLibraryPhoto, newCaseId } from '../lib/library'
 import { useId } from 'react'
 import { validateNewGuideline, cleanupGuidelines } from '../lib/gemini'
+import { loadClinicalFormConfig, saveDiagnosisConfig, saveTreatmentConfig, DEFAULT_DIAGNOSIS_CONFIG, DEFAULT_TREATMENT_CONFIG } from '../lib/formConfig'
+import { DiagnosisFormEditor, TreatmentFormEditor } from '../components/FormConfigEditors'
 
 const TABS = [
+  { id: 'diagnosisForm', label: '진단 폼' },
+  { id: 'treatmentForm', label: '치료 계획 폼' },
+  { id: 'staffForm', label: '상담 폼' },
   { id: 'absoluteRules', label: '절대 규칙' },
   { id: 'toneRules', label: '톤 규칙' },
   { id: 'learning', label: '학습' },
   { id: 'strengths', label: 'AI 특장점' },
   { id: 'cases', label: '유사 케이스' },
   { id: 'strengthCards', label: '어필포인트' },
-  { id: 'staffForm', label: '상담 폼 항목' },
 ]
 
 // 읽기 전용 절대 규칙 (gemini.js L190-234 하드코딩과 일치)
@@ -71,7 +75,7 @@ const ABSOLUTE_RULES = [
 
 export default function Settings() {
   const navigate = useNavigate()
-  const [tab, setTab] = useState('absoluteRules')
+  const [tab, setTab] = useState('diagnosisForm')
   const [guidelines, setGuidelines] = useState([])
   const [terms, setTerms] = useState([])
   const [strengths, setStrengths] = useState([])
@@ -80,15 +84,18 @@ export default function Settings() {
   const [formConfig, setFormConfig] = useState(null)
   const [toneRules, setToneRules] = useState([])
   const [corrections, setCorrections] = useState([])
+  const [diagnosisConfig, setDiagnosisConfig] = useState(null)
+  const [treatmentConfig, setTreatmentConfig] = useState(null)
   const [saving, setSaving] = useState(false)
   const [loaded, setLoaded] = useState(false)
 
   useEffect(() => { loadSettings() }, [])
 
   const loadSettings = async () => {
-    const [settingsRes, corrRes] = await Promise.all([
+    const [settingsRes, corrRes, clinicalCfg] = await Promise.all([
       supabase.from('clinic_settings').select('*'),
       supabase.from('charting_corrections').select('*').order('created_at', { ascending: false }),
+      loadClinicalFormConfig(),
     ])
     if (settingsRes.data) {
       for (const row of settingsRes.data) {
@@ -102,7 +109,21 @@ export default function Settings() {
       }
     }
     setCorrections(corrRes.data || [])
+    setDiagnosisConfig(clinicalCfg?.diagnosis || DEFAULT_DIAGNOSIS_CONFIG)
+    setTreatmentConfig(clinicalCfg?.treatment || DEFAULT_TREATMENT_CONFIG)
     setLoaded(true)
+  }
+
+  const saveDiag = async (cfg) => {
+    setDiagnosisConfig(cfg)
+    setSaving(true)
+    try { await saveDiagnosisConfig(cfg) } finally { setSaving(false) }
+  }
+
+  const saveTx = async (cfg) => {
+    setTreatmentConfig(cfg)
+    setSaving(true)
+    try { await saveTreatmentConfig(cfg) } finally { setSaving(false) }
   }
 
   const reloadCorrections = async () => {
@@ -157,6 +178,12 @@ export default function Settings() {
 
         {/* 탭 내용 */}
         <div style={S.tabContent}>
+          {tab === 'diagnosisForm' && diagnosisConfig && (
+            <DiagnosisFormEditor value={diagnosisConfig} onChange={saveDiag} />
+          )}
+          {tab === 'treatmentForm' && treatmentConfig && (
+            <TreatmentFormEditor value={treatmentConfig} onChange={saveTx} />
+          )}
           {tab === 'absoluteRules' && <AbsoluteRulesTab />}
           {tab === 'toneRules' && (
             <ToneRulesTab
@@ -979,13 +1006,13 @@ function StaffFormTab({ config, onChange }) {
 // ─── 스타일 ───
 const S = {
   page: { minHeight: '100vh', background: '#f0f2f5', fontFamily: "'Pretendard', sans-serif", padding: '24px' },
-  container: { maxWidth: '800px', margin: '0 auto' },
+  container: { maxWidth: '960px', margin: '0 auto' },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' },
   backBtn: { padding: '8px 16px', background: '#6b7280', color: '#fff', border: 'none', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' },
   savingBar: { background: '#dbeafe', color: '#1d4ed8', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', marginBottom: '16px', textAlign: 'center' },
-  tabBar: { display: 'flex', gap: '4px', marginBottom: '0', background: '#fff', borderRadius: '12px 12px 0 0', padding: '8px 8px 0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' },
-  tabActive: { flex: 1, padding: '12px 16px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '8px 8px 0 0', fontSize: '14px', fontWeight: '700', cursor: 'pointer' },
-  tabInactive: { flex: 1, padding: '12px 16px', background: 'transparent', color: '#6b7280', border: 'none', borderRadius: '8px 8px 0 0', fontSize: '14px', fontWeight: '500', cursor: 'pointer' },
+  tabBar: { display: 'flex', gap: '4px', marginBottom: '0', background: '#fff', borderRadius: '12px 12px 0 0', padding: '8px 8px 0', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', overflowX: 'auto', flexWrap: 'nowrap' },
+  tabActive: { flex: '0 0 auto', padding: '12px 14px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '8px 8px 0 0', fontSize: '13px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' },
+  tabInactive: { flex: '0 0 auto', padding: '12px 14px', background: 'transparent', color: '#6b7280', border: 'none', borderRadius: '8px 8px 0 0', fontSize: '13px', fontWeight: '500', cursor: 'pointer', whiteSpace: 'nowrap' },
   tabContent: { background: '#fff', borderRadius: '0 0 12px 12px', padding: '24px', boxShadow: '0 1px 3px rgba(0,0,0,0.06)', minHeight: '400px' },
   desc: { fontSize: '13px', color: '#9ca3af', margin: '0 0 16px' },
   subTitle: { fontSize: '15px', fontWeight: '700', color: '#374151', margin: '0 0 12px' },

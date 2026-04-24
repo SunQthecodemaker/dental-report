@@ -10,6 +10,7 @@ import { loadTreatmentCases, loadStrengthCards } from '../lib/library'
 import CaseStrengthSelector from '../components/CaseStrengthSelector'
 import { composeReport, saveCorrections, migrateToNewFormat, extractImagesBySection, reinsertImagesBySection } from '../lib/gemini'
 import { supabase } from '../lib/supabase'
+import { loadClinicalFormConfig } from '../lib/formConfig'
 import { getByChartNumber, updateReport, acquireLock, releaseLock, isOtherPcEditing, PROGRESS_STAGES, STEP_TO_STAGE } from '../lib/reports'
 import { getPcLabel } from '../lib/session'
 
@@ -69,6 +70,9 @@ export default function Editor() {
   const [saveState, setSaveState] = useState('idle')
   const [lastSavedAt, setLastSavedAt] = useState(null)
 
+  // 진단/치료계획 폼 항목 설정 (Settings 에서 편집 가능)
+  const [formConfig, setFormConfig] = useState(null)
+
   const hydratedRef = useRef(false)
   const saveTimerRef = useRef(null)
 
@@ -91,9 +95,12 @@ export default function Editor() {
       setSelectedStrengthIds(Array.isArray(data.selected_strength_ids) ? data.selected_strength_ids : [])
       hydratedRef.current = true
     }).catch(err => { if (mounted) setLoadError(err.message) })
-    // 라이브러리는 병렬 로드
+    // 라이브러리 + 폼 설정 병렬 로드
     Promise.all([loadTreatmentCases(), loadStrengthCards()])
       .then(([c, s]) => { if (mounted) { setAllCases(c); setAllStrengths(s) } })
+      .catch(() => {})
+    loadClinicalFormConfig()
+      .then((cfg) => { if (mounted) setFormConfig(cfg) })
       .catch(() => {})
     return () => { mounted = false }
   }, [chartNumber])
@@ -163,7 +170,7 @@ export default function Editor() {
   }, [allStrengths, selectedStrengthIds])
 
   const summary = useMemo(() => {
-    const auto = buildAutoSummary(clinicalForm)
+    const auto = buildAutoSummary(clinicalForm, formConfig?.diagnosis)
     const saved = clinicalForm.summary || {}
     return {
       skeletal: saved.skeletal !== undefined && saved.skeletal !== '' ? saved.skeletal : auto.skeletal,
@@ -174,7 +181,7 @@ export default function Editor() {
       ),
       overall: saved.overall !== undefined && saved.overall !== '' ? saved.overall : auto.overall,
     }
-  }, [clinicalForm])
+  }, [clinicalForm, formConfig])
 
   const handleComposeAndNext = async () => {
     setIsComposing(true)
@@ -422,6 +429,8 @@ export default function Editor() {
               onChange={setClinicalForm}
               page={clinicalPage}
               onPageChange={setClinicalPage}
+              diagnosisConfig={formConfig?.diagnosis}
+              treatmentConfig={formConfig?.treatment}
             />
             {clinicalPage === 3 && (
               <button onClick={() => setStep(2)} style={{ ...btnStyle('#b5976a'), width: '100%', padding: '14px', fontSize: '16px', marginTop: '16px' }}>

@@ -2,70 +2,35 @@
  * ClinicalForm — Step 1: 의사 입력
  * page 1: 진단 (골격/치성/기타 문제목록)
  * page 2: 치료계획 (옵션 카드 + 메모)
- * (환자정보는 대시보드에서 입력 — ClinicalForm에서 중복 제거)
+ * page 3: 정리 (자동 요약 + 수정)
+ *
+ * 항목/옵션 정의는 src/lib/formConfig.js 의 DEFAULT_* 에서 온다.
+ * Editor 가 Supabase 에서 로드한 config 를 props 로 내려주면 그걸 사용.
  */
 import { useState } from 'react'
+import {
+  DEFAULT_DIAGNOSIS_CONFIG,
+  DEFAULT_TREATMENT_CONFIG,
+} from '../lib/formConfig'
 
-/* ═══ 항목 정의 ═══ */
-
-const SKELETAL_ITEMS = [
-  { key: 'skeletalClass', label: '전후방 골격 관계', type: 'radio', options: ['Class I', 'Class II', 'Class III'], severe: true },
-  { key: 'maxillaPosition', label: '상악 위치', type: 'checkbox', options: ['전돌(과잉)', '후퇴(부족)'], severe: true },
-  { key: 'mandiblePosition', label: '하악 위치', type: 'checkbox', options: ['전돌(과잉)', '후퇴(부족)'], severe: true },
-  { key: 'verticalPattern', label: '수직적 관계 (안모)', type: 'checkbox', options: ['장안모', '단안모'], severe: true },
-  { key: 'asymmetry', label: '골격 비대칭', type: 'checkbox', options: ['하악 좌측 편위', '하악 우측 편위'], severe: true },
-  { key: 'transverse', label: '상하악 너비 차이', type: 'checkbox', options: ['있음'], severe: true },
-]
-
-const DENTAL_ITEMS = [
-  { key: 'angleRight', label: "Angle's Class 우측", type: 'radio', options: ['I', 'II', 'III'], severe: false },
-  { key: 'angleLeft', label: "Angle's Class 좌측", type: 'radio', options: ['I', 'II', 'III'], severe: false },
-  { key: 'midlineDeviation', label: '정중선 편위', type: 'checkbox', options: ['있음'], severe: true },
-  { key: 'spaceUpper', label: '공간평가 — 상악', type: 'radio', options: ['총생', '공간'], severe: true },
-  { key: 'spaceLower', label: '공간평가 — 하악', type: 'radio', options: ['총생', '공간'], severe: true },
-  { key: 'anteriorRelation', label: '전치 관계', type: 'checkbox', options: ['개방교합', '과개교합', '반대교합', '돌출'], severe: true },
-  { key: 'upperIncisorAngle', label: '상악 전치 각도', type: 'checkbox', options: ['순측 경사', '설측 경사'], severe: true },
-  { key: 'lowerIncisorAngle', label: '하악 전치 각도', type: 'checkbox', options: ['순측 경사', '설측 경사'], severe: true },
-  { key: 'posteriorRelation', label: '구치 관계', type: 'checkbox', options: ['반대교합', '가위교합'], severe: true },
-]
-
-const ETC_ITEMS = [
-  { key: 'lipProtrusion', label: '입술 돌출감', type: 'radio', options: ['심함', '경미함'], severe: false },
-  { key: 'gummySmile', label: 'Gummy smile', type: 'radio', options: ['심함', '경미함'], severe: false },
-  { key: 'wisdomTeeth', label: '사랑니', type: 'checkbox', options: ['#18', '#28', '#38', '#48'], severe: false },
-  { key: 'tmj', label: '턱관절 (TMJ)', type: 'checkbox', options: ['통증', '개구제한', '소리', '과두흡수'], severe: false },
-  { key: 'periodontal', label: '치주 상태', type: 'checkbox', options: ['치은염', '치주염'], severe: true },
-  { key: 'oralHygiene', label: '구강위생상태', type: 'radio', options: ['양호', '보통', '불량'], severe: false },
-  { key: 'caries', label: '충치 (우식)', type: 'checkbox_text', options: ['우식 활성도 높음'], textPlaceholder: '치아번호 (예: #16, #26)', severe: false },
-  { key: 'shortRoot', label: '짧은 치근', type: 'text', placeholder: '치아번호 기재 (예: #12, #22)', severe: true },
-  { key: 'oralHabit', label: '구강 악습관', type: 'text', placeholder: '내용 기재' },
-  { key: 'systemicDisease', label: '전신질환', type: 'text', placeholder: '내용 기재' },
-]
-
-const DIAGNOSIS_SECTIONS = [
-  { key: 'skeletal', label: '골격문제', items: SKELETAL_ITEMS, color: '#7c3aed' },
-  { key: 'dental', label: '치성문제', items: DENTAL_ITEMS, color: '#2563eb' },
-  { key: 'etc', label: '기타', items: ETC_ITEMS, color: '#059669' },
-]
-
-const DEFAULT_TX_ETC_ITEMS = ['매복치', '잇몸수술', '악교정 수술']
+/* ═══ 초기 데이터 / 요약 헬퍼 ═══ */
 
 function getEmptyTxOption() {
   return {
     goal: '',          // 치료 목표
     scope: '',         // '전체' | '부분'
     phase: '',         // '1차' | '2차'
-    // 1차
-    primary: [],       // ['근기능치료 (프리올소)', '악궁확장', '앞니배열']
+    // 1차 (flat array of option strings toggled across all phase1 groups)
+    primary: [],
     // 2차
-    ext_10: '', ext_20: '', ext_30: '', ext_40: '',  // 발치 사분면
-    expansion: '',     // '' | 'Expansion' | 'RPE' | 'MARPE' | 'SARPE'
+    ext_10: '', ext_20: '', ext_30: '', ext_40: '',
+    expansion: '',
     distalization: false,
     distalExtraction: '',
     stripping: false,
     // 기타
     txEtc: [],
-    memo: '',          // 기타 메모
+    memo: '',
     duration: '',
   }
 }
@@ -76,19 +41,13 @@ export function getEmptyClinicalForm() {
     skeletal: { memo: '' },
     dental: { memo: '' },
     etc: { memo: '' },
-    // page 2: 치료계획 (목표 → 계획이 한 세트)
+    // page 2: 치료계획
     treatmentPlans: [getEmptyTxOption()],
     treatmentMemo: '',
     // page 3: 정리 (사용자 편집 반영, 없으면 자동 생성)
     summary: { skeletal: '', dental: '', etc: '', treatmentPlans: [], overall: '' },
   }
 }
-
-const ALL_SECTIONS = [
-  { key: 'skeletal', label: '골격 문제', items: SKELETAL_ITEMS },
-  { key: 'dental',   label: '치성 문제', items: DENTAL_ITEMS },
-  { key: 'etc',      label: '기타',      items: ETC_ITEMS },
-]
 
 // 진단 항목 정도(degree): 'severe' | 'mild' | ''  (하위호환: 기존 _severe:true → 'severe')
 function getSeverity(sectionData, key) {
@@ -104,9 +63,9 @@ function severityTag(severity) {
   return ''
 }
 
-function itemValueToText(section, item, value) {
-  const v = value[section]?.[item.key]
-  const tag = severityTag(getSeverity(value[section], item.key))
+function itemValueToText(sectionKey, item, value) {
+  const v = value[sectionKey]?.[item.key]
+  const tag = severityTag(getSeverity(value[sectionKey], item.key))
   if (item.type === 'text') return v ? `${item.label}: ${v}${tag}` : null
   if (item.type === 'radio') return v ? `${item.label}: ${v}${tag}` : null
   if (item.type === 'checkbox') {
@@ -115,7 +74,7 @@ function itemValueToText(section, item, value) {
   }
   if (item.type === 'checkbox_text') {
     const arr = Array.isArray(v) ? v : []
-    const text = value[section]?.[`${item.key}_text`]
+    const text = value[sectionKey]?.[`${item.key}_text`]
     if (arr.length === 0 && !text) return null
     const parts = [...arr]
     if (text) parts.push(text)
@@ -124,20 +83,18 @@ function itemValueToText(section, item, value) {
   return null
 }
 
-function sectionToText(sectionKey, clinicalForm) {
-  const def = ALL_SECTIONS.find(s => s.key === sectionKey)
-  if (!def) return ''
+function sectionToText(section, clinicalForm) {
   const lines = []
-  for (const item of def.items) {
-    const line = itemValueToText(sectionKey, item, clinicalForm)
+  for (const item of section.items || []) {
+    const line = itemValueToText(section.key, item, clinicalForm)
     if (line) lines.push(`- ${line}`)
   }
-  const memo = clinicalForm[sectionKey]?.memo
+  const memo = clinicalForm[section.key]?.memo
   if (memo) lines.push(`- 특이사항: ${memo}`)
   return lines.join('\n')
 }
 
-function planToText(plan, idx) {
+function planToText(plan) {
   const lines = []
   if (plan.goal) lines.push(`목표: ${plan.goal}`)
   if (plan.scope) lines.push(`교정 범위: ${plan.scope}`)
@@ -160,17 +117,31 @@ function planToText(plan, idx) {
   return lines.length > 0 ? lines.map(l => `- ${l}`).join('\n') : ''
 }
 
-export function buildAutoSummary(clinicalForm) {
+export function buildAutoSummary(clinicalForm, diagnosisConfig = DEFAULT_DIAGNOSIS_CONFIG) {
+  const sections = diagnosisConfig?.sections || DEFAULT_DIAGNOSIS_CONFIG.sections
+  const find = (key) => sections.find(s => s.key === key) || { key, items: [] }
   return {
-    skeletal: sectionToText('skeletal', clinicalForm),
-    dental: sectionToText('dental', clinicalForm),
-    etc: sectionToText('etc', clinicalForm),
+    skeletal: sectionToText(find('skeletal'), clinicalForm),
+    dental:   sectionToText(find('dental'),   clinicalForm),
+    etc:      sectionToText(find('etc'),      clinicalForm),
     treatmentPlans: (clinicalForm.treatmentPlans || []).map(planToText),
     overall: clinicalForm.treatmentMemo || '',
   }
 }
 
-export default function ClinicalForm({ value, onChange, page, onPageChange }) {
+/* ═══ 메인 컴포넌트 ═══ */
+
+export default function ClinicalForm({
+  value,
+  onChange,
+  page,
+  onPageChange,
+  diagnosisConfig = DEFAULT_DIAGNOSIS_CONFIG,
+  treatmentConfig = DEFAULT_TREATMENT_CONFIG,
+}) {
+  const sections = diagnosisConfig?.sections || DEFAULT_DIAGNOSIS_CONFIG.sections
+  const tx = treatmentConfig || DEFAULT_TREATMENT_CONFIG
+
   const updateField = (section, key, val) => {
     onChange({
       ...value,
@@ -189,7 +160,6 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
       [section]: {
         ...value[section],
         [`${key}_severity`]: nextVal,
-        // legacy boolean 정리
         [`${key}_severe`]: nextVal === 'severe' ? true : false,
       },
     })
@@ -243,6 +213,11 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
     updateTopLevel('treatmentPlans', plans.filter((_, i) => i !== idx))
   }
 
+  const phaseOpts = tx.phaseOptions || DEFAULT_TREATMENT_CONFIG.phaseOptions
+  const scopeOpts = tx.scopeOptions || DEFAULT_TREATMENT_CONFIG.scopeOptions
+  const phase1Groups = tx.phase1Groups || DEFAULT_TREATMENT_CONFIG.phase1Groups
+  const phase2 = tx.phase2 || DEFAULT_TREATMENT_CONFIG.phase2
+
   return (
     <div>
       {/* 페이지 탭 */}
@@ -266,11 +241,11 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
       {/* Page 1: 진단 */}
       {page === 1 && (
         <div style={pageStyle}>
-          {DIAGNOSIS_SECTIONS.map(section => (
+          {sections.map(section => (
             <div key={section.key} style={sectionStyle}>
-              <SectionHeader label={section.label} color={section.color} />
+              <SectionHeader label={section.label} color={section.color || '#374151'} />
 
-              {section.items.map(item => (
+              {(section.items || []).map(item => (
                 <div key={item.key} style={itemRowStyle}>
                   <div style={labelStyle}>{item.label}</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', flex: 1 }}>
@@ -284,13 +259,13 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
                       />
                     ) : item.type === 'checkbox_text' ? (
                       <>
-                        {item.options.map(opt => {
+                        {(item.options || []).map(opt => {
                           const selected = (value[section.key]?.[item.key] || []).includes(opt)
                           return (
                             <button
                               key={opt}
                               onClick={() => toggleCheckbox(section.key, item.key, opt)}
-                              style={chipStyle(selected, section.color)}
+                              style={chipStyle(selected, section.color || '#374151')}
                             >
                               {opt}
                             </button>
@@ -305,26 +280,26 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
                         />
                       </>
                     ) : item.type === 'radio' ? (
-                      item.options.map(opt => {
+                      (item.options || []).map(opt => {
                         const selected = value[section.key]?.[item.key] === opt
                         return (
                           <button
                             key={opt}
                             onClick={() => setRadio(section.key, item.key, opt)}
-                            style={chipStyle(selected, section.color)}
+                            style={chipStyle(selected, section.color || '#374151')}
                           >
                             {opt}
                           </button>
                         )
                       })
                     ) : (
-                      item.options.map(opt => {
+                      (item.options || []).map(opt => {
                         const selected = (value[section.key]?.[item.key] || []).includes(opt)
                         return (
                           <button
                             key={opt}
                             onClick={() => toggleCheckbox(section.key, item.key, opt)}
-                            style={chipStyle(selected, section.color)}
+                            style={chipStyle(selected, section.color || '#374151')}
                           >
                             {opt}
                           </button>
@@ -386,11 +361,11 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
                 )}
               </div>
 
-              {/* 교정 단계 (제일 위) */}
+              {/* 교정 단계 */}
               <div style={itemRowStyle}>
                 <div style={labelStyle}>교정 단계</div>
                 <div style={{ display: 'flex', gap: '6px' }}>
-                  {['1차', '2차'].map(p => (
+                  {phaseOpts.map(p => (
                     <button key={p} onClick={() => updatePlan(idx, 'phase', plan.phase === p ? '' : p)} style={chipStyle(plan.phase === p, '#b5976a')}>{p} 교정</button>
                   ))}
                 </div>
@@ -407,70 +382,34 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
                 />
               </FieldRow>
 
-              {/* 단계 선택 시 → 교정 범위 + 세부 */}
               {plan.phase && (
                 <>
                   <div style={itemRowStyle}>
                     <div style={labelStyle}>교정 범위</div>
                     <div style={{ display: 'flex', gap: '6px' }}>
-                      {['전체', '부분'].map(s => (
+                      {scopeOpts.map(s => (
                         <button key={s} onClick={() => updatePlan(idx, 'scope', plan.scope === s ? '' : s)} style={chipStyle(plan.scope === s, '#b5976a')}>{s} 교정</button>
                       ))}
                     </div>
                   </div>
 
-                  {/* 1차 */}
+                  {/* 1차: config 의 phase1Groups 를 반복 */}
                   {plan.phase === '1차' && (
                     <div style={subSectionStyle}>
-                      {/* 근기능 / 골격 성장치료 */}
-                      <div style={itemRowStyle}>
-                        <div style={{ ...labelStyle, width: '160px' }}>근기능 / 골격 성장치료</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', flex: 1 }}>
-                          {['프리올소', '구내 고정식 장치', '가철식 장치', '구외 장치'].map(item => (
-                            <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
-                          ))}
+                      {phase1Groups.map(group => (
+                        <div key={group.key} style={itemRowStyle}>
+                          <div style={{ ...labelStyle, width: '160px' }}>{group.label}</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', flex: 1 }}>
+                            {(group.options || []).map(opt => (
+                              <button
+                                key={opt}
+                                onClick={() => togglePlanArray(idx, 'primary', opt)}
+                                style={chipStyle((plan.primary || []).includes(opt), '#7c3aed')}
+                              >{opt}</button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-
-                      {/* 악궁확장 */}
-                      <div style={itemRowStyle}>
-                        <div style={{ ...labelStyle, width: '160px' }}>악궁확장</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', flex: 1 }}>
-                          {['고정식', '가철식'].map(item => (
-                            <button key={item} onClick={() => togglePlanArray(idx, 'primary', `악궁확장 — ${item}`)} style={chipStyle((plan.primary || []).includes(`악궁확장 — ${item}`), '#7c3aed')}>{item}</button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* 치아 배열/조절 */}
-                      <div style={itemRowStyle}>
-                        <div style={{ ...labelStyle, width: '160px' }}>치아 배열 / 조절</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', flex: 1 }}>
-                          {['앞니 배열', '어금니 조절'].map(item => (
-                            <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* 공간 관리 */}
-                      <div style={itemRowStyle}>
-                        <div style={{ ...labelStyle, width: '160px' }}>공간 관리</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', flex: 1 }}>
-                          {['연속 발치술', '공간 만들기', '공간 유지'].map(item => (
-                            <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* 1차 기타 */}
-                      <div style={itemRowStyle}>
-                        <div style={{ ...labelStyle, width: '160px' }}>기타</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', flex: 1 }}>
-                          {['기타 장치 (Halterman, Nance 등)', '잇몸 수술', '성장 검사 및 재평가'].map(item => (
-                            <button key={item} onClick={() => togglePlanArray(idx, 'primary', item)} style={chipStyle((plan.primary || []).includes(item), '#7c3aed')}>{item}</button>
-                          ))}
-                        </div>
-                      </div>
+                      ))}
                     </div>
                   )}
 
@@ -479,18 +418,18 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
                     <div style={subSectionStyle}>
                       <div style={subLabel}>공간 확보 방법</div>
 
-                      {/* 발치 사분면 — 제일 먼저 */}
+                      {/* 발치 사분면 */}
                       <div style={{ marginBottom: '16px' }}>
                         <div style={{ fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>발치 부위</div>
                         <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>선택하지 않은 부위 = 비발치</div>
-                        <ExtractionQuadrant plan={plan} idx={idx} updatePlan={updatePlan} />
+                        <ExtractionQuadrant plan={plan} idx={idx} updatePlan={updatePlan} extractionOptions={phase2.extraction || []} />
                       </div>
 
                       {/* 악궁 확장 */}
                       <div style={itemRowStyle}>
                         <div style={{ ...labelStyle, width: '120px' }}>악궁 확장</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                          {['Expansion', 'RPE', 'MARPE', 'SARPE'].map(t => (
+                          {(phase2.expansion || []).map(t => (
                             <button key={t} onClick={() => updatePlan(idx, 'expansion', plan.expansion === t ? '' : t)} style={chipStyle(plan.expansion === t, '#2563eb')}>{t}</button>
                           ))}
                         </div>
@@ -523,7 +462,7 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
                       <div style={itemRowStyle}>
                         <div style={{ ...labelStyle, width: '120px' }}>기타</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                          {(value.txEtcItems || DEFAULT_TX_ETC_ITEMS).map(item => (
+                          {(phase2.txEtc || []).map(item => (
                             <button key={item} onClick={() => togglePlanArray(idx, 'txEtc', item)} style={chipStyle((plan.txEtc || []).includes(item), '#059669')}>{item}</button>
                           ))}
                         </div>
@@ -574,16 +513,16 @@ export default function ClinicalForm({ value, onChange, page, onPageChange }) {
         </div>
       )}
 
-      {/* Page 3: 정리 — 자동 생성 + 편집 가능 */}
+      {/* Page 3: 정리 */}
       {page === 3 && (
-        <SummaryPage value={value} onChange={onChange} onPageChange={onPageChange} />
+        <SummaryPage value={value} onChange={onChange} onPageChange={onPageChange} diagnosisConfig={diagnosisConfig} />
       )}
     </div>
   )
 }
 
-function SummaryPage({ value, onChange, onPageChange }) {
-  const auto = buildAutoSummary(value)
+function SummaryPage({ value, onChange, onPageChange, diagnosisConfig }) {
+  const auto = buildAutoSummary(value, diagnosisConfig)
   const summary = value.summary || { skeletal: '', dental: '', etc: '', treatmentPlans: [], overall: '' }
 
   const getValue = (key, fallback) => {
@@ -605,6 +544,17 @@ function SummaryPage({ value, onChange, onPageChange }) {
   const hasAny = auto.skeletal || auto.dental || auto.etc ||
     auto.treatmentPlans.some(t => t) || auto.overall
 
+  // 요약 페이지 섹션 라벨 — diagnosisConfig 에서 읽어온 라벨을 이모지와 함께 표시
+  const sectionLabels = (diagnosisConfig?.sections || DEFAULT_DIAGNOSIS_CONFIG.sections).reduce((acc, s) => {
+    acc[s.key] = s.label
+    return acc
+  }, {})
+  const summarySections = [
+    { key: 'skeletal', label: `🩻 ${sectionLabels.skeletal || '골격문제'}` },
+    { key: 'dental',   label: `🦷 ${sectionLabels.dental   || '치성문제'}` },
+    { key: 'etc',      label: `📝 ${sectionLabels.etc      || '기타'}` },
+  ]
+
   return (
     <div style={pageStyle}>
       <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '10px', padding: '12px 16px', color: '#0369a1', fontSize: '13px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
@@ -620,11 +570,7 @@ function SummaryPage({ value, onChange, onPageChange }) {
         </div>
       )}
 
-      {[
-        { key: 'skeletal', label: '🩻 골격 문제' },
-        { key: 'dental',   label: '🦷 치성 문제' },
-        { key: 'etc',      label: '📝 기타' },
-      ].map(({ key, label }) => (
+      {summarySections.map(({ key, label }) => (
         <div key={key} style={sectionStyle}>
           <SectionHeader label={label} color="#b5976a" />
           <SummaryPair
@@ -747,7 +693,7 @@ function FieldRow({ label, children }) {
   )
 }
 
-function ExtQuadCell({ plan, idx, field, label, alignH, borderSide, updatePlan }) {
+function ExtQuadCell({ plan, idx, field, label, alignH, borderSide, updatePlan, extractionOptions }) {
   const value = plan[field] || ''
   const textField = `${field}_text`
   const showInput = value === '기타'
@@ -756,7 +702,7 @@ function ExtQuadCell({ plan, idx, field, label, alignH, borderSide, updatePlan }
       <div style={quadLabel}>{label}</div>
       <select value={value} onChange={e => updatePlan(idx, field, e.target.value)} style={quadSelect(value)}>
         <option value="">비발치</option>
-        {['4번', '5번', '기타'].map(o => <option key={o} value={o}>{o}</option>)}
+        {(extractionOptions || []).map(o => <option key={o} value={o}>{o}</option>)}
       </select>
       {showInput && (
         <input
@@ -771,7 +717,7 @@ function ExtQuadCell({ plan, idx, field, label, alignH, borderSide, updatePlan }
   )
 }
 
-function ExtractionQuadrant({ plan, idx, updatePlan }) {
+function ExtractionQuadrant({ plan, idx, updatePlan, extractionOptions }) {
   return (
     <div style={{
       display: 'grid',
@@ -781,12 +727,12 @@ function ExtractionQuadrant({ plan, idx, updatePlan }) {
       maxWidth: '340px',
       margin: '0 auto',
     }}>
-      <ExtQuadCell plan={plan} idx={idx} field="ext_10" label="#10" alignH="right" borderSide="bottom" updatePlan={updatePlan} />
+      <ExtQuadCell plan={plan} idx={idx} field="ext_10" label="#10" alignH="right" borderSide="bottom" updatePlan={updatePlan} extractionOptions={extractionOptions} />
       <div style={{ borderBottom: '2px solid #9ca3af', width: '2px', background: '#9ca3af' }} />
-      <ExtQuadCell plan={plan} idx={idx} field="ext_20" label="#20" alignH="left" borderSide="bottom" updatePlan={updatePlan} />
-      <ExtQuadCell plan={plan} idx={idx} field="ext_40" label="#40" alignH="right" borderSide="top" updatePlan={updatePlan} />
+      <ExtQuadCell plan={plan} idx={idx} field="ext_20" label="#20" alignH="left" borderSide="bottom" updatePlan={updatePlan} extractionOptions={extractionOptions} />
+      <ExtQuadCell plan={plan} idx={idx} field="ext_40" label="#40" alignH="right" borderSide="top" updatePlan={updatePlan} extractionOptions={extractionOptions} />
       <div style={{ borderTop: '2px solid #9ca3af', width: '2px', background: '#9ca3af' }} />
-      <ExtQuadCell plan={plan} idx={idx} field="ext_30" label="#30" alignH="left" borderSide="top" updatePlan={updatePlan} />
+      <ExtQuadCell plan={plan} idx={idx} field="ext_30" label="#30" alignH="left" borderSide="top" updatePlan={updatePlan} extractionOptions={extractionOptions} />
     </div>
   )
 }
@@ -894,7 +840,6 @@ const chipStyle = (selected, color) => ({
   whiteSpace: 'nowrap',
 })
 
-// kind: 'severe' → 빨강, 'mild' → 주황
 const severityStyle = (active, kind) => {
   const palette = kind === 'severe'
     ? { fg: '#dc2626', bg: '#fef2f2', border: '#dc2626' }
@@ -990,14 +935,6 @@ const quadSelect = (val) => ({
   outline: 'none',
 })
 
-const optionCardStyle = {
-  background: '#faf8f5',
-  border: '1px solid #e8dfd4',
-  borderRadius: '10px',
-  padding: '16px',
-  marginBottom: '12px',
-}
-
 const addOptionBtn = {
   width: '100%',
   padding: '10px',
@@ -1031,3 +968,22 @@ const navBtn = (color) => ({
   fontWeight: '600',
   cursor: 'pointer',
 })
+
+/* 설정 페이지에서도 재사용할 수 있도록 스타일 export */
+export const CF_STYLES = {
+  pageStyle,
+  sectionStyle,
+  itemRowStyle,
+  labelStyle,
+  chipStyle,
+  severityStyle,
+  textInputStyle,
+  memoStyle,
+  subSectionStyle,
+  subLabel,
+  addOptionBtn,
+  removeBtn,
+  quadCellStyle,
+  quadLabel,
+  quadSelect,
+}
