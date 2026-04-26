@@ -6,9 +6,9 @@ import ContentEditor from '../components/ContentEditor'
 import BrochurePreview from '../components/BrochurePreview'
 import PhotoMarkerModal from '../components/PhotoMarkerModal'
 import { serializeMarkings } from '../lib/markings'
-import { loadTreatmentCases, loadStrengthCards } from '../lib/library'
+import { loadTreatmentCases, loadStrengthCards, normalizeTags } from '../lib/library'
 import CaseStrengthSelector from '../components/CaseStrengthSelector'
-import { composeReport, saveCorrections, migrateToNewFormat, extractImagesBySection, reinsertImagesBySection } from '../lib/gemini'
+import { composeReport, saveCorrections, migrateToNewFormat, extractImagesBySection, reinsertImagesBySection, suggestTags } from '../lib/gemini'
 import { supabase } from '../lib/supabase'
 import { loadClinicalFormConfig } from '../lib/formConfig'
 import { getByChartNumber, updateReport, acquireLock, releaseLock, isOtherPcEditing, PROGRESS_STAGES, STEP_TO_STAGE } from '../lib/reports'
@@ -58,6 +58,10 @@ export default function Editor() {
   const [allStrengths, setAllStrengths] = useState([])
   const [selectedCaseIds, setSelectedCaseIds] = useState([])
   const [selectedStrengthIds, setSelectedStrengthIds] = useState([])
+  const [selectedCaseTags, setSelectedCaseTags] = useState([])
+  const [selectedStrengthTags, setSelectedStrengthTags] = useState([])
+  const [tagSuggestions, setTagSuggestions] = useState(null)  // { caseTags: [...], strengthTags: [...], at: ISO }
+  const [isSuggestingTags, setIsSuggestingTags] = useState(false)
 
   const [isComposing, setIsComposing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -93,6 +97,9 @@ export default function Editor() {
       setPhotos(data.photos || [])
       setSelectedCaseIds(Array.isArray(data.selected_case_ids) ? data.selected_case_ids : [])
       setSelectedStrengthIds(Array.isArray(data.selected_strength_ids) ? data.selected_strength_ids : [])
+      setSelectedCaseTags(Array.isArray(data.selected_case_tags) ? data.selected_case_tags : [])
+      setSelectedStrengthTags(Array.isArray(data.selected_strength_tags) ? data.selected_strength_tags : [])
+      setTagSuggestions(data.tag_suggestions || null)
       hydratedRef.current = true
     }).catch(err => { if (mounted) setLoadError(err.message) })
     // 라이브러리 + 폼 설정 병렬 로드
@@ -141,9 +148,12 @@ export default function Editor() {
         staff_form: staffForm,
         selected_case_ids: selectedCaseIds,
         selected_strength_ids: selectedStrengthIds,
+        selected_case_tags: selectedCaseTags,
+        selected_strength_tags: selectedStrengthTags,
         progress_stage: report.progress_stage === 'done' ? 'done' : progress,
       }
       if (editedContent) patch.sections = editedContent
+      if (tagSuggestions) patch.tag_suggestions = tagSuggestions
       setSaveState('saving')
       try {
         await updateReport(report.id, patch)
@@ -155,7 +165,7 @@ export default function Editor() {
       }
     }, 1500)
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
-  }, [clinicalForm, staffForm, editedContent, selectedCaseIds, selectedStrengthIds, step, report?.id])
+  }, [clinicalForm, staffForm, editedContent, selectedCaseIds, selectedStrengthIds, selectedCaseTags, selectedStrengthTags, tagSuggestions, step, report?.id])
 
   const otherPcEditing = useMemo(() => isOtherPcEditing(report, `step${step}`), [report, step])
 
@@ -235,6 +245,8 @@ export default function Editor() {
         staff_form: staffForm,
         selected_case_ids: selectedCaseIds,
         selected_strength_ids: selectedStrengthIds,
+        selected_case_tags: selectedCaseTags,
+        selected_strength_tags: selectedStrengthTags,
         expires_at: expiresAt.toISOString(),
         progress_stage: 'done',
       })
@@ -249,6 +261,51 @@ export default function Editor() {
   const handleCopyLink = () => {
     if (savedLink) { navigator.clipboard.writeText(savedLink); alert('링크가 복사되었습니다.') }
   }
+
+  // 라이브러리에서 사용 중인 태그 풀
+  const casePool = useMemo(() => {
+    const m = new Map()
+    for (const c of allCases) for (const t of (c.tags || [])) {
+      const lc = String(t).toLowerCase(); if (!m.has(lc)) m.set(lc, t)
+    }
+    return [...m.values()]
+  }, [allCases])
+  const strengthPool = useMemo(() => {
+    const m = new Map()
+    for (const s of allStrengths) for (const t of (s.tags || [])) {
+      const lc = String(t).toLowerCase(); if (!m.has(lc)) m.set(lc, t)
+    }
+    return [...m.values()]
+  }, [allStrengths])
+
+  // AI 태그 추천 호출 (수동 + 자동)
+  const runSuggestTags = async () => {
+    if (isSuggestingTags) return
+    if (casePool.length === 0 && strengthPool.length === 0) return
+    setIsSuggestingTags(true)
+    try {
+      const result = await suggestTags({ summary, staffForm, casePool, strengthPool })
+      const next = { caseTags: normalizeTags(result.caseTags), strengthTags: normalizeTags(result.strengthTags), at: new Date().toISOString() }
+      setTagSuggestions(next)
+      setSelectedCaseTags(next.caseTags)
+      setSelectedStrengthTags(next.strengthTags)
+    } catch (err) {
+      console.error('suggestTags failed', err)
+      alert('AI 태그 추천 실패: ' + err.message)
+    } finally {
+      setIsSuggestingTags(false)
+    }
+  }
+
+  // Step 4 첫 진입 시 자동 추천 1회 (캐시 없을 때만)
+  useEffect(() => {
+    if (step !== 4) return
+    if (!hydratedRef.current) return
+    if (tagSuggestions) return
+    if (casePool.length === 0 && strengthPool.length === 0) return
+    runSuggestTags()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, hydratedRef.current, casePool.length, strengthPool.length, tagSuggestions])
 
   // 진단서 디자이너에서 figcaption 편집 시 body HTML에 반영
   const handleUpdateCaption = (imgSrc, newCaption) => {
@@ -508,6 +565,12 @@ export default function Editor() {
                 selectedStrengthIds={selectedStrengthIds}
                 onChangeCases={setSelectedCaseIds}
                 onChangeStrengths={setSelectedStrengthIds}
+                caseTags={selectedCaseTags}
+                strengthTags={selectedStrengthTags}
+                onChangeCaseTags={setSelectedCaseTags}
+                onChangeStrengthTags={setSelectedStrengthTags}
+                onSuggestTags={runSuggestTags}
+                isSuggesting={isSuggestingTags}
               />
               <button
                 onClick={handleRedesign}

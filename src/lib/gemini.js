@@ -277,6 +277,123 @@ function buildStaffLines(staffForm = {}) {
  * - summary 텍스트에 **명시적으로 있는 내용만** 재서술
  * - 소스 외 치아 문제/치료 옵션 절대 추가 금지
  * - 비어있는 섹션은 출력에서 완전히 생략
+/**
+ * suggestTags — 진단/치료계획/성향에서 라이브러리 태그 풀과 매칭되는 항목을 AI가 골라줌.
+ * 절대 규칙: 입력된 tagPool 안에서만 선택, 새 태그 만들지 않음.
+ *
+ * 입력: { summary, staffForm, casePool: string[], strengthPool: string[] }
+ * 출력: { caseTags: string[], strengthTags: string[] }
+ */
+export async function suggestTags({ summary, staffForm, casePool, strengthPool }) {
+  const cp = Array.isArray(casePool) ? casePool : []
+  const sp = Array.isArray(strengthPool) ? strengthPool : []
+  if (cp.length === 0 && sp.length === 0) return { caseTags: [], strengthTags: [] }
+
+  const koreanSummary = summaryWithKoreanTeeth(summary)
+  const skel = (koreanSummary?.skeletal || '').trim()
+  const dent = (koreanSummary?.dental || '').trim()
+  const etc = (koreanSummary?.etc || '').trim()
+  const plans = Array.isArray(koreanSummary?.treatmentPlans) ? koreanSummary.treatmentPlans : []
+  const overall = (koreanSummary?.overall || '').trim()
+  const combined = (koreanSummary?.combined || '').trim()
+
+  const personality = (staffForm?.personality || []).join(', ')
+  const concerns = (staffForm?.concerns || []).join(', ')
+  const motivations = (staffForm?.motivations || []).join(', ')
+  const special = (staffForm?.specialCircumstances || '').trim()
+
+  const systemPrompt = `당신은 치과 진단 데이터를 보고 미리 정의된 태그 풀에서 어울리는 항목을 골라주는 AI입니다.
+
+**절대 규칙:**
+1. caseTags는 반드시 "케이스 태그 풀"에 있는 단어만 사용. 새 단어 만들지 마시오.
+2. strengthTags는 반드시 "어필포인트 태그 풀"에 있는 단어만 사용. 새 단어 만들지 마시오.
+3. 입력값에 명확히 근거가 있는 태그만 선택. 추측·확장 금지.
+4. 각 분류당 최대 5개. 어울리는 게 없으면 빈 배열.
+5. 출력은 JSON 한 덩어리 — 그 외 텍스트·코드블록 금지.
+
+**케이스 태그 풀 (이 안에서만 선택):**
+${cp.map(t => `- ${t}`).join('\n') || '(없음)'}
+
+**어필포인트 태그 풀 (이 안에서만 선택):**
+${sp.map(t => `- ${t}`).join('\n') || '(없음)'}
+
+**출력 JSON 스키마:**
+{ "caseTags": ["태그1", "태그2"], "strengthTags": ["태그A", "태그B"] }`
+
+  const userMessage = `# 진단
+- 골격: ${skel || '(없음)'}
+- 치성: ${dent || '(없음)'}
+- 기타: ${etc || '(없음)'}
+
+# 치료 계획
+${plans.length ? plans.map((p, i) => `## 계획 #${i + 1}\n${p}`).join('\n\n') : '(없음)'}
+
+# 정리 / 추가 메모
+${combined || overall || '(없음)'}
+
+# 환자 성향
+- 성향: ${personality || '(없음)'}
+- 걱정/고민: ${concerns || '(없음)'}
+- 관심사: ${motivations || '(없음)'}
+- 특이 상황: ${special || '(없음)'}
+
+위 내용에 근거해 위 두 태그 풀에서만 골라 JSON으로 반환하시오.`
+
+  const response = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ parts: [{ text: userMessage }] }],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 1000,
+        responseMimeType: 'application/json',
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    }),
+  })
+
+  const data = await response.json()
+  if (data.error) throw new Error(data.error.message || 'AI 태그 추천 실패')
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text
+  if (!text) return { caseTags: [], strengthTags: [] }
+
+  let parsed
+  try { parsed = JSON.parse(text) }
+  catch {
+    const m = text.match(/\{[\s\S]*\}/)
+    parsed = m ? JSON.parse(m[0]) : {}
+  }
+
+  // 풀 안에 있는 항목만 통과시킴 (대소문자 무시) — 환각 방어
+  const lcCase = new Set(cp.map(t => t.toLowerCase()))
+  const lcStr = new Set(sp.map(t => t.toLowerCase()))
+  const filterPool = (arr, lcSet, pool) => {
+    if (!Array.isArray(arr)) return []
+    const out = []
+    const seen = new Set()
+    for (const t of arr) {
+      const s = String(t).trim().replace(/^#+/, '').trim()
+      if (!s) continue
+      const lc = s.toLowerCase()
+      if (!lcSet.has(lc)) continue
+      if (seen.has(lc)) continue
+      seen.add(lc)
+      // pool에서 원본 표기 찾기
+      const original = pool.find(p => p.toLowerCase() === lc) || s
+      out.push(original)
+    }
+    return out.slice(0, 5)
+  }
+
+  return {
+    caseTags: filterPool(parsed.caseTags, lcCase, cp),
+    strengthTags: filterPool(parsed.strengthTags, lcStr, sp),
+  }
+}
+
+/**
  *
  * 출력: { body: HTML, personalNote, appealPoints }
  *   body 섹션 순서: 치성 관계 → 골격 관계 → 치료 계획 → 추가 사항

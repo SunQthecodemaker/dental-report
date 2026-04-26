@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
-import { saveTreatmentCases, saveStrengthCards, uploadLibraryPhoto, newCaseId } from '../lib/library'
+import { saveTreatmentCases, saveStrengthCards, uploadLibraryPhoto, newCaseId, normalizeTag, normalizeTags, extractTagPool } from '../lib/library'
 import { useId } from 'react'
 import { validateNewGuideline, cleanupGuidelines } from '../lib/gemini'
 import { loadClinicalFormConfig, saveDiagnosisConfig, saveTreatmentConfig, DEFAULT_DIAGNOSIS_CONFIG, DEFAULT_TREATMENT_CONFIG } from '../lib/formConfig'
@@ -235,12 +235,14 @@ export default function Settings() {
           {tab === 'cases' && (
             <CasesTab
               items={cases}
+              tagPool={extractTagPool(cases, strengthCards)}
               onChange={(v) => { setCases(v); saveAsync(saveTreatmentCases, v) }}
             />
           )}
           {tab === 'strengthCards' && (
             <StrengthCardsTab
               items={strengthCards}
+              tagPool={extractTagPool(cases, strengthCards)}
               onChange={(v) => { setStrengthCards(v); saveAsync(saveStrengthCards, v) }}
             />
           )}
@@ -699,12 +701,86 @@ function StrengthsTab({ items, onChange }) {
   )
 }
 
+// ─── 태그 칩 편집기 (자동완성 드롭다운 포함) ───
+function TagChipEditor({ tags, tagPool, onChange }) {
+  const [input, setInput] = useState('')
+  const [focused, setFocused] = useState(false)
+  const current = Array.isArray(tags) ? tags : []
+  const lower = current.map(t => t.toLowerCase())
+
+  const suggestions = (() => {
+    const q = normalizeTag(input).toLowerCase()
+    return (tagPool || [])
+      .filter(t => !lower.includes(t.toLowerCase()))
+      .filter(t => !q || t.toLowerCase().includes(q))
+      .slice(0, 8)
+  })()
+
+  const addTag = (raw) => {
+    const n = normalizeTag(raw)
+    if (!n) return
+    if (lower.includes(n.toLowerCase())) { setInput(''); return }
+    onChange(normalizeTags([...current, n]))
+    setInput('')
+  }
+
+  const removeTag = (t) => {
+    onChange(current.filter(x => x.toLowerCase() !== t.toLowerCase()))
+  }
+
+  const onKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault()
+      addTag(input)
+    } else if (e.key === 'Backspace' && !input && current.length) {
+      removeTag(current[current.length - 1])
+    }
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: 8, background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, minHeight: 40 }}>
+        {current.map(t => (
+          <span key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', background: '#fef3c7', color: '#92400e', borderRadius: 12, fontSize: 12, fontWeight: 600 }}>
+            #{t}
+            <button onClick={() => removeTag(t)} type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#92400e', padding: 0, fontSize: 14, lineHeight: 1 }}>×</button>
+          </span>
+        ))}
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={onKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setTimeout(() => setFocused(false), 150)}
+          placeholder={current.length ? '' : '태그 입력 후 Enter (예: 공간폐쇄, 2차교정)'}
+          style={{ flex: 1, minWidth: 120, border: 'none', outline: 'none', padding: '3px 4px', fontSize: 13, background: 'transparent' }}
+        />
+      </div>
+      {focused && suggestions.length > 0 && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 2, background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', maxHeight: 200, overflowY: 'auto', zIndex: 10 }}>
+          {suggestions.map(s => (
+            <button
+              key={s} type="button"
+              onMouseDown={(e) => { e.preventDefault(); addTag(s) }}
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#374151' }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+            >
+              #{s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── 유사 케이스 탭 (전후 사진 1~2 set + 설명) ───
-function CasesTab({ items, onChange }) {
+function CasesTab({ items, tagPool, onChange }) {
   const [expanded, setExpanded] = useState(null)
 
   const addCase = () => {
-    const item = { id: newCaseId(), title: '', description: '', pairs: [{ before_url: '', after_url: '' }] }
+    const item = { id: newCaseId(), title: '', description: '', tags: [], pairs: [{ before_url: '', after_url: '' }] }
     onChange([...items, item])
     setExpanded(item.id)
   }
@@ -769,6 +845,14 @@ function CasesTab({ items, onChange }) {
                   placeholder="간단한 설명 (치료 기간/특징/결과 등 1~3줄)"
                   style={{ ...S.input, minHeight: 60, resize: 'vertical', marginTop: 8 }}
                 />
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 12, color: '#6b7280', fontWeight: 600, marginBottom: 4 }}>🏷️ 태그</div>
+                  <TagChipEditor
+                    tags={c.tags || []}
+                    tagPool={tagPool}
+                    onChange={(v) => updateCase(c.id, { tags: v })}
+                  />
+                </div>
                 {(c.pairs || []).map((p, i) => (
                   <div key={i} style={S.pairBox}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
@@ -803,9 +887,9 @@ function CasesTab({ items, onChange }) {
 }
 
 // ─── 어필포인트 탭 (사진 1 + 설명 + 상세 링크) ───
-function StrengthCardsTab({ items, onChange }) {
+function StrengthCardsTab({ items, tagPool, onChange }) {
   const addCard = () => {
-    onChange([...items, { id: newCaseId(), title: '', description: '', photo_url: '', detail_url: '' }])
+    onChange([...items, { id: newCaseId(), title: '', description: '', tags: [], photo_url: '', detail_url: '' }])
   }
   const updateCard = (id, patch) => onChange(items.map(c => c.id === id ? { ...c, ...patch } : c))
   const removeCard = (id) => {
@@ -849,6 +933,14 @@ function StrengthCardsTab({ items, onChange }) {
                 style={S.input}
               />
             </div>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 12, color: '#6b7280', fontWeight: 600, marginBottom: 4 }}>🏷️ 태그</div>
+            <TagChipEditor
+              tags={c.tags || []}
+              tagPool={tagPool}
+              onChange={(v) => updateCard(c.id, { tags: v })}
+            />
           </div>
         </div>
       ))}
