@@ -284,10 +284,9 @@ export default function ContentEditor({ original, edited, onChange, onUploadingC
         {/* 툴바 */}
         <div style={S.toolbar}>
           <span style={S.toolLabel}>소제목 추가:</span>
-          <button style={S.toolBtn} onClick={() => insertHeading('치성 관계')}>치성 관계</button>
-          <button style={S.toolBtn} onClick={() => insertHeading('골격 관계')}>골격 관계</button>
+          <button style={S.toolBtn} onClick={() => insertHeading('문제 목록')}>문제 목록</button>
           <button style={S.toolBtn} onClick={() => insertHeading('치료 계획')}>치료 계획</button>
-          <button style={S.toolBtn} onClick={() => insertHeading('추가 사항')}>추가 사항</button>
+          <button style={S.toolBtn} onClick={() => insertHeading('종합 안내')}>종합 안내</button>
           {uploading && <span style={S.uploading}>📤 업로드 중...</span>}
         </div>
 

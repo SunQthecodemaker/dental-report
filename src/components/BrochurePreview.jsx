@@ -9,9 +9,13 @@ import MarkingOverlay from './MarkingOverlay'
 import { parseMarkingsAttr } from '../lib/markings'
 
 const EN_LABEL = {
+  // 새 3섹션 구조
+  '문제 목록': 'Problem Findings',
+  '치료 계획': 'Treatment Plan',
+  '종합 안내': 'Overall Assessment',
+  // 옛 섹션명 (기존 저장된 진단서 호환용)
   '치성 관계': 'Dental Relationship',
   '골격 관계': 'Skeletal Relationship',
-  '치료 계획': 'Treatment Plan',
   '추가 사항': 'Additional Notes',
 }
 

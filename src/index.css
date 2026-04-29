@@ -158,13 +158,19 @@ input, textarea, button, select {
 .v4-split-photo { min-width: 0; }
 .v4-split-text { min-width: 0; }
 
-/* 2장 2-up grid */
+/* 2장 2-up grid — subgrid로 이미지/캡션 행 정렬 (캡션 borderTop 구분선 양쪽 높이 일치) */
 .v4-grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto;
   gap: 14px;
-  align-items: start;
   margin-bottom: 24px;
+}
+.v4-grid2 > figure {
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: span 2;
+  margin: 0;
 }
 
 /* 3장 asymmetric: [1][2] / [3][텍스트] */
