@@ -403,6 +403,16 @@ export default function ClinicalForm({
                 </div>
               </div>
 
+              {/* 교정 범위 — 항상 표시 */}
+              <div style={itemRowStyle}>
+                <div style={labelStyle}>교정 범위</div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {scopeOpts.map(s => (
+                    <button key={s} onClick={() => updatePlan(idx, 'scope', plan.scope === s ? '' : s)} style={chipStyle(plan.scope === s, '#b5976a')}>{s} 교정</button>
+                  ))}
+                </div>
+              </div>
+
               {/* 치료 목표 */}
               <FieldRow label="치료 목표">
                 <textarea
@@ -416,15 +426,6 @@ export default function ClinicalForm({
 
               {plan.phase && (
                 <>
-                  <div style={itemRowStyle}>
-                    <div style={labelStyle}>교정 범위</div>
-                    <div style={{ display: 'flex', gap: '6px' }}>
-                      {scopeOpts.map(s => (
-                        <button key={s} onClick={() => updatePlan(idx, 'scope', plan.scope === s ? '' : s)} style={chipStyle(plan.scope === s, '#b5976a')}>{s} 교정</button>
-                      ))}
-                    </div>
-                  </div>
-
                   {/* 1차: config 의 phase1Groups 를 반복 */}
                   {plan.phase === '1차' && (
                     <div style={subSectionStyle}>
