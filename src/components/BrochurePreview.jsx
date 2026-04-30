@@ -35,7 +35,7 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
     )
   }
 
-  const sections = parseSections(bodyHtml)
+  const sections = mergeLegacySections(parseSections(bodyHtml))
   // 치료 계획 뒤에 케이스/장점 삽입. 그 뒤 나머지 섹션(예: 추가사항) → 맞춤안내 → 푸터.
   const tIdx = sections.findIndex(s => s.title === '치료 계획')
   const secBefore = tIdx >= 0 ? sections.slice(0, tIdx + 1) : sections
@@ -158,11 +158,49 @@ function parseSections(bodyHtml) {
   }
 }
 
+/**
+ * 옛 4섹션(치성 관계 / 골격 관계 / 치료 계획 / 추가 사항) 본문을
+ * 새 3섹션(문제 목록 / 치료 계획 / 종합 안내) 으로 렌더 시점에 통합.
+ * - 치성 관계 + 골격 관계 → 문제 목록 한 섹션 (figure·summary 합산)
+ * - 추가 사항 → 종합 안내 (라벨만 변경)
+ * - 새 키만 있는 본문은 그대로 통과
+ * - 본문 자체(DB)는 손대지 않음 — 표시만 새 라벨
+ */
+function mergeLegacySections(sections) {
+  if (!Array.isArray(sections) || sections.length === 0) return sections
+  const out = []
+  let problemBucket = null
+  for (const sec of sections) {
+    if (sec.title === '치성 관계' || sec.title === '골격 관계') {
+      if (!problemBucket) {
+        problemBucket = { title: '문제 목록', figures: [], summaryHtml: '' }
+        out.push(problemBucket)
+      }
+      if (Array.isArray(sec.figures) && sec.figures.length) {
+        problemBucket.figures.push(...sec.figures)
+      }
+      if (sec.summaryHtml) {
+        problemBucket.summaryHtml = problemBucket.summaryHtml
+          ? problemBucket.summaryHtml + sec.summaryHtml
+          : sec.summaryHtml
+      }
+    } else if (sec.title === '추가 사항') {
+      out.push({ ...sec, title: '종합 안내' })
+    } else {
+      out.push(sec)
+    }
+  }
+  return out
+}
+
 function readFigure(fig) {
   const img = fig.querySelector('img')
   const cap = fig.querySelector('figcaption')
   const src = img?.getAttribute('src') || ''
-  const caption = (cap?.textContent || '').trim()
+  const rawCaption = (cap?.textContent || '').trim()
+  // 옛 캡션의 " — 소견" / " - 소견" / " : 소견" 자동 부연 잘라내기
+  // (gemini.js generateImageCaption 후처리와 동일 — 옛 데이터 환각 잔재 제거)
+  const caption = rawCaption.split(/\s[—–\-:]\s/)[0].trim()
   const orient = img?.getAttribute('data-orient') || fig.getAttribute('data-orient') || ''
   // 종횡비 기반 폴백 판정 (이미지가 이미 로드된 경우만)
   let phototype = img?.getAttribute('data-phototype') || fig.getAttribute('data-phototype') || detectPhotoTypeFromCaption(caption)
