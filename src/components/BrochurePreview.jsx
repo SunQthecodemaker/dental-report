@@ -159,18 +159,52 @@ function parseSections(bodyHtml) {
 }
 
 /**
+ * AI 가 한자 섞어 출력한 섹션 키를 한글로 정규화 (방어선 — Gemini 한국어 한자어 혼용 약점 대응)
+ * 시스템 프롬프트에서 한자 금지 명시했지만 100% 막을 수는 없어 렌더 시점 보강.
+ */
+const HANJA_TO_HANGUL = [
+  [/治療/g, '치료'],
+  [/問題/g, '문제'],
+  [/計劃/g, '계획'],
+  [/計画/g, '계획'],
+  [/案內/g, '안내'],
+  [/案内/g, '안내'],
+  [/目錄/g, '목록'],
+  [/目录/g, '목록'],
+  [/綜合/g, '종합'],
+  [/总合/g, '종합'],
+  [/總合/g, '종합'],
+  [/患者/g, '환자'],
+  [/齒性/g, '치성'],
+  [/骨格/g, '골격'],
+  [/追加/g, '추가'],
+  [/事項/g, '사항'],
+  [/關係/g, '관계'],
+  [/関係/g, '관계'],
+]
+function normalizeSectionTitle(title) {
+  if (!title) return title
+  let out = title
+  for (const [pat, rep] of HANJA_TO_HANGUL) out = out.replace(pat, rep)
+  return out.trim()
+}
+
+/**
  * 옛 4섹션(치성 관계 / 골격 관계 / 치료 계획 / 추가 사항) 본문을
  * 새 3섹션(문제 목록 / 치료 계획 / 종합 안내) 으로 렌더 시점에 통합.
  * - 치성 관계 + 골격 관계 → 문제 목록 한 섹션 (figure·summary 합산)
  * - 추가 사항 → 종합 안내 (라벨만 변경)
  * - 새 키만 있는 본문은 그대로 통과
+ * - 한자 섞인 키도 한글로 정규화 후 매핑
  * - 본문 자체(DB)는 손대지 않음 — 표시만 새 라벨
  */
 function mergeLegacySections(sections) {
   if (!Array.isArray(sections) || sections.length === 0) return sections
+  // 1) 한자 → 한글 정규화 먼저
+  const normalized = sections.map(s => ({ ...s, title: normalizeSectionTitle(s.title) }))
   const out = []
   let problemBucket = null
-  for (const sec of sections) {
+  for (const sec of normalized) {
     if (sec.title === '치성 관계' || sec.title === '골격 관계') {
       if (!problemBucket) {
         problemBucket = { title: '문제 목록', figures: [], summaryHtml: '' }
