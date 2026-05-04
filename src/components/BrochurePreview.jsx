@@ -9,11 +9,13 @@ import MarkingOverlay from './MarkingOverlay'
 import { parseMarkingsAttr } from '../lib/markings'
 
 const EN_LABEL = {
-  // 새 3섹션 구조
-  '문제 목록': 'Problem Findings',
+  // 새 4섹션 구조
+  '구외 소견': 'Extra-oral Findings',
+  '구내 소견': 'Intra-oral Findings',
   '치료 계획': 'Treatment Plan',
   '종합 안내': 'Overall Assessment',
   // 옛 섹션명 (기존 저장된 진단서 호환용)
+  '문제 목록': 'Problem Findings',
   '치성 관계': 'Dental Relationship',
   '골격 관계': 'Skeletal Relationship',
   '추가 사항': 'Additional Notes',
@@ -190,39 +192,41 @@ function normalizeSectionTitle(title) {
 }
 
 /**
- * 옛 4섹션(치성 관계 / 골격 관계 / 치료 계획 / 추가 사항) 본문을
- * 새 3섹션(문제 목록 / 치료 계획 / 종합 안내) 으로 렌더 시점에 통합.
- * - 치성 관계 + 골격 관계 → 문제 목록 한 섹션 (figure·summary 합산)
- * - 추가 사항 → 종합 안내 (라벨만 변경)
+ * 옛 섹션(치성 관계 / 골격 관계 / 문제 목록 / 추가 사항) 본문을
+ * 새 4섹션(구외 소견 / 구내 소견 / 치료 계획 / 종합 안내) 으로 렌더 시점에 통합.
+ * - 골격 관계 → 구외 소견 (figure·summary 합산)
+ * - 치성 관계 → 구내 소견
+ * - 문제 목록 (4/29~4/30 단일 통합) → 구내 소견 (이미지 분실 방지 best-effort)
+ * - 추가 사항 → 종합 안내
+ * - 새 라벨이 같은 본문에 여러 번 나오면 머지 (drift 방지)
  * - 새 키만 있는 본문은 그대로 통과
  * - 한자 섞인 키도 한글로 정규화 후 매핑
  * - 본문 자체(DB)는 손대지 않음 — 표시만 새 라벨
  */
+const LEGACY_SECTION_MAP = {
+  '골격 관계': '구외 소견',
+  '치성 관계': '구내 소견',
+  '문제 목록': '구내 소견',
+  '추가 사항': '종합 안내',
+}
 function mergeLegacySections(sections) {
   if (!Array.isArray(sections) || sections.length === 0) return sections
   // 1) 한자 → 한글 정규화 먼저
   const normalized = sections.map(s => ({ ...s, title: normalizeSectionTitle(s.title) }))
   const out = []
-  let problemBucket = null
-  for (const sec of normalized) {
-    if (sec.title === '치성 관계' || sec.title === '골격 관계') {
-      if (!problemBucket) {
-        problemBucket = { title: '문제 목록', figures: [], summaryHtml: '' }
-        out.push(problemBucket)
-      }
-      if (Array.isArray(sec.figures) && sec.figures.length) {
-        problemBucket.figures.push(...sec.figures)
-      }
-      if (sec.summaryHtml) {
-        problemBucket.summaryHtml = problemBucket.summaryHtml
-          ? problemBucket.summaryHtml + sec.summaryHtml
-          : sec.summaryHtml
-      }
-    } else if (sec.title === '추가 사항') {
-      out.push({ ...sec, title: '종합 안내' })
-    } else {
-      out.push(sec)
+  const buckets = {}  // title → bucket reference (재사용으로 같은 라벨 머지)
+  const ensureBucket = (title) => {
+    if (!buckets[title]) {
+      buckets[title] = { title, figures: [], summaryHtml: '' }
+      out.push(buckets[title])
     }
+    return buckets[title]
+  }
+  for (const sec of normalized) {
+    const targetTitle = LEGACY_SECTION_MAP[sec.title] || sec.title
+    const b = ensureBucket(targetTitle)
+    if (Array.isArray(sec.figures) && sec.figures.length) b.figures.push(...sec.figures)
+    if (sec.summaryHtml) b.summaryHtml = b.summaryHtml ? b.summaryHtml + sec.summaryHtml : sec.summaryHtml
   }
   return out
 }
