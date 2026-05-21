@@ -10,47 +10,42 @@ Claude Agent SDK (Max 구독 OAuth 인증) 로 처리하는 백그라운드 프�
 
 ## 1회 세팅 (PC2)
 
-### 사전 조건
-- PC2 에 Node.js ≥ 20 설치
-- Claude Code CLI 설치 + Max 구독 로그인 완료
-- (선택) `npm install -g pm2` — 24/7 가동·자동 재시작용
+### 사전 조건 (한 번만)
+- PC2 에 **Node.js ≥ 20** 설치 (https://nodejs.org LTS)
+- **Claude Code CLI** 설치 + Max 구독 로그인 완료
+- 한 번만:  새 터미널에서 `claude setup-token` → 브라우저에서 Max 계정 로그인 → 토큰 자동 저장
 
-### 절차
+### 자동 세팅 — 더블클릭 1회
 
-```bash
-# 1. PC2 에서 git pull (dental-report 레포 이미 클론되어 있다고 가정)
-cd Z:/web/모바일진단서/dental-report
-git pull
+탐색기에서:
 
-# 2. 워커 디렉토리로 이동
-cd worker
+> **`Z:\web\모바일진단서\dental-report\worker\setup-pc2.cmd`** 더블클릭
 
-# 3. 의존성 설치
-npm install
+스크립트가 자동으로:
+- git pull (최신 워커 코드)
+- pm2 글로벌 설치 (없으면)
+- `npm install`
+- `.env` 생성 (Z:/web/.claude-setup/credentials 의 secrets 헬퍼로 자동 채움)
+- `pm2 start` (또는 이미 가동 중이면 restart)
+- `pm2 save`
 
-# 4. Claude Max OAuth 토큰 발급 (한 번만)
-claude setup-token
-#   → ~/.claude/.credentials.json 에 저장됨
-#   → Agent SDK 가 자동으로 읽음
+성공하면 `pm2 status` 출력으로 가동 확인.
 
-# 5. .env 파일 만들기
-cp .env.example .env
-#   → .env 편집 (Windows 메모장 가능)
-#   → SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY 채워 넣기
-#   → 값은 secrets 헬퍼로 받기:
-#       Z:\web\.claude-setup\credentials\get-secret.cmd supabase.projects.offapp.url
-#       Z:\web\.claude-setup\credentials\get-secret.cmd supabase.projects.offapp.service_role_key
+### 부팅 시 자동 시작 (선택, 1회만)
 
-# 6. 테스트 실행 (foreground)
-node index.js
-#   → "[worker] Realtime 구독 활성" 떠야 정상
-
-# 7. 정상 동작 확인 후 pm2 로 등록 (24/7 가동 + 자동 재시작)
-npm run pm2:start
-pm2 save
+관리자 권한 PowerShell 에서:
+```powershell
+cd Z:\web\모바일진단서\dental-report\worker
 pm2 startup
-#   → 표시되는 명령 한 줄을 관리자 권한으로 실행 (윈도우 부팅 시 자동 시작)
 ```
+→ 출력되는 명령 한 줄을 그 창에서 실행 → 끝
+
+### 같은 스크립트 다시 실행해도 안전
+
+dental-report 코드 업데이트 후 그냥 `setup-pc2.cmd` 다시 더블클릭하면:
+- git pull → 새 워커 코드 받음
+- 의존성 변경 있으면 다시 install
+- 이미 가동 중인 워커 자동 재시작 (--update-env)
 
 ---
 
