@@ -8,7 +8,9 @@ import PhotoMarkerModal from '../components/PhotoMarkerModal'
 import { serializeMarkings } from '../lib/markings'
 import { loadTreatmentCases, loadStrengthCards, normalizeTags } from '../lib/library'
 import CaseStrengthSelector from '../components/CaseStrengthSelector'
-import { composeReport, saveCorrections, migrateToNewFormat, extractImagesBySection, reinsertImagesBySection, suggestTags } from '../lib/gemini'
+import { composeReport, buildComposePrompt, postProcessComposeResult, getEmptyDraft, migrateToNewFormat, extractImagesBySection, reinsertImagesBySection, suggestTags } from '../lib/gemini'
+import { runJobWithFallback } from '../lib/aiJobs'
+import { saveEditLearningLog } from '../lib/learning'
 import { supabase } from '../lib/supabase'
 import { loadClinicalFormConfig } from '../lib/formConfig'
 import { getByChartNumber, updateReport, acquireLock, releaseLock, isOtherPcEditing, PROGRESS_STAGES, STEP_TO_STAGE } from '../lib/reports'
@@ -198,13 +200,31 @@ export default function Editor() {
     }
   }, [clinicalForm, formConfig])
 
+  const composeViaWorkerOrFallback = async () => {
+    const prompt = await buildComposePrompt({ summary, staffForm })
+    if (!prompt) return getEmptyDraft()
+
+    // PC2 Claude 워커 1순위, 60초 안에 응답 없으면 Gemini 폴백
+    const raw = await runJobWithFallback(
+      'compose',
+      { systemPrompt: prompt.systemPrompt, userMessage: prompt.userMessage, expectJson: true },
+      {
+        reportId: report?.id,
+        timeoutMs: 60_000,
+        fallback: () => composeReport({ summary, staffForm }),
+      }
+    )
+    // 후처리(sanitize + migrateToNewFormat) 는 멱등이라 양쪽 경로 모두 안전하게 적용
+    return postProcessComposeResult(raw)
+  }
+
   const handleComposeAndNext = async () => {
     setIsComposing(true)
     try {
       // 기존 body에 삽입된 사진을 섹션별로 보존 (AI 재호출 시 분실 방지)
       const preservedImages = extractImagesBySection(editedContent?.body || '')
 
-      const result = await composeReport({ summary, staffForm })
+      const result = await composeViaWorkerOrFallback()
 
       // 새 body에 이전 섹션별 사진 재삽입
       const mergedBody = reinsertImagesBySection(result.body || '', preservedImages)
@@ -234,8 +254,15 @@ export default function Editor() {
           uploadedPhotos.push({ ...photo, file: undefined, preview: undefined })
         }
       }
-      if (refinedContent && editedContent) {
-        saveCorrections(refinedContent.body, editedContent.body).catch(() => {})
+      // 학습 로그 백그라운드 적재 — AI 초안과 사용자 수정본 차이 누적
+      if (refinedContent?.body && editedContent?.body && report?.id) {
+        saveEditLearningLog({
+          reportId: report.id,
+          clinicalForm,
+          staffForm,
+          draftBody: refinedContent.body,
+          editedBody: editedContent.body,
+        }).catch(() => {})
       }
       const expiresAt = new Date(); expiresAt.setDate(expiresAt.getDate() + 90)
       await updateReport(report.id, {
@@ -351,7 +378,7 @@ export default function Editor() {
     setIsComposing(true)
     try {
       const preservedImages = extractImagesBySection(editedContent?.body || '')
-      const result = await composeReport({ summary, staffForm })
+      const result = await composeViaWorkerOrFallback()
       const mergedBody = reinsertImagesBySection(result.body || '', preservedImages)
       const merged = { ...result, body: mergedBody }
       setRefinedContent(merged)

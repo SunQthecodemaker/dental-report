@@ -1,0 +1,23 @@
+{
+  "name": "dental-report-worker",
+  "version": "0.1.0",
+  "description": "PC2 24/7 워커 — Supabase ai_jobs 큐 구독, Claude Agent SDK 로 모바일진단서 AI 작업 처리",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "pm2:start": "pm2 start index.js --name dental-worker --time",
+    "pm2:logs": "pm2 logs dental-worker",
+    "pm2:stop": "pm2 stop dental-worker",
+    "pm2:restart": "pm2 restart dental-worker"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

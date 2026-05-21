@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { saveTreatmentCases, saveStrengthCards, uploadLibraryPhoto, newCaseId, normalizeTag, normalizeTags, extractTagPool } from '../lib/library'
 import { useId } from 'react'
 import { validateNewGuideline, cleanupGuidelines } from '../lib/gemini'
+import { loadAiInstructions, saveAiInstructions, countLearningLogs, loadRecentLearningLogs, buildAnalyzePatternsPrompt } from '../lib/learning'
+import { runJobWithFallback } from '../lib/aiJobs'
 import { loadClinicalFormConfig, saveDiagnosisConfig, saveTreatmentConfig, DEFAULT_DIAGNOSIS_CONFIG, DEFAULT_TREATMENT_CONFIG } from '../lib/formConfig'
 import { DiagnosisFormEditor, TreatmentFormEditor } from '../components/FormConfigEditors'
 
@@ -568,73 +570,244 @@ function GuidelineListEditor({ items, onChange }) {
 }
 
 // ─── 학습 탭 ───
+//
+// 새 구조:
+//   ① 학습 지시사항 (clinic_settings.ai_instructions) — 자연어 사고 룰, 매 composeReport 시스템 프롬프트에 박힘
+//   ② 누적 수정 기록 N건 + [패턴 분석] 버튼 (PC2 Claude 가 후보 룰 제안)
+//   ③ (보존만, 신규 promote 없음) 용어 사전 + 누적 교정 기록 — 옛 시스템 데이터 열람용
 function LearningTab({ terms, onTermsChange, corrections, onReloadCorrections }) {
+  const [instructions, setInstructions] = useState([])
+  const [newInstr, setNewInstr] = useState('')
+  const [logCount, setLogCount] = useState(0)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [candidates, setCandidates] = useState([])
+  const [analyzeSummary, setAnalyzeSummary] = useState('')
+  const [legacyOpen, setLegacyOpen] = useState(false)
   const [showProcessed, setShowProcessed] = useState(false)
+
+  useEffect(() => {
+    loadAiInstructions().then(setInstructions).catch(() => {})
+    countLearningLogs().then(setLogCount).catch(() => {})
+  }, [])
+
+  const saveInstr = async (next) => {
+    setInstructions(next)
+    try { await saveAiInstructions(next) }
+    catch (err) { alert('지시사항 저장 실패: ' + err.message) }
+  }
+
+  const addInstruction = () => {
+    const t = newInstr.trim()
+    if (!t) return
+    saveInstr([...instructions, t])
+    setNewInstr('')
+  }
+
+  const removeInstruction = (i) => {
+    if (!confirm('이 지시사항을 삭제할까요? (다음 진단서 작성부터 반영 안 됨)')) return
+    saveInstr(instructions.filter((_, idx) => idx !== i))
+  }
+
+  const updateInstruction = (i, text) => {
+    const next = instructions.slice()
+    next[i] = text
+    saveInstr(next)
+  }
+
+  const runAnalyze = async () => {
+    setIsAnalyzing(true)
+    setCandidates([])
+    setAnalyzeSummary('')
+    try {
+      const logs = await loadRecentLearningLogs(50)
+      if (logs.length === 0) {
+        alert('누적된 수정 기록이 없습니다. 진단서를 작성 → 수정 → 저장하면 자동으로 쌓입니다.')
+        return
+      }
+      const prompt = buildAnalyzePatternsPrompt(logs, instructions)
+      const result = await runJobWithFallback(
+        'analyze_patterns',
+        { systemPrompt: prompt.systemPrompt, userMessage: prompt.userMessage, expectJson: true },
+        { timeoutMs: 180_000 }
+      )
+      setCandidates(Array.isArray(result?.candidates) ? result.candidates : [])
+      setAnalyzeSummary(result?.summary || '')
+    } catch (err) {
+      alert('패턴 분석 실패: ' + err.message + '\n\nPC2 워커가 가동 중인지 확인하세요. (PC2 → pm2 status dental-worker)')
+    } finally {
+      setIsAnalyzing(false)
+    }
+  }
+
+  const adoptCandidate = (text) => {
+    saveInstr([...instructions, text])
+    setCandidates(candidates.filter(c => c !== text))
+  }
 
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim()
   const meaningful = corrections.filter(c => {
     const o = norm(c.original_term), e = norm(c.corrected_term)
     return o && e && o !== e
   })
-  const pending = meaningful.filter(c => (c.status || 'pending') === 'pending')
-  const processed = meaningful.filter(c => (c.status || 'pending') !== 'pending')
-  const visible = showProcessed ? processed : pending
+  const legacyPending = meaningful.filter(c => (c.status || 'pending') === 'pending')
+  const legacyProcessed = meaningful.filter(c => (c.status || 'pending') !== 'pending')
+  const legacyVisible = showProcessed ? legacyProcessed : legacyPending
 
-  const setStatus = async (id, status) => {
+  const setLegacyStatus = async (id, status) => {
     await supabase.from('charting_corrections').update({ status }).eq('id', id)
     onReloadCorrections()
   }
 
-  const promoteToTerm = async (c) => {
-    const from = (c.original_term || '').trim()
-    const to = (c.corrected_term || '').trim()
-    if (!from || !to) return
-    const exists = terms.some(t => t.from === from)
-    if (!exists) onTermsChange([...terms, { from, to }])
-    await setStatus(c.id, 'promoted')
-  }
-
   return (
     <>
-      <p style={S.desc}>환자별 수정 기록을 AI에 반영시키는 탭입니다.</p>
+      <p style={S.desc}>
+        AI 가 진단서를 작성할 때 따라야 할 <strong>사고 룰</strong>을 자연어로 누적합니다.
+        매 저장마다 입력+수정 데이터가 백그라운드로 쌓이고, [패턴 분석] 버튼으로 PC2 Claude 가 룰 후보를 제안해 줍니다.
+      </p>
 
-      <h3 style={S.subTitle}>① 용어 사전</h3>
-      <TermDictionaryEditor items={terms} onChange={onTermsChange} />
+      {/* ① 학습 지시사항 (자연어 사고 룰) */}
+      <h3 style={S.subTitle}>① 학습 지시사항 ({instructions.length}건 적용 중)</h3>
+      <div style={{ ...S.desc, marginBottom: 12 }}>
+        진단서 작성 시 절대규칙 다음에 시스템 프롬프트로 들어갑니다. 매 진단서 작성에 즉시 반영됩니다.
+      </div>
 
-      <h3 style={{ ...S.subTitle, marginTop: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span>② 누적 교정 기록 ({pending.length}건 대기)</span>
-        <button onClick={() => setShowProcessed(!showProcessed)} style={{ ...S.delBtn, color: '#6b7280', borderColor: '#d1d5db' }}>
-          {showProcessed ? `대기만 보기` : `처리됨 ${processed.length}건 보기`}
-        </button>
-      </h3>
-
-      {visible.length === 0 && (
-        <div style={{ ...S.desc, padding: 16, textAlign: 'center' }}>
-          {showProcessed ? '처리된 교정 기록이 없습니다.' : '대기 중인 교정 기록이 없습니다. AI 초안을 수동으로 수정하면 여기에 쌓입니다.'}
+      {instructions.length === 0 && (
+        <div style={{ ...S.desc, padding: 16, textAlign: 'center', background: '#fafafa', borderRadius: 8, border: '1px dashed #e5e7eb' }}>
+          아직 등록된 지시사항이 없습니다. 직접 추가하거나 [패턴 분석]을 실행해 보세요.
         </div>
       )}
 
-      {visible.map((c) => (
-        <div key={c.id} style={S.catCard}>
-          <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>
-            {c.created_at?.slice(0, 10)} · {c.context || '수동 교정'} · 상태: {c.status || 'pending'}
-          </div>
-          <div style={{ padding: '8px 12px', background: '#fef2f2', borderRadius: 6, fontSize: 13, color: '#991b1b', marginBottom: 4 }}>
-            원본: {c.original_term}
-          </div>
-          <div style={{ padding: '8px 12px', background: '#f0fdf4', borderRadius: 6, fontSize: 13, color: '#166534', marginBottom: 10 }}>
-            수정: {c.corrected_term}
-          </div>
-          {(c.status || 'pending') === 'pending' ? (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => promoteToTerm(c)} style={{ ...S.addBtn, background: '#059669' }}>용어 사전에 추가</button>
-              <button onClick={() => setStatus(c.id, 'ignored')} style={{ ...S.delBtn, color: '#6b7280', borderColor: '#d1d5db' }}>무시</button>
-            </div>
-          ) : (
-            <button onClick={() => setStatus(c.id, 'pending')} style={{ ...S.delBtn, color: '#6b7280', borderColor: '#d1d5db' }}>대기로 되돌리기</button>
-          )}
+      {instructions.map((text, i) => (
+        <div key={i} style={S.itemRow}>
+          <textarea
+            value={text}
+            onChange={(e) => updateInstruction(i, e.target.value)}
+            style={{ ...S.input, flex: 1, minHeight: 44, resize: 'vertical', fontSize: 13 }}
+          />
+          <button onClick={() => removeInstruction(i)} style={S.delBtn}>삭제</button>
         </div>
       ))}
+
+      <div style={S.addRow}>
+        <textarea
+          value={newInstr}
+          onChange={(e) => setNewInstr(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); addInstruction() }
+          }}
+          placeholder="예: 계획 제목은 입력 goal 텍스트에 명시된 부위·방향 단어만 사용. ext_10/20/30/40 사분면 정보는 본문 산문화에만 쓰고 제목 단정 금지. (Ctrl+Enter 로 추가)"
+          style={{ ...S.input, flex: 1, minHeight: 60, resize: 'vertical', fontSize: 13 }}
+        />
+        <button onClick={addInstruction} style={S.addBtn}>추가</button>
+      </div>
+
+      {/* ② 누적 수정 기록 + 패턴 분석 */}
+      <h3 style={{ ...S.subTitle, marginTop: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>② 누적 수정 기록 ({logCount}건)</span>
+        <button
+          onClick={runAnalyze}
+          disabled={isAnalyzing || logCount === 0}
+          style={{
+            ...S.addBtn,
+            background: isAnalyzing ? '#9ca3af' : '#2563eb',
+            opacity: logCount === 0 ? 0.5 : 1,
+            cursor: (isAnalyzing || logCount === 0) ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {isAnalyzing ? '🤖 PC2 Claude 분석 중… (1~3분)' : '🔍 패턴 분석'}
+        </button>
+      </h3>
+      <div style={{ ...S.desc, marginBottom: 12 }}>
+        진단서 작성 → 수정 → 저장 시 입력 + AI 초안 + 사용자 수정본이 자동으로 쌓입니다.
+        [패턴 분석]을 누르면 PC2 의 Claude 가 최근 50건을 보고 새 사고 룰 후보를 제안합니다.
+      </div>
+
+      {analyzeSummary && (
+        <div style={{ padding: 12, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, marginBottom: 12, fontSize: 13, color: '#1e40af' }}>
+          📋 분석 요약: {analyzeSummary}
+        </div>
+      )}
+
+      {candidates.length > 0 && (
+        <>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
+            제안된 사고 룰 후보 ({candidates.length}건)
+          </div>
+          {candidates.map((text, i) => (
+            <div key={i} style={{ ...S.catCard, background: '#fefce8', border: '1px solid #fde68a' }}>
+              <div style={{ fontSize: 13, color: '#78350f', marginBottom: 8, lineHeight: 1.55 }}>
+                💡 {text}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => adoptCandidate(text)} style={{ ...S.addBtn, background: '#059669' }}>
+                  ✅ 채택 (지시사항에 추가)
+                </button>
+                <button
+                  onClick={() => setCandidates(candidates.filter(c => c !== text))}
+                  style={{ ...S.delBtn, color: '#6b7280', borderColor: '#d1d5db' }}
+                >
+                  무시
+                </button>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {/* ③ 옛 데이터 (보존만, 신규 promote 경로 없음) */}
+      <h3 style={{ ...S.subTitle, marginTop: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+        onClick={() => setLegacyOpen(!legacyOpen)}>
+        <span style={{ color: '#9ca3af', fontWeight: 600, fontSize: 13 }}>
+          {legacyOpen ? '▼' : '▶'} 옛 데이터 (용어 사전 · 교정 기록 — 열람·삭제만)
+        </span>
+      </h3>
+
+      {legacyOpen && (
+        <>
+          <div style={{ ...S.desc, fontSize: 12, marginBottom: 12 }}>
+            옛 학습 시스템의 데이터. 신규 promote 경로는 제거되었습니다. 보존·열람·삭제만 가능.
+          </div>
+
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>용어 사전 ({terms.length}건)</div>
+          <TermDictionaryEditor items={terms} onChange={onTermsChange} />
+
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', marginTop: 20, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>교정 기록 ({legacyPending.length}건 대기 · {legacyProcessed.length}건 처리됨)</span>
+            <button onClick={() => setShowProcessed(!showProcessed)} style={{ ...S.delBtn, color: '#6b7280', borderColor: '#d1d5db' }}>
+              {showProcessed ? '대기만 보기' : '처리됨 보기'}
+            </button>
+          </div>
+
+          {legacyVisible.length === 0 && (
+            <div style={{ ...S.desc, padding: 12, textAlign: 'center', fontSize: 12 }}>
+              {showProcessed ? '처리된 교정 기록이 없습니다.' : '대기 중인 교정 기록이 없습니다.'}
+            </div>
+          )}
+
+          {legacyVisible.map((c) => (
+            <div key={c.id} style={S.catCard}>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>
+                {c.created_at?.slice(0, 10)} · 상태: {c.status || 'pending'}
+              </div>
+              <div style={{ padding: '8px 12px', background: '#fef2f2', borderRadius: 6, fontSize: 13, color: '#991b1b', marginBottom: 4 }}>
+                원본: {c.original_term}
+              </div>
+              <div style={{ padding: '8px 12px', background: '#f0fdf4', borderRadius: 6, fontSize: 13, color: '#166534', marginBottom: 10 }}>
+                수정: {c.corrected_term}
+              </div>
+              {(c.status || 'pending') === 'pending' ? (
+                <button onClick={() => setLegacyStatus(c.id, 'ignored')} style={{ ...S.delBtn, color: '#6b7280', borderColor: '#d1d5db' }}>
+                  처리 완료로 표시
+                </button>
+              ) : (
+                <button onClick={() => setLegacyStatus(c.id, 'pending')} style={{ ...S.delBtn, color: '#6b7280', borderColor: '#d1d5db' }}>
+                  대기로 되돌리기
+                </button>
+              )}
+            </div>
+          ))}
+        </>
+      )}
     </>
   )
 }

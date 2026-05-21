@@ -6,13 +6,14 @@ const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/generate-text`
 
 async function loadClinicSettings() {
   const { data } = await supabase.from('clinic_settings').select('*')
-  const settings = { guidelines: [], terminology: [], strengths: [], toneRules: [] }
+  const settings = { guidelines: [], terminology: [], strengths: [], toneRules: [], aiInstructions: [] }
   if (data) {
     for (const row of data) {
       if (row.id === 'writing_guidelines') settings.guidelines = row.value.items || []
       if (row.id === 'terminology') settings.terminology = row.value.items || []
       if (row.id === 'clinic_strengths') settings.strengths = row.value.items || []
       if (row.id === 'tone_rules_table') settings.toneRules = row.value.items || []
+      if (row.id === 'ai_instructions') settings.aiInstructions = row.value.items || []
     }
   }
   return settings
@@ -407,16 +408,44 @@ ${combined || overall || '(없음)'}
 }
 
 /**
+ * composeReport 의 시스템 프롬프트 + user 메시지만 생성 (PC2 Claude 워커 전송용).
+ * 빈 입력이면 null 반환 (호출 측이 getEmptyDraft 처리).
+ *
+ * 출력: { systemPrompt, userMessage } | null
+ */
+export async function buildComposePrompt(args) {
+  return composeReport({ ...args, returnPromptOnly: true })
+}
+
+/**
+ * 워커가 반환한 raw JSON 을 dental-report 출력 형식으로 후처리.
+ *   - sanitize: 영어 병기 등 정리
+ *   - migrateToNewFormat: 옛 구조 → 새 구조
+ */
+export function postProcessComposeResult(raw) {
+  if (!raw) return getEmptyDraft()
+  try { return migrateToNewFormat(sanitize(raw)) }
+  catch { return getEmptyDraft() }
+}
+
+/**
  * 출력: { body: HTML, personalNote, appealPoints }
  *   body 섹션 순서: 구외 소견(p) → 구내 소견(p) → 치료 계획(p) → 종합 안내(p)
+ *
+ * 폴백 경로 — PC2 워커가 응답 안 줄 때 dental-report 가 직접 Gemini 호출.
  */
-export async function composeReport({ summary, staffForm }) {
+export async function composeReport({ summary, staffForm, returnPromptOnly = false }) {
   if (summaryIsEmpty(summary)) {
-    return getEmptyDraft()
+    return returnPromptOnly ? null : getEmptyDraft()
   }
 
   const koreanSummary = summaryWithKoreanTeeth(summary)
   const settings = await loadClinicSettings()
+
+  let instructionsBlock = ''
+  if (settings.aiInstructions.length > 0) {
+    instructionsBlock = `\n\n**🎓 학습된 사고 룰 (이전 수정 사례에서 누적됨 — 반드시 준수):**\n${settings.aiInstructions.map((g, i) => `${i + 1}. ${g}`).join('\n')}`
+  }
 
   let guidelinesBlock = ''
   if (settings.guidelines.length > 0) {
@@ -586,7 +615,7 @@ export async function composeReport({ summary, staffForm }) {
 11. 입력에 \`교정 단계: 1차\` 가 있는 계획에 대해, 본문(해당 계획 산문 마지막 또는 종합 안내) 어딘가에 **1차 범위**와 **2차 교정 필요성** 두 가지가 모두 언급되었는가? (2차 단계 계획은 해당 없음)
 12. 본문 어디에도 한자(治療·患者·計劃·案內·問題 등)가 섞여 들어가지 않았는가? h2 섹션 라벨이 정확히 \`구외 소견\` / \`구내 소견\` / \`치료 계획\` / \`종합 안내\` 중 하나인가?
 
-하나라도 실패하면 즉시 해당 부분 재작성 후 다시 체크. 통과 후에만 JSON 출력.${guidelinesBlock}${terminologyBlock}${strengthsBlock}`
+하나라도 실패하면 즉시 해당 부분 재작성 후 다시 체크. 통과 후에만 JSON 출력.${instructionsBlock}${guidelinesBlock}${terminologyBlock}${strengthsBlock}`
 
   // 정리 탭에서 사용자가 편집한 통합 텍스트가 있으면 단일 블록으로 그대로 전달
   // (`## 골격 문제` / `## 치성 문제` / `## 치료 계획 #1` / `## 전체 추가 메모` 헤더 포함)
@@ -634,6 +663,9 @@ ${staffForm?.specialCircumstances || '(없음)'}
 - 명시 항목에 대한 일반론적 의미·중요성 부연 허용 (단, "일반적으로"/"보통" 같은 일반화 표현으로 — 환자 특이 사실 추가 X).
 - 각 치료 계획에서 그 계획의 [목표]와 연관된 [구외/구내 진단 항목]을 함께 묶어 산문화 (의무).
 - 종합 안내는 [전체 추가 메모] + [전신질환]을 연결한 한 단락 (2~5문장) 산문.`
+
+  // PC2 워커 (Claude) 가 부를 때는 시스템 프롬프트 + 유저 메시지만 반환
+  if (returnPromptOnly) return { systemPrompt, userMessage }
 
   const response = await fetch(EDGE_FUNCTION_URL, {
     method: 'POST',
