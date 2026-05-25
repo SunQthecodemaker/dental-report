@@ -1,4 +1,4 @@
-#requires -Version 5.1
+﻿#requires -Version 5.1
 <#
 .SYNOPSIS
   dental-report worker — PC2 자동 세팅 스크립트
@@ -118,7 +118,7 @@ Write-Step '.env 확인'
 $envPath = Join-Path $WorkerDir '.env'
 if (-not (Test-Path $envPath)) {
   Write-Host '  🔐 .env 신규 생성 — Z:/web/.claude-setup/credentials 에서 값 로드'
-  $secretHelper = 'Z:\web\.claude-setup\credentials\get-secret.cmd'
+  $secretHelper = 'Z:\web\.claude-setup\credentials\get-secret.ps1'
   if (-not (Test-Path $secretHelper)) {
     Write-Err 'secrets 헬퍼 못 찾음 — NAS (Z:) 마운트 확인'
     Write-Host '   수동으로 .env 파일을 작성하시려면 .env.example 참고하세요' -ForegroundColor Yellow
