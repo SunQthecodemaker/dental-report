@@ -1,14 +1,21 @@
 import { supabase } from './supabase'
 import { summaryWithKoreanTeeth } from './toothCode'
+import { loadStaffFormConfig, ruleMatchesStaffForm, DEFAULT_STAFF_FORM_CONFIG } from './staffFormConfig'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/generate-text`
 
 async function loadClinicSettings() {
-  const { data } = await supabase.from('clinic_settings').select('*')
-  const settings = { guidelines: [], terminology: [], strengths: [], toneRules: [], aiInstructions: [] }
-  if (data) {
-    for (const row of data) {
+  const [settingsRes, staffCfg] = await Promise.all([
+    supabase.from('clinic_settings').select('*'),
+    loadStaffFormConfig(),
+  ])
+  const settings = {
+    guidelines: [], terminology: [], strengths: [], toneRules: [], aiInstructions: [],
+    staffFormConfig: staffCfg || DEFAULT_STAFF_FORM_CONFIG,
+  }
+  if (settingsRes.data) {
+    for (const row of settingsRes.data) {
       if (row.id === 'writing_guidelines') settings.guidelines = row.value.items || []
       if (row.id === 'terminology') settings.terminology = row.value.items || []
       if (row.id === 'clinic_strengths') settings.strengths = row.value.items || []
@@ -252,27 +259,26 @@ function summaryIsEmpty(summary) {
   return !summary.skeletal && !summary.dental && !summary.etc && plans.length === 0 && !summary.overall
 }
 
-// 성향 키 → 한국어 라벨 매핑 (AI 프롬프트 가독성용, 본문에는 절대 노출되면 안 됨)
-const STAFF_KEY_LABEL = {
-  personality: '성격·반응 성향',
-  anxiety: '불안 요소',
-  costReaction: '비용 반응',
-  interests: '주요 관심사',
-  willingness: '치료 의지(5점)',
-  understanding: '이해도(5점)',
-}
-
-function buildStaffLines(staffForm = {}) {
+/**
+ * staffForm 값을 AI 프롬프트용 라인으로. 카테고리·슬라이더 목록은 staff_form_config 에서 동적 조회.
+ * 사용자가 설정 탭에서 새 카테고리/슬라이더를 추가하면 자동으로 여기 반영됨.
+ *
+ * 본문 라벨 노출 금지는 변함 없음 — 라벨은 AI 가독성용으로만 user 메시지에 들어감.
+ */
+function buildStaffLines(staffForm = {}, staffCfg = DEFAULT_STAFF_FORM_CONFIG) {
   const lines = []
-  for (const key of ['personality', 'anxiety', 'costReaction', 'interests']) {
+  const categories = staffCfg?.categories || {}
+  const sliders = staffCfg?.sliders || {}
+
+  for (const [key, cat] of Object.entries(categories)) {
     const arr = staffForm[key]
     if (Array.isArray(arr) && arr.length > 0) {
-      lines.push(`- ${STAFF_KEY_LABEL[key]}: ${arr.join(', ')}`)
+      lines.push(`- ${cat.label || key}: ${arr.join(', ')}`)
     }
   }
-  for (const key of ['willingness', 'understanding']) {
+  for (const [key, sl] of Object.entries(sliders)) {
     if (typeof staffForm[key] === 'number') {
-      lines.push(`- ${STAFF_KEY_LABEL[key]}: ${staffForm[key]}/5`)
+      lines.push(`- ${sl.label || key}(5점): ${staffForm[key]}/5`)
     }
   }
   return lines.length > 0 ? lines.join('\n') : '(성향 정보 없음)'
@@ -466,9 +472,18 @@ export async function composeReport({ summary, staffForm, returnPromptOnly = fal
   }
 
   // 톤 규칙 표 (DB 관리 — Settings '톤 규칙' 탭에서 편집)
-  const enabledToneRules = (settings.toneRules || []).filter(r => r.enabled !== false && r.trait && r.rule)
-  const toneTableBlock = enabledToneRules.length > 0
-    ? `\n\n| 선택된 성향 | 반영 방법 (문체 조절) |\n|---|---|\n${enabledToneRules.map(r => `| ${r.trait} | ${r.rule} |`).join('\n')}`
+  // 신 형식 {categoryKey, optionValue|sliderCondition, rule} + 구 형식 {trait, rule} 혼재 허용.
+  // 환자 staffForm 선택값과 매칭되는 규칙만 추출해서 프롬프트에 박음 (토큰 절약 + AI 혼동 방지).
+  const matchedRules = (settings.toneRules || [])
+    .filter(r => r && r.enabled !== false && r.rule)
+    .filter(r => ruleMatchesStaffForm(r, staffForm))
+  const toneTableBlock = matchedRules.length > 0
+    ? `\n\n| 트리거 (환자 선택값) | 반영 방법 (문체 조절) |\n|---|---|\n${matchedRules.map(r => {
+        const trigger = r.categoryKey
+          ? `${settings.staffFormConfig?.categories?.[r.categoryKey]?.label || settings.staffFormConfig?.sliders?.[r.categoryKey]?.label || r.categoryKey}: ${r.optionValue || r.sliderCondition || ''}`
+          : (r.trait || '')
+        return `| ${trigger} | ${r.rule} |`
+      }).join('\n')}`
     : ''
 
   const systemPrompt = `당신은 한국 치과 진단서를 환자가 한 번에 읽고 자기 상황을 이해할 수 있도록 작성하는 AI입니다.
@@ -649,7 +664,7 @@ ${sourceBlock}
 ---
 
 ## 환자 성향 (문체만 조절, 내용 추가·라벨 노출 금지)
-${buildStaffLines(staffForm)}
+${buildStaffLines(staffForm, settings.staffFormConfig)}
 
 ## 환자 특이 상황 (personalNote 맞춤화에만 사용)
 ${staffForm?.specialCircumstances || '(없음)'}

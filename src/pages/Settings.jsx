@@ -8,6 +8,7 @@ import { loadAiInstructions, saveAiInstructions, countLearningLogs, loadRecentLe
 import { runJobWithFallback } from '../lib/aiJobs'
 import { loadClinicalFormConfig, saveDiagnosisConfig, saveTreatmentConfig, DEFAULT_DIAGNOSIS_CONFIG, DEFAULT_TREATMENT_CONFIG } from '../lib/formConfig'
 import { DiagnosisFormEditor, TreatmentFormEditor } from '../components/FormConfigEditors'
+import { DEFAULT_STAFF_FORM_CONFIG } from '../lib/staffFormConfig'
 
 const TABS = [
   { id: 'diagnosisForm', label: '진단 폼' },
@@ -221,6 +222,7 @@ export default function Settings() {
               onToneRulesChange={(v) => { setToneRules(v); save('tone_rules_table', v) }}
               guidelines={guidelines}
               onGuidelinesChange={(v) => { setGuidelines(v); save('writing_guidelines', v) }}
+              staffFormConfig={formConfig || DEFAULT_STAFF_FORM_CONFIG}
             />
           )}
           {tab === 'learning' && (
@@ -255,6 +257,7 @@ export default function Settings() {
             <StaffFormTab
               config={formConfig}
               onChange={(v) => { setFormConfig(v); save('staff_form_config', v) }}
+              toneRules={toneRules}
             />
           )}
         </div>
@@ -301,13 +304,16 @@ function AbsoluteRulesTab() {
 }
 
 // ─── 톤 규칙 탭 ───
-function ToneRulesTab({ toneRules, onToneRulesChange, guidelines, onGuidelinesChange }) {
+function ToneRulesTab({ toneRules, onToneRulesChange, guidelines, onGuidelinesChange, staffFormConfig }) {
   return (
     <>
-      <p style={S.desc}>AI가 환자 성향에 맞춰 <strong>문체·상세도·어조</strong>를 조절하는 규칙. 내용 추가는 하지 않고 서술 방식만 바꿉니다.</p>
+      <p style={S.desc}>
+        AI가 환자 성향에 맞춰 <strong>문체·상세도·어조</strong>를 조절하는 규칙. 내용 추가는 하지 않고 서술 방식만 바꿉니다.<br />
+        <span style={{ color: '#6b7280' }}>※ 상담 폼에서 추가한 카테고리·옵션이 자동으로 트리거 후보가 됩니다. 환자가 그 옵션을 선택하면 해당 규칙이 AI 프롬프트에 박힙니다.</span>
+      </p>
 
-      <h3 style={S.subTitle}>① 성향별 서술 방식</h3>
-      <ToneTableEditor items={toneRules} onChange={onToneRulesChange} />
+      <h3 style={S.subTitle}>① 옵션 매칭 톤 규칙</h3>
+      <ToneTableEditor items={toneRules} onChange={onToneRulesChange} staffFormConfig={staffFormConfig} />
 
       <h3 style={{ ...S.subTitle, marginTop: 28 }}>② 작성 지침 <span style={{ fontSize: 12, fontWeight: 500, color: '#9ca3af' }}>— AI가 중복·충돌 자동 점검</span></h3>
       <GuidelineListEditor items={guidelines} onChange={onGuidelinesChange} />
@@ -315,44 +321,155 @@ function ToneRulesTab({ toneRules, onToneRulesChange, guidelines, onGuidelinesCh
   )
 }
 
-function ToneTableEditor({ items, onChange }) {
-  const [trait, setTrait] = useState('')
-  const [rule, setRule] = useState('')
+function ToneTableEditor({ items, onChange, staffFormConfig }) {
+  const categories = staffFormConfig?.categories || {}
+  const sliders = staffFormConfig?.sliders || {}
+  // 카테고리 + 슬라이더 합친 드롭다운 옵션
+  const triggerOptions = [
+    ...Object.entries(categories).map(([key, c]) => ({ key, label: c.label || key, type: 'category', options: c.options || [] })),
+    ...Object.entries(sliders).map(([key, s]) => ({ key, label: s.label || key, type: 'slider', min: s.min, max: s.max })),
+  ]
+
+  const [newCat, setNewCat] = useState('')
+  const [newOpt, setNewOpt] = useState('')
+  const [newCond, setNewCond] = useState('>=4')
+  const [newRule, setNewRule] = useState('')
+
+  const newCatMeta = triggerOptions.find(t => t.key === newCat)
+
   const add = () => {
-    if (!trait.trim() || !rule.trim()) return
-    onChange([...items, { id: crypto.randomUUID(), trait: trait.trim(), rule: rule.trim(), enabled: true }])
-    setTrait(''); setRule('')
+    if (!newCat || !newRule.trim()) return
+    const meta = triggerOptions.find(t => t.key === newCat)
+    if (!meta) return
+    const base = { id: crypto.randomUUID(), categoryKey: newCat, rule: newRule.trim(), enabled: true }
+    if (meta.type === 'category') {
+      if (!newOpt) return
+      onChange([...items, { ...base, optionValue: newOpt }])
+    } else {
+      if (!newCond.trim()) return
+      onChange([...items, { ...base, sliderCondition: newCond.trim() }])
+    }
+    setNewCat(''); setNewOpt(''); setNewCond('>=4'); setNewRule('')
   }
+
   const toggle = (id) => onChange(items.map(it => it.id === id ? { ...it, enabled: it.enabled === false ? true : false } : it))
   const remove = (id) => onChange(items.filter(it => it.id !== id))
-  const updateField = (id, field, v) => onChange(items.map(it => it.id === id ? { ...it, [field]: v } : it))
+  const updateField = (id, patch) => onChange(items.map(it => it.id === id ? { ...it, ...patch } : it))
 
   return (
     <>
-      {items.map((it) => (
-        <div key={it.id} style={{ ...S.catCard, padding: 12, opacity: it.enabled === false ? 0.5 : 1 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr auto auto', gap: 8, alignItems: 'start' }}>
-            <input value={it.trait} onChange={(e) => updateField(it.id, 'trait', e.target.value)}
-              placeholder="성향 (예: 꼼꼼함)"
-              style={{ ...S.input, fontWeight: 600 }}
-              onBlur={() => onChange(items)} />
-            <textarea value={it.rule} onChange={(e) => updateField(it.id, 'rule', e.target.value)}
-              placeholder="반영 방법 (문체 조절)"
-              style={{ ...S.input, minHeight: 44, resize: 'vertical' }}
-              onBlur={() => onChange(items)} />
-            <button onClick={() => toggle(it.id)} style={{ ...S.delBtn, color: it.enabled === false ? '#059669' : '#6b7280', borderColor: it.enabled === false ? '#a7f3d0' : '#d1d5db' }}>
-              {it.enabled === false ? '활성' : '끄기'}
-            </button>
-            <button onClick={() => remove(it.id)} style={S.delBtn}>삭제</button>
-          </div>
+      {/* 기존 규칙 목록 */}
+      {items.length === 0 && (
+        <div style={{ ...S.desc, fontSize: 13, padding: 12, background: '#fafafa', border: '1px dashed #e5e7eb', borderRadius: 8, textAlign: 'center' }}>
+          아직 등록된 규칙이 없습니다. 아래에서 카테고리·옵션을 선택해 추가하세요.
         </div>
-      ))}
-      <div style={{ ...S.formBox, display: 'grid', gridTemplateColumns: '180px 1fr auto', gap: 8 }}>
-        <input value={trait} onChange={(e) => setTrait(e.target.value)} placeholder="성향 이름" style={S.input} />
-        <input value={rule} onChange={(e) => setRule(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && add()}
-          placeholder="반영 방법 (예: 핵심만 짧게, 결론 앞에)" style={S.input} />
-        <button onClick={add} style={S.addBtn}>추가</button>
+      )}
+      {items.map((it) => {
+        const isLegacy = !it.categoryKey && it.trait
+        const meta = it.categoryKey ? triggerOptions.find(t => t.key === it.categoryKey) : null
+        const orphan = !!it.categoryKey && !meta
+        const orphanOption = meta?.type === 'category' && it.optionValue && !(meta.options || []).includes(it.optionValue)
+        return (
+          <div key={it.id || it.trait + it.rule} style={{
+            ...S.catCard, padding: 12,
+            opacity: it.enabled === false ? 0.55 : 1,
+            background: isLegacy ? '#fffbeb' : (orphan || orphanOption ? '#fef2f2' : '#f9fafb'),
+            border: `1px solid ${isLegacy ? '#fcd34d' : (orphan || orphanOption ? '#fecaca' : '#e5e7eb')}`,
+          }}>
+            {isLegacy && (
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 8 }}>
+                ⚠️ 구 형식 — 자유 텍스트 trait. 환자 선택값에 단어 포함되면 매칭. 신규 규칙은 아래에서 옵션 단위로 추가하세요.
+              </div>
+            )}
+            {orphan && (
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#991b1b', marginBottom: 8 }}>
+                ⚠️ 카테고리 "{it.categoryKey}" 가 상담 폼에 없습니다. 폼이 바뀐 듯합니다.
+              </div>
+            )}
+            {orphanOption && (
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#991b1b', marginBottom: 8 }}>
+                ⚠️ 옵션 "{it.optionValue}" 가 상담 폼 카테고리에서 사라졌습니다.
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '160px 160px 1fr auto auto', gap: 8, alignItems: 'start' }}>
+              {/* 카테고리 선택 (신 형식만) */}
+              {isLegacy ? (
+                <input value={it.trait || ''} onChange={(e) => updateField(it.id, { trait: e.target.value })}
+                  placeholder="trait (자유 텍스트)" style={{ ...S.input, fontWeight: 600 }} />
+              ) : (
+                <select value={it.categoryKey || ''} onChange={(e) => {
+                  const m = triggerOptions.find(t => t.key === e.target.value)
+                  updateField(it.id, { categoryKey: e.target.value, optionValue: m?.type === 'category' ? '' : undefined, sliderCondition: m?.type === 'slider' ? '>=4' : undefined })
+                }} style={{ ...S.input, fontWeight: 600 }}>
+                  <option value="">카테고리 선택…</option>
+                  {triggerOptions.map(t => (
+                    <option key={t.key} value={t.key}>{t.label}{t.type === 'slider' ? ' (슬라이더)' : ''}</option>
+                  ))}
+                </select>
+              )}
+
+              {/* 옵션 / 조건 */}
+              {isLegacy ? (
+                <span style={{ fontSize: 12, color: '#92400e', alignSelf: 'center' }}>(옵션 매칭 없음)</span>
+              ) : meta?.type === 'category' ? (
+                <select value={it.optionValue || ''} onChange={(e) => updateField(it.id, { optionValue: e.target.value })} style={S.input}>
+                  <option value="">옵션 선택…</option>
+                  {(meta.options || []).map(o => (<option key={o} value={o}>{o}</option>))}
+                </select>
+              ) : meta?.type === 'slider' ? (
+                <input value={it.sliderCondition || ''} onChange={(e) => updateField(it.id, { sliderCondition: e.target.value })}
+                  placeholder=">=4 / <=2 / ==3" style={S.input} />
+              ) : (
+                <span style={{ fontSize: 12, color: '#991b1b', alignSelf: 'center' }}>—</span>
+              )}
+
+              <textarea value={it.rule || ''} onChange={(e) => updateField(it.id, { rule: e.target.value })}
+                placeholder="반영 방법 (예: 핵심만 짧게, 결론 앞에)"
+                style={{ ...S.input, minHeight: 44, resize: 'vertical' }} />
+
+              <button onClick={() => toggle(it.id)} style={{ ...S.delBtn, color: it.enabled === false ? '#059669' : '#6b7280', borderColor: it.enabled === false ? '#a7f3d0' : '#d1d5db' }}>
+                {it.enabled === false ? '활성' : '끄기'}
+              </button>
+              <button onClick={() => remove(it.id)} style={S.delBtn}>삭제</button>
+            </div>
+          </div>
+        )
+      })}
+
+      {/* 신규 규칙 추가 */}
+      <div style={{ ...S.formBox, marginTop: 12 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>새 톤 규칙 추가</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '160px 160px 1fr auto', gap: 8 }}>
+          <select value={newCat} onChange={(e) => { setNewCat(e.target.value); setNewOpt('') }} style={S.input}>
+            <option value="">카테고리 선택…</option>
+            {triggerOptions.map(t => (
+              <option key={t.key} value={t.key}>{t.label}{t.type === 'slider' ? ' (슬라이더)' : ''}</option>
+            ))}
+          </select>
+
+          {newCatMeta?.type === 'category' ? (
+            <select value={newOpt} onChange={(e) => setNewOpt(e.target.value)} style={S.input}>
+              <option value="">옵션 선택…</option>
+              {(newCatMeta.options || []).map(o => (<option key={o} value={o}>{o}</option>))}
+            </select>
+          ) : newCatMeta?.type === 'slider' ? (
+            <input value={newCond} onChange={(e) => setNewCond(e.target.value)}
+              placeholder=">=4 / <=2 / ==3" style={S.input} />
+          ) : (
+            <input disabled placeholder="카테고리 먼저" style={{ ...S.input, opacity: 0.5 }} />
+          )}
+
+          <input value={newRule} onChange={(e) => setNewRule(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && add()}
+            placeholder="반영 방법 (예: 핵심만 짧게, 결론 앞에)" style={S.input} />
+          <button onClick={add} style={S.addBtn}>추가</button>
+        </div>
+        {newCatMeta?.type === 'slider' && (
+          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 6 }}>
+            조건 문법: <code>{'>=4'}</code>, <code>{'<=2'}</code>, <code>{'==3'}</code>, <code>{'>3'}</code>, <code>{'<5'}</code>
+          </div>
+        )}
       </div>
     </>
   )
@@ -1150,7 +1267,7 @@ function PhotoSlot({ label, url, onFile, onClear }) {
 }
 
 // ─── 상담 폼 항목 관리 탭 ───
-function StaffFormTab({ config, onChange }) {
+function StaffFormTab({ config, onChange, toneRules = [] }) {
   const [newOptions, setNewOptions] = useState({}) // { categoryKey: '새 항목' }
   const [newCatKey, setNewCatKey] = useState('')
   const [newCatLabel, setNewCatLabel] = useState('')
@@ -1161,6 +1278,12 @@ function StaffFormTab({ config, onChange }) {
 
   const categories = config.categories || {}
   const sliders = config.sliders || {}
+
+  // 카테고리 옵션·슬라이더에 걸린 활성 톤 규칙 개수
+  const optionRuleCount = (catKey, optValue) =>
+    toneRules.filter(r => r && r.enabled !== false && r.categoryKey === catKey && r.optionValue === optValue).length
+  const sliderRuleCount = (catKey) =>
+    toneRules.filter(r => r && r.enabled !== false && r.categoryKey === catKey && r.sliderCondition).length
 
   // 카테고리에 옵션 추가
   const addOption = (catKey) => {
@@ -1230,12 +1353,16 @@ function StaffFormTab({ config, onChange }) {
             <button onClick={() => removeCategory(key)} style={S.delBtn}>카테고리 삭제</button>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
-            {cat.options.map((opt, i) => (
-              <div key={i} style={S.optionChip}>
-                <span>{opt}</span>
-                <button onClick={() => removeOption(key, i)} style={S.chipDel}>×</button>
-              </div>
-            ))}
+            {cat.options.map((opt, i) => {
+              const n = optionRuleCount(key, opt)
+              return (
+                <div key={i} style={S.optionChip} title={n > 0 ? `톤 규칙 ${n}건 연결됨` : '톤 규칙 없음'}>
+                  <span>{opt}</span>
+                  {n > 0 && <span style={{ color: '#059669', fontSize: 11, fontWeight: 700 }}>🎯{n}</span>}
+                  <button onClick={() => removeOption(key, i)} style={S.chipDel}>×</button>
+                </div>
+              )
+            })}
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <input
@@ -1265,17 +1392,25 @@ function StaffFormTab({ config, onChange }) {
 
       {/* 슬라이더 */}
       <h3 style={{ ...S.subTitle, marginTop: '28px' }}>슬라이더 항목</h3>
-      {Object.entries(sliders).map(([key, slider]) => (
-        <div key={key} style={S.itemRow}>
-          <div style={S.itemText}>
-            <strong>{slider.label}</strong>
-            <span style={{ color: '#9ca3af', fontSize: '12px', marginLeft: '8px' }}>
-              ({slider.min} ~ {slider.max})
-            </span>
+      {Object.entries(sliders).map(([key, slider]) => {
+        const n = sliderRuleCount(key)
+        return (
+          <div key={key} style={S.itemRow}>
+            <div style={S.itemText}>
+              <strong>{slider.label}</strong>
+              <span style={{ color: '#9ca3af', fontSize: '12px', marginLeft: '8px' }}>
+                ({slider.min} ~ {slider.max})
+              </span>
+              {n > 0 && (
+                <span style={{ color: '#059669', fontSize: 11, fontWeight: 700, marginLeft: 8 }} title={`톤 규칙 ${n}건 연결됨`}>
+                  🎯{n}
+                </span>
+              )}
+            </div>
+            <button onClick={() => removeSlider(key)} style={S.delBtn}>삭제</button>
           </div>
-          <button onClick={() => removeSlider(key)} style={S.delBtn}>삭제</button>
-        </div>
-      ))}
+        )
+      })}
 
       <div style={S.formBox}>
         <div style={{ fontSize: '13px', fontWeight: '600', color: '#6b7280', marginBottom: '8px' }}>새 슬라이더 추가</div>
