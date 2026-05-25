@@ -340,7 +340,7 @@ ${sp.map(t => `- ${t}`).join('\n') || '(없음)'}
 - 기타: ${etc || '(없음)'}
 
 # 치료 계획
-${plans.length ? plans.map((p, i) => `## 계획 #${i + 1}\n${p}`).join('\n\n') : '(없음)'}
+${plans.length ? plans.map((p, i) => `## 계획 [${i + 1}]\n${p}`).join('\n\n') : '(없음)'}
 
 # 정리 / 추가 메모
 ${combined || overall || '(없음)'}
@@ -495,8 +495,8 @@ export async function composeReport({ summary, staffForm, returnPromptOnly = fal
 - 예: 입력 "공간폐쇄 (#16)" → ✅ "오른쪽 위 첫 번째 큰어금니 자리에 빈 공간이 있어 닫아주는 처치가 필요합니다"
 
 **3. 치료 계획** (\`<h2>치료 계획</h2>\`)
-- 입력 [치료 계획 #1, #2 …] 그대로 환자용 산문으로
-- 여러 개면 \`<p><strong>계획 #1: …</strong></p><p>설명</p>\` 형식
+- 입력 [치료 계획 [1], [2] …] 그대로 환자용 산문으로
+- 여러 개면 \`<p><strong>계획 [1]: …</strong></p><p>설명</p>\` 형식
 - **🦷 치료 목표 ↔ 진단 매칭 (핵심 — 의무):**
   - 각 계획의 [목표]와 의미상 연관된 [구외/구내 소견의 진단 항목]을 골라 **함께 산문으로** 설명
   - 예: 목표 "정상 교합 회복" + 진단 "골격성 III급 (심함)"·"전치부 반대교합" → ✅ "이 계획은 정상 교합 회복을 목표로, 위턱과 아래턱 크기 차이 그리고 전치부 반대교합을 함께 해결합니다…" 처럼 문제와 해결을 한 산문에 묶음
@@ -583,7 +583,7 @@ export async function composeReport({ summary, staffForm, returnPromptOnly = fal
 **📦 출력 JSON 스키마 (반드시 이 형태)**
 ═══════════════════════════════════
 {
-  "body": "<h2>구외 소견</h2><p>...</p><h2>구내 소견</h2><p>...</p><h2>치료 계획</h2><p><strong>계획 #1: ...</strong></p><p>...</p><h2>종합 안내</h2><p>...</p>",
+  "body": "<h2>구외 소견</h2><p>...</p><h2>구내 소견</h2><p>...</p><h2>치료 계획</h2><p><strong>계획 [1]: ...</strong></p><p>...</p><h2>종합 안내</h2><p>...</p>",
   "personalNote": "환자 성향/특이 상황 반영 3~5문장 맞춤 메시지 (치료 추천 근거, 안심, 다음 단계)",
   "appealPoints": [ { "title": "제목", "description": "1~2문장 설명" } ]
 }
@@ -618,7 +618,7 @@ export async function composeReport({ summary, staffForm, returnPromptOnly = fal
 하나라도 실패하면 즉시 해당 부분 재작성 후 다시 체크. 통과 후에만 JSON 출력.${instructionsBlock}${guidelinesBlock}${terminologyBlock}${strengthsBlock}`
 
   // 정리 탭에서 사용자가 편집한 통합 텍스트가 있으면 단일 블록으로 그대로 전달
-  // (`## 골격 문제` / `## 치성 문제` / `## 치료 계획 #1` / `## 전체 추가 메모` 헤더 포함)
+  // (`## 골격 문제` / `## 치성 문제` / `## 치료 계획 [1]` / `## 전체 추가 메모` 헤더 포함)
   const sourceBlock = (koreanSummary.combined && koreanSummary.combined.trim())
     ? koreanSummary.combined
     : (() => {
@@ -870,7 +870,7 @@ export function migrateToNewFormat(obj) {
   if (Array.isArray(obj.treatmentOptions) && obj.treatmentOptions.length > 0) {
     const planParts = obj.treatmentOptions.map((opt, i) => {
       const lines = []
-      if (opt.name) lines.push(`<p><strong>계획 #${i + 1}: ${escapeHtml(opt.name)}</strong></p>`)
+      if (opt.name) lines.push(`<p><strong>계획 [${i + 1}]: ${escapeHtml(opt.name)}</strong></p>`)
       if (opt.description) lines.push(`<p>${escapeHtml(opt.description)}</p>`)
       if (opt.expectedEffect) lines.push(`<p><em>기대 효과:</em> ${escapeHtml(opt.expectedEffect)}</p>`)
       const meta = []

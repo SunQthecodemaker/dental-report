@@ -154,7 +154,7 @@ export function buildCombinedSummary(clinicalForm, diagnosisConfig = DEFAULT_DIA
     const planText = (savedPlan && String(savedPlan).trim())
       ? String(savedPlan)
       : (auto.treatmentPlans[i] || '')
-    if (planText) parts.push(`## 치료 계획 #${i + 1}\n${planText}`)
+    if (planText) parts.push(`## 치료 계획 [${i + 1}]\n${planText}`)
   })
   const overall = pick('overall')
   if (overall) parts.push(`## 전체 추가 메모\n${overall}`)
@@ -386,7 +386,7 @@ export default function ClinicalForm({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '10px', borderBottom: '2px solid #b5976a20' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <div style={{ width: '4px', height: '20px', borderRadius: '2px', background: '#b5976a' }} />
-                  <span style={{ fontSize: '15px', fontWeight: '700', color: '#b5976a' }}>치료 계획 #{idx + 1}</span>
+                  <span style={{ fontSize: '15px', fontWeight: '700', color: '#b5976a' }}>치료 계획 [{idx + 1}]</span>
                 </div>
                 {plans.length > 1 && (
                   <button onClick={() => removePlan(idx)} style={removeBtn}>삭제</button>
@@ -578,7 +578,7 @@ function SummaryPage({ value, onChange, onPageChange, diagnosisConfig }) {
     { key: 'skeletal', label: `🩻 ${sectionLabels.skeletal || '골격문제'}`, text: auto.skeletal },
     { key: 'dental',   label: `🦷 ${sectionLabels.dental   || '치성문제'}`, text: auto.dental },
     { key: 'etc',      label: `📝 ${sectionLabels.etc      || '기타'}`,      text: auto.etc },
-    ...auto.treatmentPlans.map((t, i) => ({ key: `plan_${i}`, label: `📋 치료 계획 #${i + 1}`, text: t })),
+    ...auto.treatmentPlans.map((t, i) => ({ key: `plan_${i}`, label: `📋 치료 계획 [${i + 1}]`, text: t })),
   ]
   if (auto.overall) autoSections.push({ key: 'overall', label: '📝 전체 추가 메모', text: auto.overall })
 
