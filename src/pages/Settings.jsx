@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import { saveTreatmentCases, saveStrengthCards, uploadLibraryPhoto, newCaseId, normalizeTag, normalizeTags, extractTagPool } from '../lib/library'
 import { useId } from 'react'
-import { validateNewGuideline, cleanupGuidelines } from '../lib/gemini'
+import { validateNewGuideline, cleanupGuidelines, suggestToneRules } from '../lib/gemini'
 import { loadAiInstructions, saveAiInstructions, countLearningLogs, loadRecentLearningLogs, buildAnalyzePatternsPrompt } from '../lib/learning'
 import { runJobWithFallback } from '../lib/aiJobs'
 import { loadClinicalFormConfig, saveDiagnosisConfig, saveTreatmentConfig, DEFAULT_DIAGNOSIS_CONFIG, DEFAULT_TREATMENT_CONFIG } from '../lib/formConfig'
@@ -335,6 +335,55 @@ function ToneTableEditor({ items, onChange, staffFormConfig }) {
   const [newCond, setNewCond] = useState('>=4')
   const [newRule, setNewRule] = useState('')
 
+  // AI 추천
+  const [suggesting, setSuggesting] = useState(false)
+  const [suggestion, setSuggestion] = useState(null) // { rules: [...], selected: Set<idx> }
+  const [suggestErr, setSuggestErr] = useState('')
+
+  const runSuggest = async () => {
+    setSuggesting(true)
+    setSuggestErr('')
+    try {
+      const legacyRules = items.filter(r => !r.categoryKey && r.trait && r.rule).map(r => ({ trait: r.trait, rule: r.rule }))
+      const { rules } = await suggestToneRules({ staffFormConfig, legacyRules })
+      if (!rules || rules.length === 0) {
+        setSuggestErr('추천 결과가 비어있습니다. 상담 폼에 카테고리·옵션이 있는지 확인하세요.')
+      } else {
+        // 이미 등록된 (categoryKey, optionValue|sliderCondition) 조합은 제외 후보로 표시
+        const existingKey = (r) => `${r.categoryKey}|${r.optionValue || r.sliderCondition || ''}`
+        const existing = new Set(items.filter(r => r.categoryKey).map(existingKey))
+        const candidates = rules.map(r => ({ ...r, _duplicate: existing.has(existingKey(r)) }))
+        setSuggestion({ rules: candidates, selected: new Set(candidates.map((_, i) => candidates[i]._duplicate ? null : i).filter(x => x !== null)) })
+      }
+    } catch (err) {
+      setSuggestErr(err.message || 'AI 추천 실패')
+    } finally {
+      setSuggesting(false)
+    }
+  }
+
+  const toggleSuggestPick = (idx) => {
+    const next = new Set(suggestion.selected)
+    if (next.has(idx)) next.delete(idx); else next.add(idx)
+    setSuggestion({ ...suggestion, selected: next })
+  }
+
+  const applySuggestion = () => {
+    const picks = [...suggestion.selected].sort((a, b) => a - b).map(i => ({
+      id: crypto.randomUUID(),
+      enabled: true,
+      ...suggestion.rules[i],
+    }))
+    if (picks.length === 0) { setSuggestion(null); return }
+    // _duplicate 마커는 저장하지 않음
+    const clean = picks.map(p => {
+      const { _duplicate, ...rest } = p
+      return rest
+    })
+    onChange([...items, ...clean])
+    setSuggestion(null)
+  }
+
   const newCatMeta = triggerOptions.find(t => t.key === newCat)
 
   const add = () => {
@@ -358,10 +407,25 @@ function ToneTableEditor({ items, onChange, staffFormConfig }) {
 
   return (
     <>
+      {/* AI 추천 버튼 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, marginBottom: 12 }}>
+        <div style={{ fontSize: 12, color: '#1d4ed8', lineHeight: 1.5 }}>
+          🤖 AI 가 상담 폼 옵션·슬라이더를 보고 적절한 톤 규칙을 한 번에 제안합니다. 미리보기에서 채택할 항목만 골라 저장됩니다.
+        </div>
+        <button onClick={runSuggest} disabled={suggesting} style={{ ...S.addBtn, padding: '8px 14px', background: '#1d4ed8', opacity: suggesting ? 0.5 : 1, whiteSpace: 'nowrap', marginLeft: 12 }}>
+          {suggesting ? 'AI 추천 중…' : '🤖 AI 추천'}
+        </button>
+      </div>
+      {suggestErr && (
+        <div style={{ padding: '10px 14px', background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, fontSize: 12, color: '#78350f', marginBottom: 12 }}>
+          {suggestErr}
+        </div>
+      )}
+
       {/* 기존 규칙 목록 */}
       {items.length === 0 && (
         <div style={{ ...S.desc, fontSize: 13, padding: 12, background: '#fafafa', border: '1px dashed #e5e7eb', borderRadius: 8, textAlign: 'center' }}>
-          아직 등록된 규칙이 없습니다. 아래에서 카테고리·옵션을 선택해 추가하세요.
+          아직 등록된 규칙이 없습니다. 위 [🤖 AI 추천] 버튼을 누르거나, 아래에서 카테고리·옵션을 선택해 직접 추가하세요.
         </div>
       )}
       {items.map((it) => {
@@ -471,6 +535,55 @@ function ToneTableEditor({ items, onChange, staffFormConfig }) {
           </div>
         )}
       </div>
+
+      {/* AI 추천 미리보기 모달 */}
+      {suggestion && (
+        <div style={S.modalBackdrop}>
+          <div style={{ ...S.modalCard, maxWidth: 720 }}>
+            <h3 style={{ margin: '0 0 8px', fontSize: 16, color: '#1e3a5f' }}>🤖 AI 추천 톤 규칙 ({suggestion.rules.length}건)</h3>
+            <p style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+              체크된 항목만 추가됩니다. 이미 같은 옵션에 규칙이 있는 항목은 기본 해제됩니다.
+            </p>
+            <div style={{ maxHeight: 420, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 8, padding: 4 }}>
+              {suggestion.rules.map((r, i) => {
+                const isPicked = suggestion.selected.has(i)
+                const meta = triggerOptions.find(t => t.key === r.categoryKey)
+                const trigger = `${meta?.label || r.categoryKey}${meta?.type === 'slider' ? ' (슬라이더)' : ''}`
+                const value = r.optionValue || r.sliderCondition
+                return (
+                  <label key={i} style={{
+                    display: 'flex', gap: 10, padding: '8px 10px', borderRadius: 6,
+                    background: r._duplicate ? '#fef3c7' : (isPicked ? '#ecfdf5' : '#fff'),
+                    border: `1px solid ${r._duplicate ? '#fcd34d' : (isPicked ? '#a7f3d0' : '#e5e7eb')}`,
+                    marginBottom: 4, cursor: 'pointer', alignItems: 'flex-start',
+                  }}>
+                    <input type="checkbox" checked={isPicked} onChange={() => toggleSuggestPick(i)} style={{ marginTop: 3 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 2 }}>
+                        {trigger} · <span style={{ color: '#7c3aed' }}>{value}</span>
+                        {r._duplicate && <span style={{ marginLeft: 8, fontSize: 10, color: '#92400e', fontWeight: 600 }}>⚠️ 같은 옵션 규칙 이미 있음</span>}
+                      </div>
+                      <div style={{ fontSize: 13, color: '#1f2937', lineHeight: 1.5 }}>{r.rule}</div>
+                    </div>
+                  </label>
+                )
+              })}
+            </div>
+            <div style={{ marginTop: 12, display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => setSuggestion({ ...suggestion, selected: new Set(suggestion.rules.map((_, i) => i)) })} style={{ ...S.delBtn, color: '#6b7280', borderColor: '#d1d5db' }}>모두 선택</button>
+                <button onClick={() => setSuggestion({ ...suggestion, selected: new Set() })} style={{ ...S.delBtn, color: '#6b7280', borderColor: '#d1d5db' }}>모두 해제</button>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => setSuggestion(null)} style={{ ...S.delBtn, padding: '10px 16px' }}>취소</button>
+                <button onClick={applySuggestion} style={{ ...S.addBtn, background: '#059669' }}>
+                  ✅ 선택 항목 추가 ({suggestion.selected.size}건)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

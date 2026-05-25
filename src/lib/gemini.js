@@ -414,6 +414,129 @@ ${combined || overall || '(없음)'}
 }
 
 /**
+ * suggestToneRules — 상담폼 구조 + 기존 구 형식 톤 규칙을 보고 옵션 단위 신 규칙을 AI가 제안.
+ *
+ * 입력: { staffFormConfig: { categories, sliders }, legacyRules: [{trait, rule}] }
+ * 출력: { rules: [{ categoryKey, optionValue?, sliderCondition?, rule }] }
+ *
+ * 절대 규칙: 톤 규칙은 "문체·상세도·어조"만 조절. 내용 추가·환각 금지 (composeReport 시스템 프롬프트와 충돌 X).
+ */
+export async function suggestToneRules({ staffFormConfig, legacyRules = [] }) {
+  const categories = staffFormConfig?.categories || {}
+  const sliders = staffFormConfig?.sliders || {}
+  const catEntries = Object.entries(categories)
+  const sliderEntries = Object.entries(sliders)
+  if (catEntries.length === 0 && sliderEntries.length === 0) return { rules: [] }
+
+  const catsBlock = catEntries.map(([key, c]) =>
+    `- ${key} (${c.label || key}): [${(c.options || []).map(o => `"${o}"`).join(', ')}]`
+  ).join('\n') || '(없음)'
+
+  const slidersBlock = sliderEntries.map(([key, s]) =>
+    `- ${key} (${s.label || key}, 1~5점, 1=${s.min}, 5=${s.max})`
+  ).join('\n') || '(없음)'
+
+  const legacyBlock = (legacyRules || [])
+    .filter(r => r && r.trait && r.rule)
+    .map(r => `- "${r.trait}" → ${r.rule}`).join('\n') || '(없음)'
+
+  const systemPrompt = `당신은 한국 치과 상담 정보를 보고 AI 진단서의 **문체/어조 조절 규칙(톤 규칙)**을 옵션 단위로 제안하는 도우미입니다.
+
+**역할**: 진단서 본문(body)을 작성하는 AI가, 상담 폼에서 선택된 환자 성향/상태에 따라 어떻게 문체를 조절해야 할지 그 규칙만 제안. 진단/치료 내용 추가는 관여하지 않음.
+
+**⛔ 절대 금지**:
+1. 새 정보·치료 옵션·진단 내용 추가하는 규칙 금지 (예: "임플란트도 권유" ❌)
+2. 환자에게 보낼 문구 자체를 지정 금지 (예: "안심하세요'를 추가" ❌). 톤 규칙은 "어떻게 쓸지"만 명시 (어조·상세도·결론 위치·비유 사용 여부 등)
+3. 비용·할인·이벤트 등 영업적 표현 권유 금지
+4. 한 옵션에 너무 많은 규칙 X. 옵션당 1개 (짧은 한 문장)
+
+**🦷 좋은 규칙 예**:
+- "꼼꼼한 편" → "각 진단/치료의 근거와 과정을 한 문장 이상 풀어 설명, 결정에 필요한 정보 충실히"
+- "바쁜 분" → "핵심 결론을 문단 앞에 두고 부연은 최소화"
+- "치과 공포" → "안심 가능한 어조로 서술. 통증 단어는 직설 대신 완화 표현 (단, 입력 강조어는 약화 X)"
+- "치료 의지 >=4" → "단정적이고 구체적으로 다음 단계 제시"
+- "치료 의지 <=2" → "부드러운 권유 어조. 단정형 줄이기"
+
+**범위**:
+- 각 카테고리 옵션마다 적절한 규칙이 있으면 제안 (없으면 그 옵션은 건너뜀 — 모든 옵션을 채울 필요 없음)
+- 슬라이더는 보통 두 극단(>=4, <=2)에 규칙. 중간 값은 보통 규칙 불필요
+- 같은 카테고리 옵션끼리 의미 비슷하면 한 옵션만 (예: "꼼꼼한 편" 만, "고령"은 보통 별도)
+
+**기존 자유 텍스트 규칙(legacy)**: 사용자가 이미 운영하던 톤 의도. 가능하면 해당 옵션에 매핑해서 신 규칙의 출발점으로 사용. 의미 충돌하지 않으면 표현 유지.
+
+**출력 JSON 스키마**:
+{
+  "rules": [
+    { "categoryKey": "personality", "optionValue": "꼼꼼한 편", "rule": "각 진단/치료의 근거를 한 문장 이상 풀어 설명" },
+    { "categoryKey": "willingness", "sliderCondition": ">=4", "rule": "단정적이고 구체적으로 다음 단계 제시" }
+  ]
+}
+- categoryKey 는 반드시 아래 입력에 있는 키 그대로 (영문)
+- 카테고리 옵션은 optionValue 사용. 슬라이더는 sliderCondition 사용 (둘 중 하나만)
+- 슬라이더 조건: ">=4", "<=2", "==3" 같은 단순 비교만
+- 한국어로만 작성. 한자·영어 병기 금지. JSON 외 텍스트·코드블록 금지`
+
+  const userMessage = `# 상담 폼 카테고리 (영문 key → 한글 라벨, 옵션 배열)
+${catsBlock}
+
+# 슬라이더 (영문 key → 한글 라벨, 1~5점 의미)
+${slidersBlock}
+
+# 기존 운영 중인 자유 텍스트 톤 규칙 (의미 매핑 힌트)
+${legacyBlock}
+
+위 카테고리·슬라이더의 옵션 단위로 적절한 톤 규칙을 JSON 으로 제안하시오. 옵션마다 1개씩, 의미가 약한 옵션은 건너뛰어도 됨.`
+
+  const response = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ parts: [{ text: userMessage }] }],
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens: 4000,
+        responseMimeType: 'application/json',
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+    }),
+  })
+
+  const data = await response.json()
+  if (data.error) throw new Error(data.error.message || 'AI 톤 규칙 추천 실패')
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text
+  if (!text) return { rules: [] }
+
+  let parsed
+  try { parsed = JSON.parse(text) }
+  catch {
+    const m = text.match(/\{[\s\S]*\}/)
+    parsed = m ? JSON.parse(m[0]) : {}
+  }
+
+  // 검증: 입력 categories/sliders 키 + options 안에서만 통과 (환각 방어)
+  const catKeySet = new Set(catEntries.map(([k]) => k))
+  const sliderKeySet = new Set(sliderEntries.map(([k]) => k))
+  const catOptionMap = new Map(catEntries.map(([k, c]) => [k, new Set(c.options || [])]))
+  const condRe = /^(>=|<=|==|=|>|<)\s*\d+$/
+
+  const rules = (Array.isArray(parsed.rules) ? parsed.rules : [])
+    .filter(r => r && typeof r === 'object' && r.rule && typeof r.rule === 'string')
+    .filter(r => r.categoryKey && (catKeySet.has(r.categoryKey) || sliderKeySet.has(r.categoryKey)))
+    .map(r => {
+      if (sliderKeySet.has(r.categoryKey)) {
+        if (!r.sliderCondition || !condRe.test(String(r.sliderCondition).trim())) return null
+        return { categoryKey: r.categoryKey, sliderCondition: String(r.sliderCondition).trim(), rule: r.rule.trim() }
+      }
+      if (!r.optionValue || !catOptionMap.get(r.categoryKey).has(r.optionValue)) return null
+      return { categoryKey: r.categoryKey, optionValue: r.optionValue, rule: r.rule.trim() }
+    })
+    .filter(Boolean)
+
+  return { rules }
+}
+
+/**
  * composeReport 의 시스템 프롬프트 + user 메시지만 생성 (PC2 Claude 워커 전송용).
  * 빈 입력이면 null 반환 (호출 측이 getEmptyDraft 처리).
  *
