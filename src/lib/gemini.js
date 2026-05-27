@@ -62,6 +62,7 @@ export async function generateImageCaption(file) {
 **사진 종류 (정확히 이 분류 중 하나만 출력):**
 - 파노라마 방사선
 - 측모두부 방사선
+- 턱관절 사진
 - 구내 사진 · 전면
 - 구내 사진 · 우측 측방
 - 구내 사진 · 좌측 측방
