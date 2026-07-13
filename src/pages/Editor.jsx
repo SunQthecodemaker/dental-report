@@ -6,7 +6,8 @@ import ContentEditor from '../components/ContentEditor'
 import BrochurePreview from '../components/BrochurePreview'
 import PhotoMarkerModal from '../components/PhotoMarkerModal'
 import { serializeMarkings } from '../lib/markings'
-import { loadTreatmentCases, loadStrengthCards, normalizeTags } from '../lib/library'
+import { loadStrengthCards, normalizeTags } from '../lib/library'
+import { loadCasesFromSheet } from '../lib/caseSheet'
 import CaseStrengthSelector from '../components/CaseStrengthSelector'
 import { composeReport, buildComposePrompt, postProcessComposeResult, getEmptyDraft, migrateToNewFormat, extractImagesBySection, reinsertImagesBySection, suggestTags } from '../lib/gemini'
 import { runJobWithFallback } from '../lib/aiJobs'
@@ -105,7 +106,7 @@ export default function Editor() {
       hydratedRef.current = true
     }).catch(err => { if (mounted) setLoadError(err.message) })
     // 라이브러리 + 폼 설정 병렬 로드
-    Promise.all([loadTreatmentCases(), loadStrengthCards()])
+    Promise.all([loadCasesFromSheet(), loadStrengthCards()])
       .then(([c, s]) => { if (mounted) { setAllCases(c); setAllStrengths(s) } })
       .catch(() => {})
     loadClinicalFormConfig()

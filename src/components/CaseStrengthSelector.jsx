@@ -1,11 +1,12 @@
 /**
  * CaseStrengthSelector — 환자별 케이스/어필포인트 선택 + 태그 기반 매칭.
- * - 상단: 관련 태그 칩 (선택/추가/다시 추천)
- * - 중단: 매칭된 케이스 (태그 1개 이상이면 OR 매칭 + 매치 개수 순 정렬)
+ * - 상단: 카테고리 탭 + 관련 태그 칩 (선택/추가/다시 추천)
+ * - 중단: 매칭된 케이스 (카테고리 → 태그 OR 매칭 + 매치 개수 순 정렬)
  * - 하단: 매칭된 어필포인트 (같은 매커니즘)
  */
 import { useMemo, useState } from 'react'
 import { normalizeTag, normalizeTags, matchCount } from '../lib/library'
+import { CASE_CATEGORIES } from '../lib/caseSheet'
 
 export default function CaseStrengthSelector({
   cases, strengths,
@@ -20,14 +21,32 @@ export default function CaseStrengthSelector({
     else setter([...ids, id])
   }
 
-  // 라이브러리에서 태그 풀 추출
+  // 케이스 카테고리 (전체/치아교정/심미치료/임플란트) — 홈페이지 치료 전·후와 동일 구조
+  const [caseCategory, setCaseCategory] = useState('전체')
+  const catCases = useMemo(
+    () => (caseCategory === '전체'
+      ? (cases || [])
+      : (cases || []).filter(c => (c.category || '치아교정') === caseCategory)),
+    [cases, caseCategory],
+  )
+  const catCounts = useMemo(() => {
+    const m = { 전체: (cases || []).length }
+    for (const cat of CASE_CATEGORIES) m[cat] = 0
+    for (const c of cases || []) {
+      const cat = c.category || '치아교정'
+      m[cat] = (m[cat] || 0) + 1
+    }
+    return m
+  }, [cases])
+
+  // 태그 풀 추출 — 선택 카테고리 범위로 스코프
   const casePool = useMemo(() => {
     const set = new Map()
-    for (const c of cases || []) for (const t of (c.tags || [])) {
+    for (const c of catCases) for (const t of (c.tags || [])) {
       const lc = t.toLowerCase(); if (!set.has(lc)) set.set(lc, t)
     }
     return [...set.values()]
-  }, [cases])
+  }, [catCases])
 
   const strengthPool = useMemo(() => {
     const set = new Map()
@@ -37,15 +56,15 @@ export default function CaseStrengthSelector({
     return [...set.values()]
   }, [strengths])
 
-  // 매칭 + 정렬 (태그 0개면 전체 노출, 원본 순서 유지)
+  // 매칭 + 정렬 (카테고리 → 태그. 태그 0개면 카테고리 전체 노출, 원본 순서 유지)
   const sortedCases = useMemo(() => {
-    if (!caseTags.length) return cases
-    return [...cases]
+    if (!caseTags.length) return catCases
+    return [...catCases]
       .map(c => ({ c, n: matchCount(c, caseTags) }))
       .filter(x => x.n > 0)
       .sort((a, b) => b.n - a.n)
       .map(x => x.c)
-  }, [cases, caseTags])
+  }, [catCases, caseTags])
 
   const sortedStrengths = useMemo(() => {
     if (!strengthTags.length) return strengths
@@ -59,6 +78,11 @@ export default function CaseStrengthSelector({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <section>
+        <SectionHead label="🗂️ 케이스 카테고리" suffix={`${sortedCases.length}건`} />
+        <CategoryTabs value={caseCategory} onChange={setCaseCategory} counts={catCounts} />
+      </section>
+
+      <section>
         <SectionHead label="🏷️ 케이스 매칭 태그" suffix={`${caseTags.length}개 선택`} />
         <TagBar
           tags={caseTags}
@@ -70,11 +94,11 @@ export default function CaseStrengthSelector({
       </section>
 
       <section>
-        <SectionHead label="유사 치료 사례" count={selectedCaseIds.length} total={sortedCases.length} totalLabel={caseTags.length ? '매칭됨' : '전체'} />
+        <SectionHead label="유사 치료 사례" count={selectedCaseIds.length} total={sortedCases.length} totalLabel={caseTags.length ? '매칭됨' : (caseCategory === '전체' ? '전체' : caseCategory)} />
         {cases.length === 0 ? (
-          <Empty hint="Settings → 유사 케이스 탭에서 등록해주세요." />
+          <Empty hint="공용 케이스 시트를 불러오지 못했습니다. 잠시 후 다시 시도해주세요." />
         ) : sortedCases.length === 0 ? (
-          <Empty hint="선택한 태그와 일치하는 케이스가 없습니다. 태그를 조정해보세요." />
+          <Empty hint="선택한 카테고리·태그와 일치하는 케이스가 없습니다. 조건을 조정해보세요." />
         ) : (
           <div style={S.grid}>
             {sortedCases.map(c => {
@@ -152,6 +176,29 @@ export default function CaseStrengthSelector({
           </div>
         )}
       </section>
+    </div>
+  )
+}
+
+// ─────── 카테고리 탭 (전체/치아교정/심미치료/임플란트)
+function CategoryTabs({ value, onChange, counts }) {
+  const cats = ['전체', ...CASE_CATEGORIES]
+  return (
+    <div style={S.catBar}>
+      {cats.map(cat => {
+        const active = value === cat
+        const n = counts?.[cat] || 0
+        return (
+          <button
+            key={cat} type="button"
+            onClick={() => onChange(cat)}
+            style={{ ...S.catBtn, ...(active ? S.catBtnActive : {}) }}
+          >
+            {cat}
+            <span style={{ ...S.catCount, ...(active ? S.catCountActive : {}) }}>{n}</span>
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -285,6 +332,19 @@ function Checkmark({ active }) {
 
 const S = {
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 },
+  catBar: { display: 'flex', flexWrap: 'wrap', gap: 8 },
+  catBtn: {
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    padding: '8px 14px', fontSize: 14, fontWeight: 700,
+    background: '#fff', border: '1px solid #d1d5db', borderRadius: 20,
+    color: '#6b7280', cursor: 'pointer', fontFamily: 'inherit',
+  },
+  catBtnActive: { background: '#1a1a18', borderColor: '#1a1a18', color: '#fff' },
+  catCount: {
+    fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 10,
+    background: '#f3f4f6', color: '#9ca3af',
+  },
+  catCountActive: { background: '#b5976a', color: '#fff' },
   card: {
     position: 'relative',
     textAlign: 'left', padding: 12,
