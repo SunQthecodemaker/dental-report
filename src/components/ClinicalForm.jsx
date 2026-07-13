@@ -229,7 +229,7 @@ export default function ClinicalForm({
   }
   const togglePlanArray = (idx, field, val) => {
     const p = [...plans]
-    const current = p[idx][field] || []
+    const current = Array.isArray(p[idx][field]) ? p[idx][field] : []
     p[idx] = {
       ...p[idx],
       [field]: current.includes(val) ? current.filter(v => v !== val) : [...current, val],
