@@ -23,7 +23,7 @@ function getEmptyTxOption() {
     // 1차 (flat array of option strings toggled across all phase1 groups)
     primary: [],
     // 2차
-    ext_10: '', ext_20: '', ext_30: '', ext_40: '',
+    ext_10: [], ext_20: [], ext_30: [], ext_40: [],  // 사분면별 선택된 치아 위치(1~8) 배열
     expansion: '',
     distalization: false,
     distalExtraction: '',
@@ -101,14 +101,12 @@ function planToText(plan) {
   if (plan.scope) lines.push(`교정 범위: ${plan.scope}`)
   if (plan.phase) lines.push(`교정 단계: ${plan.phase}`)
   if ((plan.primary || []).length > 0) lines.push(`1차 처치: ${plan.primary.join(', ')}`)
-  const ext = ['ext_10', 'ext_20', 'ext_30', 'ext_40'].map(k => {
-    const v = plan[k]
-    if (!v) return null
-    const extraText = plan[`${k}_text`]
-    const suffix = extraText ? ` (${extraText})` : ''
-    return `${k.replace('ext_', '#')}: ${v}${suffix}`
-  }).filter(Boolean)
-  if (ext.length > 0) lines.push(`발치: ${ext.join(' / ')}`)
+  const ext = ['ext_10', 'ext_20', 'ext_30', 'ext_40'].flatMap(k => {
+    const positions = Array.isArray(plan[k]) ? plan[k] : []
+    const q = k.replace('ext_', '')[0]  // '1'|'2'|'3'|'4' (사분면 숫자)
+    return positions.map(p => `#${q}${p}`)  // 예: #14, #15 (FDI)
+  })
+  if (ext.length > 0) lines.push(`발치: ${ext.join(', ')}`)
   if (plan.expansion) lines.push(`악궁확장: ${plan.expansion}`)
   if (plan.distalization) lines.push(`후방이동: 필요${plan.distalExtraction ? ` (${plan.distalExtraction})` : ''}`)
   if (plan.stripping) lines.push(`치간삭제: 필요`)
@@ -455,7 +453,7 @@ export default function ClinicalForm({
                       <div style={{ marginBottom: '16px' }}>
                         <div style={{ fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>발치 부위</div>
                         <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>선택하지 않은 부위 = 비발치</div>
-                        <ExtractionQuadrant plan={plan} idx={idx} updatePlan={updatePlan} extractionOptions={phase2.extraction || []} />
+                        <ExtractionQuadrant plan={plan} idx={idx} togglePlanArray={togglePlanArray} />
                       </div>
 
                       {/* 악궁 확장 */}
@@ -755,46 +753,43 @@ function FieldRow({ label, children }) {
   )
 }
 
-function ExtQuadCell({ plan, idx, field, label, alignH, borderSide, updatePlan, extractionOptions }) {
-  const value = plan[field] || ''
-  const textField = `${field}_text`
-  const showInput = value === '기타'
+function ExtQuadCell({ plan, idx, field, label, alignH, borderSide, togglePlanArray }) {
+  const selected = Array.isArray(plan[field]) ? plan[field] : []
+  // 오른쪽 사분면(#10·#40)은 1번이 정중선(안쪽)에 오도록 역순 배치
+  const nums = ['1', '2', '3', '4', '5', '6', '7', '8']
+  const order = alignH === 'right' ? [...nums].reverse() : nums
   return (
     <div style={quadCellStyle(alignH, borderSide)}>
       <div style={quadLabel}>{label}</div>
-      <select value={value} onChange={e => updatePlan(idx, field, e.target.value)} style={quadSelect(value)}>
-        <option value="">비발치</option>
-        {(extractionOptions || []).map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
-      {showInput && (
-        <input
-          type="text"
-          value={plan[textField] || ''}
-          onChange={e => updatePlan(idx, textField, e.target.value)}
-          placeholder="치아번호"
-          style={{ marginTop: '4px', padding: '3px 6px', fontSize: '12px', border: '1px solid #dc2626', borderRadius: '4px', width: '80px', textAlign: alignH === 'right' ? 'right' : 'left' }}
-        />
-      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
+        {order.map(n => (
+          <button
+            key={n}
+            onClick={() => togglePlanArray(idx, field, n)}
+            style={quadToothBtn(selected.includes(n))}
+          >{n}</button>
+        ))}
+      </div>
     </div>
   )
 }
 
-function ExtractionQuadrant({ plan, idx, updatePlan, extractionOptions }) {
+function ExtractionQuadrant({ plan, idx, togglePlanArray }) {
   return (
     <div style={{
       display: 'grid',
       gridTemplateColumns: '1fr auto 1fr',
       gridTemplateRows: 'auto auto',
       gap: '0',
-      maxWidth: '340px',
+      maxWidth: '400px',
       margin: '0 auto',
     }}>
-      <ExtQuadCell plan={plan} idx={idx} field="ext_10" label="#10" alignH="right" borderSide="bottom" updatePlan={updatePlan} extractionOptions={extractionOptions} />
+      <ExtQuadCell plan={plan} idx={idx} field="ext_10" label="#10" alignH="right" borderSide="bottom" togglePlanArray={togglePlanArray} />
       <div style={{ borderBottom: '2px solid #9ca3af', width: '2px', background: '#9ca3af' }} />
-      <ExtQuadCell plan={plan} idx={idx} field="ext_20" label="#20" alignH="left" borderSide="bottom" updatePlan={updatePlan} extractionOptions={extractionOptions} />
-      <ExtQuadCell plan={plan} idx={idx} field="ext_40" label="#40" alignH="right" borderSide="top" updatePlan={updatePlan} extractionOptions={extractionOptions} />
+      <ExtQuadCell plan={plan} idx={idx} field="ext_20" label="#20" alignH="left" borderSide="bottom" togglePlanArray={togglePlanArray} />
+      <ExtQuadCell plan={plan} idx={idx} field="ext_40" label="#40" alignH="right" borderSide="top" togglePlanArray={togglePlanArray} />
       <div style={{ borderTop: '2px solid #9ca3af', width: '2px', background: '#9ca3af' }} />
-      <ExtQuadCell plan={plan} idx={idx} field="ext_30" label="#30" alignH="left" borderSide="top" updatePlan={updatePlan} extractionOptions={extractionOptions} />
+      <ExtQuadCell plan={plan} idx={idx} field="ext_30" label="#30" alignH="left" borderSide="top" togglePlanArray={togglePlanArray} />
     </div>
   )
 }
@@ -993,6 +988,20 @@ const quadSelect = (val) => ({
   color: val ? '#dc2626' : '#374151',
   fontSize: '13px',
   fontWeight: val ? '600' : '400',
+  cursor: 'pointer',
+  outline: 'none',
+})
+
+const quadToothBtn = (active) => ({
+  width: '30px',
+  height: '30px',
+  padding: '0',
+  borderRadius: '6px',
+  border: active ? '2px solid #dc2626' : '1px solid #d1d5db',
+  background: active ? '#dc2626' : '#fff',
+  color: active ? '#fff' : '#6b7280',
+  fontSize: '13px',
+  fontWeight: active ? '700' : '500',
   cursor: 'pointer',
   outline: 'none',
 })
