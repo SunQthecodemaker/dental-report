@@ -21,6 +21,15 @@ export default function CaseStrengthSelector({
     else setter([...ids, id])
   }
 
+  // 케이스 태그 토글 (클릭형 팔레트) — 홈페이지 filterByTag 와 동일 (OR 다중선택)
+  const toggleCaseTag = (t) => {
+    const l = t.toLowerCase()
+    const has = (caseTags || []).some(x => x.toLowerCase() === l)
+    onChangeCaseTags(has
+      ? caseTags.filter(x => x.toLowerCase() !== l)
+      : normalizeTags([...(caseTags || []), t]))
+  }
+
   // 케이스 카테고리 (전체/치아교정/심미치료/임플란트) — 홈페이지 치료 전·후와 동일 구조
   const [caseCategory, setCaseCategory] = useState('전체')
   const catCases = useMemo(
@@ -83,12 +92,13 @@ export default function CaseStrengthSelector({
       </section>
 
       <section>
-        <SectionHead label="🏷️ 케이스 매칭 태그" suffix={`${caseTags.length}개 선택`} />
-        <TagBar
-          tags={caseTags}
+        <SectionHead label="🏷️ 태그로 좁히기" suffix={caseTags.length ? `${caseTags.length}개 선택` : '태그를 눌러보세요'} />
+        <TagPalette
           pool={casePool}
-          onChange={onChangeCaseTags}
-          emptyHint="관련 태그를 추가하거나 '다시 추천'을 눌러주세요."
+          active={caseTags}
+          onToggle={toggleCaseTag}
+          onClear={() => onChangeCaseTags([])}
+          emptyHint="이 카테고리에 등록된 태그가 없습니다."
         />
         <TagActions onSuggest={onSuggestTags} isSuggesting={isSuggesting} />
       </section>
@@ -203,7 +213,34 @@ function CategoryTabs({ value, onChange, counts }) {
   )
 }
 
-// ─────── 태그 칩 바 (선택/추가/제거 + 자동완성)
+// ─────── 클릭형 태그 팔레트 (홈페이지 치료 전·후와 동일 UX — 태그 버튼 나열, 클릭 토글)
+function TagPalette({ pool, active, onToggle, onClear, emptyHint }) {
+  const lower = (active || []).map(t => t.toLowerCase())
+  if (!pool || pool.length === 0) {
+    return (
+      <div style={S.paletteEmpty}>{emptyHint || '태그가 없습니다.'}</div>
+    )
+  }
+  return (
+    <div style={S.palette}>
+      {pool.map(t => {
+        const on = lower.includes(t.toLowerCase())
+        return (
+          <button
+            key={t} type="button"
+            onClick={() => onToggle(t)}
+            style={{ ...S.paletteChip, ...(on ? S.paletteChipOn : {}) }}
+          >#{t}</button>
+        )
+      })}
+      {lower.length > 0 && (
+        <button type="button" onClick={onClear} style={S.paletteClear}>선택 해제 ×</button>
+      )}
+    </div>
+  )
+}
+
+// ─────── 태그 칩 바 (선택/추가/제거 + 자동완성) — 어필포인트 섹션에서 사용
 function TagBar({ tags, pool, onChange, emptyHint }) {
   const [input, setInput] = useState('')
   const [focused, setFocused] = useState(false)
@@ -345,6 +382,18 @@ const S = {
     background: '#f3f4f6', color: '#9ca3af',
   },
   catCountActive: { background: '#b5976a', color: '#fff' },
+  palette: { display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
+  paletteEmpty: { padding: '14px', background: '#f9fafb', border: '1px dashed #e5e7eb', borderRadius: 8, color: '#9ca3af', fontSize: 12, textAlign: 'center' },
+  paletteChip: {
+    padding: '6px 12px', fontSize: 13, fontWeight: 600, fontFamily: 'inherit',
+    background: '#fff', border: '1px solid #d1d5db', borderRadius: 16,
+    color: '#4b5563', cursor: 'pointer',
+  },
+  paletteChipOn: { background: '#b5976a', borderColor: '#b5976a', color: '#fff' },
+  paletteClear: {
+    padding: '6px 10px', fontSize: 12, fontFamily: 'inherit',
+    background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', marginLeft: 4,
+  },
   card: {
     position: 'relative',
     textAlign: 'left', padding: 12,
