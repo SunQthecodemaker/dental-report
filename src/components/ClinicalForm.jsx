@@ -761,7 +761,7 @@ function ExtQuadCell({ plan, idx, field, label, alignH, borderSide, togglePlanAr
   return (
     <div style={quadCellStyle(alignH, borderSide)}>
       <div style={quadLabel}>{label}</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
+      <div style={{ display: 'flex', flexWrap: 'nowrap', gap: '4px' }}>
         {order.map(n => (
           <button
             key={n}
@@ -781,7 +781,7 @@ function ExtractionQuadrant({ plan, idx, togglePlanArray }) {
       gridTemplateColumns: '1fr auto 1fr',
       gridTemplateRows: 'auto auto',
       gap: '0',
-      maxWidth: '400px',
+      maxWidth: '640px',
       margin: '0 auto',
     }}>
       <ExtQuadCell plan={plan} idx={idx} field="ext_10" label="#10" alignH="right" borderSide="bottom" togglePlanArray={togglePlanArray} />
