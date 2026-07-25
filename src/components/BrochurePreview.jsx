@@ -875,6 +875,18 @@ function PersonalNote({ patientName, note, v, design, onUpdateNote }) {
   )
 }
 
+/**
+ * 푸터 배너 링크.
+ * 홈페이지는 http 로 둔다 — primes.co.kr 은 https 로 접속하면 도메인 전체가
+ * NHN 호스팅 안내 페이지로 302 된다. 호스팅에 SSL 이 붙으면 https 로 바꿀 것.
+ * 카카오톡은 http 로 넣으면 308 로 https 에 다시 붙으므로 처음부터 https 로.
+ */
+const LINKS = {
+  kakao: 'https://pf.kakao.com/_kxmrXj',
+  naver: 'https://map.naver.com/p/entry/place/1013847092?placePath=%252Fhome%253Fentry%253Dplt&searchType=place&lng=126.7221497&lat=37.4910957',
+  home: 'http://primes.co.kr',
+}
+
 function Footer({ v }) {
   return (
     <div style={S.footer}>
@@ -884,14 +896,12 @@ function Footer({ v }) {
         인천 부평구 경원대로 1380 / 부평역 지하상가 15번 출구 앞<br />032-504-6030
       </div>
       <div style={S.cta}>
-        <div style={{ ...S.ctaBtn, background: '#fee500', color: '#3c1e1e' }}>카카오톡 상담</div>
-        <div style={{ ...S.ctaBtn, background: '#03c75a', color: '#fff' }}>네이버 예약</div>
-        <a
-          href="http://primes.co.kr/on/index/"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ ...S.ctaBtn, background: C.gold, color: '#2e2418' }}
-        >홈페이지</a>
+        <a href={LINKS.kakao} target="_blank" rel="noopener noreferrer"
+           style={{ ...S.ctaBtn, background: '#fee500', color: '#3c1e1e' }}>카카오톡 상담</a>
+        <a href={LINKS.naver} target="_blank" rel="noopener noreferrer"
+           style={{ ...S.ctaBtn, background: '#03c75a', color: '#fff' }}>네이버 예약</a>
+        <a href={LINKS.home} target="_blank" rel="noopener noreferrer"
+           style={{ ...S.ctaBtn, background: C.gold, color: '#2e2418' }}>홈페이지</a>
       </div>
       <div style={S.copy}>© Prime S Dental · 2026</div>
     </div>
