@@ -881,11 +881,17 @@ function Footer({ v }) {
       <div style={S.footerBrand}>Prime S</div>
       <div style={S.footerTag}>ORTHODONTIC SPECIALTY</div>
       <div style={S.footerInfo}>
-        인천 부평구 부평대로 · 부평역 지하상가 15번 출구 앞<br />032-123-4567
+        인천 부평구 경원대로 1380 / 부평역 지하상가 15번 출구 앞<br />032-504-6030
       </div>
       <div style={S.cta}>
         <div style={{ ...S.ctaBtn, background: '#fee500', color: '#3c1e1e' }}>카카오톡 상담</div>
         <div style={{ ...S.ctaBtn, background: '#03c75a', color: '#fff' }}>네이버 예약</div>
+        <a
+          href="http://primes.co.kr/on/index/"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ ...S.ctaBtn, background: C.gold, color: '#2e2418' }}
+        >홈페이지</a>
       </div>
       <div style={S.copy}>© Prime S Dental · 2026</div>
     </div>
@@ -1084,7 +1090,13 @@ const S = {
   footerBrand: { fontFamily: FONTS.serif, fontSize: FS.footerBrand, letterSpacing: '0.1em', marginBottom: 4 },
   footerTag: { fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.mediumWide, color: C.gold, textTransform: 'uppercase', marginBottom: 20 },
   footerInfo: { fontFamily: FONTS.sans, fontSize: FS.caption, lineHeight: 1.9, color: 'rgba(255,255,255,0.5)', marginBottom: 20 },
-  cta: { display: 'flex', gap: 8, maxWidth: 420, margin: '0 auto 20px', flexWrap: 'wrap' },
-  ctaBtn: { flex: '1 1 160px', padding: 12, textAlign: 'center', fontFamily: FONTS.sans, fontSize: FS.caption, fontWeight: 700 },
+  // 버튼 3개가 한 줄에 균등하게. 폭이 모자라면 2개 → 1개로 자동으로 접힌다.
+  cta: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 8, maxWidth: 460, margin: '0 auto 20px' },
+  ctaBtn: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: '12px 8px', textAlign: 'center',
+    fontFamily: FONTS.sans, fontSize: FS.caption, fontWeight: 700, lineHeight: 1.35,
+    borderRadius: 2, textDecoration: 'none',
+  },
   copy: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.caption, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.15em' },
 }
