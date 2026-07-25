@@ -9,6 +9,14 @@ import { useRef, useState } from 'react'
 import MarkingOverlay from './MarkingOverlay'
 import { parseMarkingsAttr } from '../lib/markings'
 
+/**
+ * 치료 계획 헤더 인식 — AI 출력 표기가 한 가지로 고정되지 않아 모두 받는다.
+ *   "계획 [1]:", "계획 #1:", "계획 1:", "계획 1안:", "계획 1번:", "1안:", "계획 [1]안:"
+ * 여기서 놓치면 계획이 파싱되지 않아 1안/2안 배지 없이 원문이 그대로 나온다.
+ * "기간:", "주의사항:", "2026:" 같은 것은 걸리지 않아야 한다.
+ */
+const PLAN_HEADER_RE = /^(?:계획\s*[#[]?\s*\d+\s*\]?\s*(?:안|번)?|[#[]?\s*\d+\s*\]?\s*(?:안|번))\s*[:：]\s*/
+
 const EN_LABEL = {
   // 새 4섹션 구조
   '구외 소견': 'Extra-oral Findings',
@@ -280,12 +288,12 @@ function parseTreatmentPlans(summaryHtml) {
       if (node.nodeType !== 1) continue
       const strong = node.querySelector?.('strong')
       const strongText = strong?.textContent?.trim() || ''
-      const isPlanHeader = /^계획\s*[#\[]?\d+\]?\s*[:：]/.test(strongText)
+      const isPlanHeader = PLAN_HEADER_RE.test(strongText)
 
       if (isPlanHeader) {
         if (cur) plans.push(cur)
-        // strong 안의 텍스트에서 "계획 [N]:" / "계획 #N:" / "계획 N:" 제거한 나머지 → 제목으로 사용
-        const titleFromStrong = strongText.replace(/^계획\s*[#\[]?\d+\]?\s*[:：]\s*/, '').trim()
+        // strong 안의 텍스트에서 계획 번호 표기를 제거한 나머지 → 제목으로 사용
+        const titleFromStrong = strongText.replace(PLAN_HEADER_RE, '').trim()
         // <p> 전체에서 <strong>...</strong>를 제거한 나머지 HTML → method 본문으로 사용
         // (AI가 같은 <p> 안에 본문을 함께 쓴 경우 파싱 누락 방지)
         const fullHtml = node.innerHTML || ''
@@ -826,12 +834,27 @@ function Summary({ html, inSplit }) {
   )
 }
 
+/**
+ * 드리는 말씀을 읽기 좋게 문단으로 끊는다.
+ * 직접 줄바꿈을 넣어 둔 경우엔 그 구분을 그대로 존중하고,
+ * AI가 한 덩어리로 준 경우에만 문장 단위로 나눈다.
+ * (마침표 뒤 공백 기준이라 "1.5mm" 같은 소수점은 쪼개지지 않는다.)
+ */
+function noteParagraphs(note) {
+  const text = String(note || '').trim()
+  if (!text) return []
+  if (/\n/.test(text)) return text.split(/\n+/).map(s => s.trim()).filter(Boolean)
+  return text.replace(/([.!?])\s+/g, '$1\n').split('\n').map(s => s.trim()).filter(Boolean)
+}
+
 function PersonalNote({ patientName, note, v, design, onUpdateNote }) {
+  const paras = noteParagraphs(note)
   return (
     <div style={S.note}>
       <div style={S.noteTopRule} />
       <div style={S.noteLabel}>A Personal Note · 드리는 말씀</div>
       {design ? (
+        // 편집 모드에서는 원문 그대로 — 문단으로 쪼개면 저장 시 textContent 가 붙어버린다
         <div
           style={{ ...S.noteQuote, outline: 'none', minHeight: '1em', cursor: 'text' }}
           contentEditable
@@ -840,9 +863,13 @@ function PersonalNote({ patientName, note, v, design, onUpdateNote }) {
           data-placeholder="맞춤 메시지 입력..."
         >{note}</div>
       ) : (
-        <div style={S.noteQuote}>{note}</div>
+        <div style={{ ...S.noteQuote, whiteSpace: 'normal' }}>
+          {paras.map((p, i) => (
+            <p key={i} style={{ margin: i === paras.length - 1 ? 0 : '0 0 clamp(12px, 2.6vw, 18px)' }}>{p}</p>
+          ))}
+        </div>
       )}
-      <div style={S.noteSign}>— 프라임에스 치과교정과</div>
+      <div style={S.noteSign}>— Prime-S</div>
     </div>
   )
 }
