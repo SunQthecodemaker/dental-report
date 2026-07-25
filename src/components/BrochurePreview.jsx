@@ -745,11 +745,12 @@ function PlanBlock({ idx, plan }) {
 function SecHead({ num, en, kr, center }) {
   return (
     <div style={{ ...S.secHead, ...(center ? S.secHeadCenter : {}) }}>
-      <span style={S.secNum}>{num}</span>
+      {/* 제목이 왼쪽, 번호가 오른쪽 */}
       <div style={S.secLabels}>
         {en && <div style={S.secEn}>{en}</div>}
         <div style={S.secKr}>{kr}</div>
       </div>
+      <span style={S.secNum}>{num}</span>
     </div>
   )
 }
@@ -999,8 +1000,9 @@ const S = {
 
   secHead: { display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 'clamp(12px, 3vw, 32px)', paddingBottom: 'clamp(18px, 4vw, 28px)', marginBottom: 'clamp(24px, 5vw, 40px)', borderBottom: `1px solid ${C.line}` },
   secHeadCenter: { maxWidth: 720, margin: '0 auto clamp(24px, 5vw, 40px)' },
-  secNum: { fontFamily: FONTS.serif, fontWeight: 300, fontStyle: 'italic', fontSize: FS.secNum, lineHeight: 0.82, color: C.gold, letterSpacing: '-0.04em' },
-  secLabels: { textAlign: 'right', flex: 1, minWidth: 0 },
+  // marginLeft:auto — 좁은 화면에서 번호가 아랫줄로 접혀도 오른쪽에 붙어 있게
+  secNum: { fontFamily: FONTS.serif, fontWeight: 300, fontStyle: 'italic', fontSize: FS.secNum, lineHeight: 0.82, color: C.gold, letterSpacing: '-0.04em', marginLeft: 'auto' },
+  secLabels: { textAlign: 'left', flex: 1, minWidth: 0 },
   secEn: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.caption, color: C.mid, letterSpacing: '0.04em', marginBottom: 6 },
   secKr: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.secKr, color: C.ink, letterSpacing: '-0.01em' },
 
