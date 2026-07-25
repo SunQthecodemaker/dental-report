@@ -835,39 +835,40 @@ function Summary({ html, inSplit }) {
 }
 
 /**
- * 드리는 말씀을 읽기 좋게 문단으로 끊는다.
- * 직접 줄바꿈을 넣어 둔 경우엔 그 구분을 그대로 존중하고,
- * AI가 한 덩어리로 준 경우에만 문장 단위로 나눈다.
- * (마침표 뒤 공백 기준이라 "1.5mm" 같은 소수점은 쪼개지지 않는다.)
+ * 드리는 말씀을 읽기 좋게 끊는다.
+ *
+ * AI 가 100~250자를 줄바꿈 없이 한 덩어리로 주기 때문에 문장 사이에 빈 줄을 넣는다.
+ * DOM 을 쪼개지 않고 문자열에만 줄바꿈을 넣는 이유:
+ *   noteQuote 가 pre-wrap 이라 그대로 문단처럼 보이고,
+ *   편집 모드(contentEditable)의 textContent 저장이 줄바꿈을 그대로 보존한다.
+ *   <p> 로 쪼개면 저장 시 문장들이 도로 붙어버린다.
+ *
+ * 이미 줄바꿈이 있으면(직접 넣었거나 한 번 저장된 것) 손대지 않는다 — 반복 적용해도 안전.
+ * 마침표 뒤 공백 기준이라 "1.5mm" 같은 소수점은 쪼개지지 않는다.
  */
-function noteParagraphs(note) {
+function formatNote(note) {
   const text = String(note || '').trim()
-  if (!text) return []
-  if (/\n/.test(text)) return text.split(/\n+/).map(s => s.trim()).filter(Boolean)
-  return text.replace(/([.!?])\s+/g, '$1\n').split('\n').map(s => s.trim()).filter(Boolean)
+  if (!text) return ''
+  if (/\n/.test(text)) return text
+  return text.replace(/([.!?])\s+/g, '$1\n\n')
 }
 
 function PersonalNote({ patientName, note, v, design, onUpdateNote }) {
-  const paras = noteParagraphs(note)
+  const shown = formatNote(note)
   return (
     <div style={S.note}>
       <div style={S.noteTopRule} />
       <div style={S.noteLabel}>A Personal Note · 드리는 말씀</div>
       {design ? (
-        // 편집 모드에서는 원문 그대로 — 문단으로 쪼개면 저장 시 textContent 가 붙어버린다
         <div
           style={{ ...S.noteQuote, outline: 'none', minHeight: '1em', cursor: 'text' }}
           contentEditable
           suppressContentEditableWarning
           onBlur={(e) => onUpdateNote?.(e.currentTarget.textContent.trim())}
           data-placeholder="맞춤 메시지 입력..."
-        >{note}</div>
+        >{shown}</div>
       ) : (
-        <div style={{ ...S.noteQuote, whiteSpace: 'normal' }}>
-          {paras.map((p, i) => (
-            <p key={i} style={{ margin: i === paras.length - 1 ? 0 : '0 0 clamp(12px, 2.6vw, 18px)' }}>{p}</p>
-          ))}
-        </div>
+        <div style={S.noteQuote}>{shown}</div>
       )}
       <div style={S.noteSign}>— Prime-S</div>
     </div>
