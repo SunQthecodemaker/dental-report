@@ -218,10 +218,19 @@ input, textarea, button, select {
   scroll-snap-align: center;
   scroll-snap-stop: always;
 }
+/* subgrid로 이미지/라벨 행을 맞춰, 두 사진 높이가 달라도
+   Before/After 라벨의 금색 구분선이 같은 높이에 오게 한다 (.v4-grid2 와 동일한 방식) */
 .case-slider-pair {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto;
   gap: 14px;
+}
+.case-slider-pair > figure {
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: span 2;
+  margin: 0;
 }
 @media (max-width: 640px) {
   .case-slider-pair { gap: 8px; }

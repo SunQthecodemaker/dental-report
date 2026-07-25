@@ -626,17 +626,12 @@ function CaseSlider({ pairs }) {
 
 function CasePhoto({ label, url }) {
   if (!url) return null
+  // 라벨은 사진 위에 얹지 않고 아래로 — 사진을 가리지 않도록.
+  // 구내 사진 캡션(figCap)과 같은 금색 구분선 규칙을 따른다.
   return (
     <figure style={{ margin: 0 }}>
-      <div style={{ position: 'relative' }}>
-        <img src={url} alt={label} style={{ width: '100%', display: 'block', borderRadius: 2 }} />
-        <div style={{
-          position: 'absolute', top: 10, left: 10,
-          padding: '3px 10px', background: 'rgba(26,26,24,0.85)',
-          color: '#fff', fontSize: 10, fontWeight: 700, letterSpacing: '0.2em',
-          textTransform: 'uppercase', borderRadius: 2,
-        }}>{label}</div>
-      </div>
+      <img src={url} alt={label} style={{ width: '100%', display: 'block', borderRadius: 2 }} />
+      <figcaption style={S.caseCap}>{label}</figcaption>
     </figure>
   )
 }
@@ -987,6 +982,16 @@ const S = {
   // 치료 계획
   planBlock: { maxWidth: 720, margin: '0 auto', padding: 'clamp(36px, 7vw, 56px) 0', position: 'relative' },
   planBlockDivider: { borderTop: `1px solid ${C.line}` },
+
+  /* 유사 치료 사례 — 사진 아래 Before / After 라벨 */
+  caseCap: {
+    marginTop: 10, paddingTop: 8,
+    borderTop: `1px solid ${C.gold}`,
+    fontFamily: FONTS.sans, fontWeight: 700,
+    fontSize: FS.label, letterSpacing: LS.mediumWide,
+    textTransform: 'uppercase',
+    color: C.gold, textAlign: 'center',
+  },
 
   /* 유사 치료 사례 슬라이더 조작부 */
   sliderNav: {
