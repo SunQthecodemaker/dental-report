@@ -5,6 +5,7 @@
  * - 치료 계획: 각 계획 독립 블록 (목표 추출 불가시 방법·효과만)
  * - 실 입력 데이터만 렌더 (추측 필드 없음)
  */
+import { useRef, useState } from 'react'
 import MarkingOverlay from './MarkingOverlay'
 import { parseMarkingsAttr } from '../lib/markings'
 
@@ -520,12 +521,7 @@ function CasesSection({ num, cases }) {
       {cases.map((c, i) => (
         <div key={c.id || i} style={{ ...S.planBlock, ...(i > 0 ? S.planBlockDivider : {}) }}>
           {c.title && <h3 style={S.planTitle}>{c.title}</h3>}
-          {(c.pairs || []).map((p, pi) => (
-            <div key={pi} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-              <CasePhoto label="Before" url={p.before_url} />
-              <CasePhoto label="After" url={p.after_url} />
-            </div>
-          ))}
+          <CaseSlider pairs={c.pairs || []} />
           {c.description && (
             <div style={{ ...S.planMethodBody, maxWidth: 640, margin: '0 auto', whiteSpace: 'pre-wrap' }}>
               {c.description}
@@ -533,6 +529,97 @@ function CasesSection({ num, cases }) {
           )}
         </div>
       ))}
+    </div>
+  )
+}
+
+/**
+ * 케이스 하나의 전·후 사진 슬라이더.
+ * 한 슬라이드 = 전후 한 쌍 (Before/After 비교가 깨지지 않도록 쌍 단위로 넘긴다).
+ * 쌍이 하나뿐이면 넘길 게 없으므로 화살표·인디케이터 없이 그대로 보여준다.
+ */
+function CaseSlider({ pairs }) {
+  const usable = (pairs || []).filter(p => p?.before_url || p?.after_url)
+  const trackRef = useRef(null)
+  const [idx, setIdx] = useState(0)
+
+  if (usable.length === 0) return null
+
+  const pair = (p, i) => (
+    <div key={i} className="case-slider-slide">
+      <div className="case-slider-pair">
+        <CasePhoto label="Before" url={p.before_url} />
+        <CasePhoto label="After" url={p.after_url} />
+      </div>
+    </div>
+  )
+
+  // 한 쌍뿐이면 슬라이더 껍데기 없이 바로
+  if (usable.length === 1) {
+    return (
+      <div style={{ marginBottom: 20 }}>
+        <div className="case-slider-pair">
+          <CasePhoto label="Before" url={usable[0].before_url} />
+          <CasePhoto label="After" url={usable[0].after_url} />
+        </div>
+      </div>
+    )
+  }
+
+  const goTo = (i) => {
+    const el = trackRef.current
+    if (!el) return
+    const next = Math.max(0, Math.min(usable.length - 1, i))
+    el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' })
+    setIdx(next)
+  }
+
+  // 스와이프로 움직였을 때 인디케이터 동기화
+  const onScroll = () => {
+    const el = trackRef.current
+    if (!el || !el.clientWidth) return
+    const next = Math.round(el.scrollLeft / el.clientWidth)
+    if (next !== idx) setIdx(Math.max(0, Math.min(usable.length - 1, next)))
+  }
+
+  return (
+    <div className="case-slider" style={{ marginBottom: 20 }}>
+      <div className="case-slider-track" ref={trackRef} onScroll={onScroll}>
+        {usable.map(pair)}
+      </div>
+
+      <div className="case-slider-nav" style={S.sliderNav}>
+        <button
+          type="button"
+          onClick={() => goTo(idx - 1)}
+          disabled={idx === 0}
+          aria-label="이전 사진"
+          style={{ ...S.sliderArrow, ...(idx === 0 ? S.sliderArrowOff : {}) }}
+        >‹</button>
+
+        <div style={S.sliderDots}>
+          {usable.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => goTo(i)}
+              aria-label={`${i + 1}번째 사진`}
+              aria-current={i === idx}
+              style={{ ...S.sliderDot, ...(i === idx ? S.sliderDotOn : {}) }}
+            />
+          ))}
+        </div>
+
+        <span style={S.sliderCount}>{idx + 1} / {usable.length}</span>
+
+        <button
+          type="button"
+          onClick={() => goTo(idx + 1)}
+          disabled={idx === usable.length - 1}
+          aria-label="다음 사진"
+          style={{ ...S.sliderArrow, ...(idx === usable.length - 1 ? S.sliderArrowOff : {}) }}
+        >›</button>
+      </div>
     </div>
   )
 }
@@ -900,6 +987,34 @@ const S = {
   // 치료 계획
   planBlock: { maxWidth: 720, margin: '0 auto', padding: 'clamp(36px, 7vw, 56px) 0', position: 'relative' },
   planBlockDivider: { borderTop: `1px solid ${C.line}` },
+
+  /* 유사 치료 사례 슬라이더 조작부 */
+  sliderNav: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14,
+    marginTop: 14,
+  },
+  sliderArrow: {
+    width: 32, height: 32, flex: '0 0 auto',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    padding: 0, lineHeight: 1,
+    border: `1px solid ${C.line}`, borderRadius: '50%',
+    background: C.paper, color: C.ink,
+    fontFamily: FONTS.serif, fontSize: 20,
+    cursor: 'pointer',
+  },
+  sliderArrowOff: { opacity: 0.3, cursor: 'default' },
+  sliderDots: { display: 'flex', alignItems: 'center', gap: 7 },
+  sliderDot: {
+    width: 7, height: 7, padding: 0,
+    border: 'none', borderRadius: '50%',
+    background: C.line, cursor: 'pointer',
+    transition: 'background 0.2s',
+  },
+  sliderDotOn: { background: C.gold },
+  sliderCount: {
+    fontFamily: FONTS.sans, fontSize: 11, letterSpacing: '0.08em',
+    color: C.mid, minWidth: 34, textAlign: 'center',
+  },
   planTag: { display: 'flex', alignItems: 'center', gap: 'clamp(8px, 2vw, 14px)', marginBottom: 14, flexWrap: 'wrap' },
   planRoman: { fontFamily: FONTS.serif, fontStyle: 'italic', fontWeight: 300, fontSize: FS.planRoman, lineHeight: 1, color: C.gold },
   planLabel: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: 'clamp(10px, 2.6vw, 11px)', letterSpacing: LS.mediumWide, color: C.gold, textTransform: 'uppercase', borderBottom: `1px solid ${C.gold}`, paddingBottom: 4 },

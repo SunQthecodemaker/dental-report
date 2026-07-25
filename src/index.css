@@ -198,6 +198,54 @@ input, textarea, button, select {
   .v4-grid3-text { padding: 4px; }
 }
 
+/* ══ 유사 치료 사례 슬라이더 ══ */
+/* 전후 한 쌍이 한 장. 스크롤 스냅으로 터치 스와이프는 브라우저에 맡기고,
+   화살표는 scrollTo 로 같은 트랙을 움직인다. */
+.case-slider { position: relative; }
+.case-slider-track {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.case-slider-track::-webkit-scrollbar { display: none; }
+.case-slider-slide {
+  flex: 0 0 100%;
+  min-width: 0;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+}
+.case-slider-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+@media (max-width: 640px) {
+  .case-slider-pair { gap: 8px; }
+}
+
+/* 스크롤 스냅이 없는 환경에서도 한 장씩만 보이도록 */
+@supports not (scroll-snap-type: x mandatory) {
+  .case-slider-track { scroll-snap-type: none; }
+}
+
+/* 인쇄 시에는 슬라이더를 풀어 전 장을 세로로 (슬라이드 1장만 찍히는 것 방지) */
+@media print {
+  .case-slider-track {
+    display: block;
+    overflow: visible;
+  }
+  .case-slider-slide {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 16px;
+  }
+  .case-slider-nav { display: none !important; }
+}
+
 /* ══ 브로셔 반응형 보정 ══ */
 /* 루트: 가로 overflow 방지 (figFull negative margin이 우측으로 튀어나가는 것 차단) */
 html, body { overflow-x: clip; }

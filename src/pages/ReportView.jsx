@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import BrochurePreview from '../components/BrochurePreview'
 import { migrateToNewFormat } from '../lib/gemini'
 import { loadTreatmentCases, loadStrengthCards } from '../lib/library'
+import { loadCasesFromSheet } from '../lib/caseSheet'
 
 export default function ReportView() {
   const { reportId } = useParams()
@@ -38,11 +39,14 @@ export default function ReportView() {
       const caseIds = Array.isArray(data.selected_case_ids) ? data.selected_case_ids : []
       const strengthIds = Array.isArray(data.selected_strength_ids) ? data.selected_strength_ids : []
       if (caseIds.length || strengthIds.length) {
-        const [allCases, allStrengths] = await Promise.all([
+        // 케이스 정본은 구글시트(Editor 가 고를 때 쓰는 것과 같은 출처).
+        // clinic_settings.treatment_cases 는 시트 도입 전 저장된 진단서 호환용으로만 합친다.
+        const [sheetCases, legacyCases, allStrengths] = await Promise.all([
+          caseIds.length ? loadCasesFromSheet() : Promise.resolve([]),
           caseIds.length ? loadTreatmentCases() : Promise.resolve([]),
           strengthIds.length ? loadStrengthCards() : Promise.resolve([]),
         ])
-        const caseMap = new Map(allCases.map(c => [c.id, c]))
+        const caseMap = new Map([...legacyCases, ...sheetCases].map(c => [c.id, c]))
         const strengthMap = new Map(allStrengths.map(c => [c.id, c]))
         setSelectedCases(caseIds.map(id => caseMap.get(id)).filter(Boolean))
         setSelectedStrengths(strengthIds.map(id => strengthMap.get(id)).filter(Boolean))
