@@ -668,13 +668,13 @@ function StrengthCard({ card }) {
           </div>
         )}
         {card.description && (
-          <div style={{ fontSize: 14, lineHeight: 1.85, color: C.ink2, whiteSpace: 'pre-wrap', marginBottom: card.detail_url ? 10 : 0 }}>
+          <div style={{ fontSize: FS.body, lineHeight: 1.85, color: C.ink2, whiteSpace: 'pre-wrap', marginBottom: card.detail_url ? 10 : 0 }}>
             {card.description}
           </div>
         )}
         {card.detail_url && (
           <a href={card.detail_url} target="_blank" rel="noreferrer"
-             style={{ fontFamily: FONTS.sans, fontSize: 11, letterSpacing: '0.3em', textTransform: 'uppercase', color: C.gold, textDecoration: 'none', borderBottom: `1px solid ${C.gold}`, paddingBottom: 2 }}>
+             style={{ fontFamily: FONTS.sans, fontSize: 12, fontWeight: 600, letterSpacing: '0.2em', textTransform: 'uppercase', color: C.gold, textDecoration: 'none', borderBottom: `1px solid ${C.gold}`, paddingBottom: 3 }}>
             자세히 보기 →
           </a>
         )}
@@ -701,13 +701,12 @@ function TreatmentSection({ num, en, kr, summaryHtml, v }) {
 }
 
 function PlanBlock({ idx, plan }) {
-  const roman = ['I', 'II', 'III', 'IV', 'V'][idx] || String(idx + 1)
-  const label = ['Alpha', 'Beta', 'Gamma', 'Delta', 'Epsilon'][idx] || ''
   return (
     <div style={{ ...S.planBlock, ...(idx > 0 ? S.planBlockDivider : {}) }}>
+      {/* 몇 번째 안인지 한눈에 — 로마숫자 대신 "1안 / 2안" */}
       <div style={S.planTag}>
-        <span style={S.planRoman}>{roman}</span>
-        <span style={S.planLabel}>Plan{label ? ` · ${label}` : ''}</span>
+        <span style={S.planBadge}>{idx + 1}안</span>
+        <span style={S.planTagRule} />
       </div>
       {plan.title && <h3 style={S.planTitle}>{plan.title}</h3>}
 
@@ -897,18 +896,19 @@ const SP = {
   figFullMargin: '0 calc(-1 * clamp(20px, 6vw, 48px)) 24px',
 }
 
+// 모바일에서 읽기 편한 크기 기준. 최솟값(clamp 1번째)이 좁은 화면에서의 실제 크기이므로
+// 본문은 15px 아래로 내려가지 않게 잡았다.
 const FS = {
   // 본문·레이블
-  label: 'clamp(9px, 2.2vw, 10px)',
-  caption: 'clamp(12px, 3vw, 13px)',
-  body: 'clamp(14px, 3.8vw, 15px)',
+  label: 'clamp(10px, 2.6vw, 11px)',
+  caption: 'clamp(13px, 3.4vw, 14px)',
+  body: 'clamp(15px, 4.2vw, 17px)',
   // 강조
-  noteQuote: 'clamp(16px, 5vw, 22px)',
-  planEffect: 'clamp(15px, 4.5vw, 18px)',
+  noteQuote: 'clamp(17px, 4.8vw, 22px)',
+  planEffect: 'clamp(16px, 4.6vw, 19px)',
   // 헤딩
-  planTitle: 'clamp(18px, 5vw, 24px)',
-  secKr: 'clamp(20px, 5vw, 28px)',
-  planRoman: 'clamp(32px, 9vw, 48px)',
+  planTitle: 'clamp(19px, 5.2vw, 25px)',
+  secKr: 'clamp(21px, 5.2vw, 28px)',
   secNum: 'clamp(52px, 15vw, 96px)',
   // Cover 디스플레이
   coverName: 'clamp(40px, 11vw, 68px)',
@@ -927,8 +927,10 @@ const LS = {
 }
 
 const S = {
-  empty: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px', color: '#9ca3af', fontSize: '14px', textAlign: 'center', padding: '40px', fontFamily: FONTS.kor },
-  page: { fontFamily: FONTS.kor, color: C.ink, lineHeight: 1.95, background: C.paper, WebkitFontSmoothing: 'antialiased' },
+  empty: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px', color: '#9ca3af', fontSize: '14px', textAlign: 'center', padding: '40px', fontFamily: FONTS.sans },
+  // 본문 기본은 고딕(Pretendard) — 읽는 글은 전부 여기서 상속받는다.
+  // 명조(FONTS.kor)·영문 세리프(FONTS.serif)는 표지·섹션 제목 등 디자인 요소에만 남긴다.
+  page: { fontFamily: FONTS.sans, color: C.ink, lineHeight: 1.8, background: C.paper, WebkitFontSmoothing: 'antialiased' },
 
   // COVER — 고정 높이(뷰포트 의존 제거) + 반응형 내부
   cover: {
@@ -969,7 +971,7 @@ const S = {
   imgSolo: { maxWidth: '100%', display: 'block', margin: '0 auto', borderRadius: 2 },
   imgPortrait: { maxWidth: '100%', display: 'block', margin: '0 auto', borderRadius: 2 },
   imgGrid: { width: '100%', display: 'block', borderRadius: 2 },
-  figCap: { marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.gold}`, fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.caption, lineHeight: 1.7, color: C.mid, textAlign: 'center', letterSpacing: '0.01em' },
+  figCap: { marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.gold}`, fontFamily: FONTS.sans, fontSize: FS.caption, lineHeight: 1.7, color: C.mid, textAlign: 'center', letterSpacing: '0.01em' },
 
   // 종합 소견
   summary: { maxWidth: 680, margin: '0 auto', paddingTop: 28, borderTop: `1px solid ${C.line}`, position: 'relative' },
@@ -1020,17 +1022,25 @@ const S = {
     fontFamily: FONTS.sans, fontSize: 11, letterSpacing: '0.08em',
     color: C.mid, minWidth: 34, textAlign: 'center',
   },
-  planTag: { display: 'flex', alignItems: 'center', gap: 'clamp(8px, 2vw, 14px)', marginBottom: 14, flexWrap: 'wrap' },
-  planRoman: { fontFamily: FONTS.serif, fontStyle: 'italic', fontWeight: 300, fontSize: FS.planRoman, lineHeight: 1, color: C.gold },
-  planLabel: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: 'clamp(10px, 2.6vw, 11px)', letterSpacing: LS.mediumWide, color: C.gold, textTransform: 'uppercase', borderBottom: `1px solid ${C.gold}`, paddingBottom: 4 },
+  planTag: { display: 'flex', alignItems: 'center', gap: 'clamp(10px, 2.5vw, 16px)', marginBottom: 'clamp(16px, 3.5vw, 22px)' },
+  planBadge: {
+    flex: '0 0 auto',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    padding: 'clamp(7px, 1.8vw, 9px) clamp(12px, 3vw, 16px)',
+    background: C.gold, color: '#fff',
+    fontFamily: FONTS.sans, fontWeight: 700,
+    fontSize: 'clamp(14px, 3.8vw, 16px)', letterSpacing: '0.02em', lineHeight: 1,
+    borderRadius: 2,
+  },
+  planTagRule: { flex: 1, height: 1, background: C.line },
   planTitle: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.planTitle, lineHeight: 1.45, color: C.ink, letterSpacing: '-0.01em', margin: '0 0 clamp(18px, 4vw, 32px)', maxWidth: 640 },
   planMethod: { marginBottom: 24 },
-  planMethodHead: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.body, color: C.gold, marginBottom: 10 },
-  planMethodBody: { fontSize: FS.body, lineHeight: 2.05, color: C.ink2 },
+  planMethodHead: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: FS.caption, letterSpacing: '0.06em', color: C.gold, marginBottom: 10 },
+  planMethodBody: { fontFamily: FONTS.sans, fontSize: FS.body, lineHeight: 1.85, color: C.ink2 },
   planEffect: { padding: 'clamp(16px, 4vw, 24px) clamp(18px, 4vw, 28px)', background: C.dark, color: '#fff', position: 'relative' },
   planEffectHead: { fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.mediumWide, color: C.gold, textTransform: 'uppercase', marginBottom: 12 },
-  planEffectQuote: { fontFamily: FONTS.serif, fontStyle: 'italic', fontWeight: 300, fontSize: FS.planEffect, lineHeight: 1.75, color: 'rgba(255,255,255,0.92)' },
-  planMeta: { marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.line}`, fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.caption, color: C.mid },
+  planEffectQuote: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: FS.planEffect, lineHeight: 1.75, color: 'rgba(255,255,255,0.94)' },
+  planMeta: { marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.line}`, fontFamily: FONTS.sans, fontSize: FS.caption, color: C.mid },
   planMetaKey: { fontFamily: FONTS.sans, fontStyle: 'normal', fontWeight: 500, fontSize: FS.label, letterSpacing: '0.3em', color: C.gold, textTransform: 'uppercase', marginRight: 10 },
   planFallback: { maxWidth: 720, margin: '0 auto', fontSize: FS.body, lineHeight: 2, color: C.ink2 },
 
@@ -1038,15 +1048,15 @@ const S = {
   note: { padding: SP.notePad, background: C.dark, color: '#fff', textAlign: 'center', position: 'relative' },
   noteTopRule: { position: 'absolute', top: 'clamp(20px, 5vw, 40px)', left: '50%', transform: 'translateX(-50%)', width: 1, height: 'clamp(36px, 8vw, 64px)', background: `linear-gradient(to bottom, transparent, ${C.gold})` },
   noteLabel: { fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.looseWide, color: C.gold, textTransform: 'uppercase', marginBottom: 'clamp(20px, 5vw, 36px)' },
-  noteQuote: { fontFamily: FONTS.serif, fontWeight: 300, fontStyle: 'italic', fontSize: FS.noteQuote, lineHeight: 1.8, color: 'rgba(255,255,255,0.92)', maxWidth: 640, margin: '0 auto 24px', whiteSpace: 'pre-wrap' },
+  noteQuote: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: FS.noteQuote, lineHeight: 1.85, color: 'rgba(255,255,255,0.94)', maxWidth: 640, margin: '0 auto 24px', whiteSpace: 'pre-wrap' },
   noteSign: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.caption, color: C.goldL },
 
   // 푸터
   footer: { padding: SP.footerPad, background: '#0e0e0c', color: '#fff', textAlign: 'center' },
   footerBrand: { fontFamily: FONTS.serif, fontSize: FS.footerBrand, letterSpacing: '0.1em', marginBottom: 4 },
   footerTag: { fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.mediumWide, color: C.gold, textTransform: 'uppercase', marginBottom: 20 },
-  footerInfo: { fontFamily: FONTS.kor, fontSize: FS.caption, lineHeight: 2, color: 'rgba(255,255,255,0.45)', marginBottom: 20 },
+  footerInfo: { fontFamily: FONTS.sans, fontSize: FS.caption, lineHeight: 1.9, color: 'rgba(255,255,255,0.5)', marginBottom: 20 },
   cta: { display: 'flex', gap: 8, maxWidth: 420, margin: '0 auto 20px', flexWrap: 'wrap' },
-  ctaBtn: { flex: '1 1 160px', padding: 12, textAlign: 'center', fontFamily: FONTS.kor, fontSize: FS.caption, fontWeight: 700 },
+  ctaBtn: { flex: '1 1 160px', padding: 12, textAlign: 'center', fontFamily: FONTS.sans, fontSize: FS.caption, fontWeight: 700 },
   copy: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.caption, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.15em' },
 }

@@ -111,17 +111,18 @@ input, textarea, button, select {
 .ro-draft em { color: #6b7280; }
 
 /* 브로셔 종합 소견 본문 */
+/* 읽는 글이므로 고딕(Pretendard). 드롭캡만 세리프로 남겨 브로셔 인상을 유지한다. */
 .brochure-summary p {
-  font-family: 'Nanum Myeongjo', 'Noto Serif KR', serif;
-  font-size: 15.5px;
-  line-height: 2.05;
+  font-family: 'Pretendard', -apple-system, sans-serif;
+  font-size: 16.5px;
+  line-height: 1.85;
   color: #3a3a36;
   margin: 0 0 18px;
-  letter-spacing: 0.005em;
+  letter-spacing: -0.003em;
 }
 .brochure-summary p:last-child { margin-bottom: 0; }
 .brochure-summary p:first-of-type {
-  font-size: 16px;
+  font-size: 17px;
   color: #1a1a18;
 }
 .brochure-summary p:first-of-type::first-letter {
@@ -137,13 +138,14 @@ input, textarea, button, select {
 .brochure-summary em { font-style: italic; color: #b5976a; }
 
 @media (max-width: 640px) {
-  .brochure-summary p { font-size: 14.5px; }
+  .brochure-summary p { font-size: 16px; }
+  .brochure-summary p:first-of-type { font-size: 16.5px; }
   .brochure-summary p:first-of-type::first-letter { font-size: 44px; }
 }
 
 /* narrow column(구내 1장 split 또는 3장 asymmetric 텍스트 셀) */
-.brochure-summary-narrow p { font-size: 14px; line-height: 1.95; }
-.brochure-summary-narrow p:first-of-type { font-size: 14.5px; }
+.brochure-summary-narrow p { font-size: 15px; line-height: 1.8; }
+.brochure-summary-narrow p:first-of-type { font-size: 15.5px; }
 .brochure-summary-narrow p:first-of-type::first-letter { font-size: 42px; margin: 6px 8px 0 0; }
 
 /* ══ 구내 사진 + 텍스트 레이아웃 ══ */
