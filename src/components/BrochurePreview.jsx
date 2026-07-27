@@ -89,7 +89,7 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
   const blocks = []
   for (const sec of secBefore) { n++; blocks.push(renderSection(sec, n)) }
   if (hasCases)     { n++; blocks.push(<CasesSection    key={`cases-${n}`}     num={String(n).padStart(2, '0')} cases={cases} tone={toneOf(n)} />) }
-  if (hasStrengths) { n++; blocks.push(<StrengthsSection key={`strengths-${n}`} num={String(n).padStart(2, '0')} strengths={strengths} tone={toneOf(n)} />) }
+  if (hasStrengths) { n++; blocks.push(<StrengthsSection key={`strengths-${n}`} num={String(n).padStart(2, '0')} strengths={strengths} />) }
   for (const sec of secAfter)  { n++; blocks.push(renderSection(sec, n)) }
 
   return (
@@ -728,11 +728,12 @@ function CasePhoto({ label, url }) {
   )
 }
 
-function StrengthsSection({ num, strengths, tone }) {
+// 이 구간도 바탕색 교차(tone)를 쓰지 않고 항상 어두운 판이다
+function StrengthsSection({ num, strengths }) {
   if (!strengths?.length) return null
   return (
-    <div style={{ ...S.sec, ...toneStyle(tone) }}>
-      <SecHead num={num} en="Why Choose Us" kr="프라임에스가 특별한 이유" />
+    <div style={{ ...S.sec, ...S.secDark }}>
+      <SecHead num={num} en="Why Choose Us" kr="프라임에스가 특별한 이유" dark />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 24, maxWidth: 720, margin: '0 auto' }}>
         {strengths.map((s, i) => (
           <StrengthCard key={s.id || i} card={s} />
@@ -1342,16 +1343,18 @@ const S = {
   planBlockDivider: {},
 
   /* 강조 장점 카드 */
-  strCard: { display: 'grid', gridTemplateColumns: 'clamp(120px, 32vw, 168px) 1fr', gap: 'clamp(16px, 4vw, 26px)', alignItems: 'start', paddingTop: 'clamp(22px, 5vw, 32px)', borderTop: '1px solid rgba(181,151,106,0.3)' },
-  strImg: { width: '100%', aspectRatio: '3/4', objectFit: 'cover', borderRadius: 'clamp(30px, 9vw, 60px) clamp(30px, 9vw, 60px) 4px 4px' },
-  strTitle: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: 'clamp(17px, 4.6vw, 21px)', color: C.ink, marginBottom: 10 },
-  strDesc: { fontSize: FS.body, lineHeight: 1.85, color: C.ink2, whiteSpace: 'pre-wrap', marginBottom: 14 },
+  // 사진 : 문구 = 5 : 5, 사진은 정사각형
+  strCard: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'clamp(16px, 4vw, 26px)', alignItems: 'start', paddingTop: 'clamp(22px, 5vw, 32px)', borderTop: '1px solid rgba(181,151,106,0.3)' },
+  strImg: { width: '100%', aspectRatio: '1/1', objectFit: 'cover', borderRadius: 'clamp(24px, 7vw, 48px) clamp(24px, 7vw, 48px) 4px 4px' },
+  // 어두운 판이라 밝은 글씨 — 제목은 베이지, 본문은 연한 흰색
+  strTitle: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: 'clamp(16px, 4.2vw, 19px)', color: C.goldL, lineHeight: 1.45, marginBottom: 10, wordBreak: 'keep-all' },
+  strDesc: { fontSize: FS.body, lineHeight: 1.8, color: 'rgba(255,255,255,0.66)', whiteSpace: 'pre-wrap', marginBottom: 14, wordBreak: 'keep-all' },
   strLink: {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-    padding: 'clamp(8px, 2vw, 11px) clamp(18px, 4.5vw, 26px)',
-    border: `1px solid ${C.gold}`, borderRadius: 999,
+    padding: 'clamp(8px, 2vw, 11px) clamp(16px, 4vw, 24px)',
+    border: `1px solid rgba(181,151,106,0.55)`, borderRadius: 999,
     fontFamily: FONTS.sans, fontSize: 'clamp(12px, 3.2vw, 13px)', fontWeight: 600,
-    letterSpacing: '0.14em', color: C.ink, textDecoration: 'none', background: C.paper,
+    letterSpacing: '0.1em', color: C.goldL, textDecoration: 'none', background: 'transparent',
   },
 
   /* 유사 치료 사례 설명 — 밝은 바탕이므로 어두운 글씨.
