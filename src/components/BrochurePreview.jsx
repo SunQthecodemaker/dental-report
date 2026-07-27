@@ -1151,8 +1151,10 @@ function Footer({ v }) {
 const C = {
   paper: '#ffffff', ivory: '#faf8f3', cream: '#f3efe7',
   gold: '#b5976a', goldL: '#d4b896',
-  // 소제목용 브라운 — 골드보다 진해 흰 바탕에서 또렷하게 읽힌다 (대비 약 6.4:1)
+  // 소제목용 브라운 — 골드보다 진해 밝은 바탕에서 또렷하게 읽힌다
   brown: '#7a5c38',
+  // 케이스 제목용 진한 브라운 (크림 바탕 대비 7.7:1)
+  brownDeep: '#5f4527',
   dark: '#1a1a18', ink: '#1a1a18', ink2: '#3a3a36',
   mid: '#6a6a65', line: '#e8e3d8',
 }
@@ -1437,12 +1439,13 @@ const S = {
     fontFamily: FONTS.sans, fontWeight: 500,
     fontSize: 'clamp(13px, 3.4vw, 15px)', letterSpacing: '0.02em', lineHeight: 1,
   },
-  // 유사 치료 사례 제목 — 가운데 정렬 (치료 계획 제목은 planName 을 따로 쓴다)
-  planTitle: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.planTitle, lineHeight: 1.45, color: C.ink, letterSpacing: '-0.01em', margin: '0 auto clamp(18px, 4vw, 32px)', maxWidth: 640, textAlign: 'center' },
+  // 유사 치료 사례 제목 — 가운데 정렬, 굵은 고딕 + 진한 브라운
+  // (치료 계획 제목은 planName 을 따로 쓴다)
+  planTitle: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: FS.planTitle, lineHeight: 1.45, color: C.brownDeep, letterSpacing: '-0.01em', margin: '0 auto clamp(18px, 4vw, 32px)', maxWidth: 640, textAlign: 'center' },
   // 치료 계획 구간은 어두운 판 (참고 화면)
   secDark: { background: '#1c1a18' },
-  // 어두운 배경이라 제목은 브라운 대신 밝게 — 브라운(#7a5c38)은 검은 바탕에서 2.3:1 로 안 읽힌다
-  planName: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: 'clamp(18px, 4.8vw, 22px)', lineHeight: 1.55, color: '#f5f1ea', letterSpacing: '-0.01em', margin: '0 0 clamp(14px, 3.2vw, 20px)', maxWidth: 640, wordBreak: 'keep-all' },
+  // 1안·2안 소제목 — 밝은 베이지 (검은 판 대비 9.17:1)
+  planName: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: 'clamp(18px, 4.8vw, 22px)', lineHeight: 1.55, color: C.goldL, letterSpacing: '-0.01em', margin: '0 0 clamp(14px, 3.2vw, 20px)', maxWidth: 640, wordBreak: 'keep-all' },
   planMethod: { marginBottom: 24 },
   planMethodHead: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: FS.caption, letterSpacing: '0.06em', color: C.gold, marginBottom: 10 },
   planMethodBody: { fontFamily: FONTS.sans, fontSize: FS.body, lineHeight: 1.9, color: 'rgba(255,255,255,0.62)' },
@@ -1457,13 +1460,14 @@ const S = {
   planFallback: { maxWidth: 720, margin: '0 auto', fontSize: FS.body, lineHeight: 2, color: 'rgba(255,255,255,0.72)' },
 
   // 맞춤 안내
-  // 참고 화면 — 검은 판에 연한 본문, 맺음말은 베이지 세로선 박스. 왼쪽 정렬.
-  note: { padding: SP.notePad, background: '#1c1a18', color: C.paper, textAlign: 'left', position: 'relative' },
+  // 검은 판에 연한 본문, 맺음말은 베이지 강조 박스. 전체 가운데 정렬.
+  note: { padding: SP.notePad, background: '#1c1a18', color: C.paper, textAlign: 'center', position: 'relative' },
   noteHighlight: {
     maxWidth: 640, margin: 'clamp(22px, 5vw, 32px) auto 0',
     padding: 'clamp(16px, 3.6vw, 22px) clamp(18px, 4vw, 26px)',
     background: 'rgba(255,255,255,0.05)',
-    borderLeft: `3px solid ${C.gold}`,
+    // 가운데 정렬이라 한쪽 선 대신 위아래 골드 선으로 감싼다
+    borderTop: `1px solid ${C.gold}`, borderBottom: `1px solid ${C.gold}`,
     fontFamily: FONTS.sans, fontWeight: 700,
     fontSize: FS.body, lineHeight: 1.75,
     color: C.goldL, wordBreak: 'keep-all',
