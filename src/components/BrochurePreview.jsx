@@ -375,7 +375,7 @@ function Cover({ patientName, consultDate, v }) {
       <div style={S.coverDisplay}>Consultation Report</div>
       <div style={S.coverShortRule} />
       <div className="brochure-cover-name" style={S.coverName}>{patientName || '○○○'} 님</div>
-      <div style={S.coverSub}>초진 상담 결과서</div>
+      <div style={S.coverSub}>교정 상담 결과서</div>
       <div style={S.coverDate}>{formatCoverDate(consultDate)}</div>
     </div>
   )
@@ -1224,13 +1224,14 @@ const S = {
      브랜드 → 마름모 헤어라인 → 큰 세리프 두 줄 → 짧은 룰 → 이름 → 안내 → 날짜 */
   cover: {
     background: C.cream,
-    padding: 'clamp(60px, 15vw, 120px) clamp(22px, 7vw, 64px)',
+    // 위아래 여백 축소 (기존 60~120px)
+    padding: 'clamp(38px, 8.5vw, 68px) clamp(22px, 7vw, 64px)',
     textAlign: 'center',
   },
   coverBrand: { fontFamily: FONTS.sans, fontWeight: 600, fontSize: FS.label, letterSpacing: LS.looseWide, textTransform: 'uppercase', color: C.ink2 },
 
   // 장식 — 얇은 선 + 가운데 마름모
-  ornRow: { display: 'flex', alignItems: 'center', gap: 'clamp(10px, 2.5vw, 16px)', maxWidth: 420, margin: 'clamp(18px, 4vw, 28px) auto clamp(44px, 10vw, 78px)' },
+  ornRow: { display: 'flex', alignItems: 'center', gap: 'clamp(10px, 2.5vw, 16px)', maxWidth: 420, margin: 'clamp(14px, 3vw, 20px) auto clamp(28px, 6vw, 46px)' },
   ornLine: { flex: 1, height: 1, background: 'rgba(181,151,106,0.55)' },
   ornDiamond: { flex: '0 0 auto', width: 8, height: 8, background: C.gold, transform: 'rotate(45deg)' },
 
@@ -1240,7 +1241,7 @@ const S = {
     textTransform: 'uppercase', color: C.ink, lineHeight: 1.3,
     whiteSpace: 'nowrap',
   },
-  coverShortRule: { width: 'clamp(40px, 10vw, 72px)', height: 1, background: C.gold, margin: 'clamp(28px, 6.5vw, 48px) auto' },
+  coverShortRule: { width: 'clamp(40px, 10vw, 72px)', height: 1, background: C.gold, margin: 'clamp(20px, 4.5vw, 32px) auto' },
   coverName: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.coverName, letterSpacing: '0.02em', color: C.ink, wordBreak: 'keep-all' },
   coverSub: { marginTop: 'clamp(14px, 3vw, 22px)', fontFamily: FONTS.sans, fontSize: FS.caption, letterSpacing: LS.mediumWide, color: C.mid },
   coverDate: { marginTop: 'clamp(6px, 1.5vw, 10px)', fontFamily: FONTS.serif, fontSize: FS.coverDate, letterSpacing: '0.12em', color: C.gold },
