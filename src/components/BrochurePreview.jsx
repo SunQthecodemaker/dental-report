@@ -406,7 +406,18 @@ const markerBtnStyle = {
   zIndex: 2,
 }
 
+/**
+ * 구간별 소견 표시 방식.
+ * 섹션마다 따로 디자인하기 위한 스위치 — 섹션명을 여기에 추가하면 그 구간만 바뀐다.
+ *   'cards' : 소제목 + 설명 카드 목록
+ *   (없음)  : 리드 문장 + 화살표 항목
+ */
+const SUMMARY_VARIANT = {
+  '구내 소견': 'cards',
+}
+
 function DiagnosticSection({ num, en, kr, figures, summaryHtml, v, design, onUpdateCaption, onOpenMarker, tone }) {
+  const variant = SUMMARY_VARIANT[kr]
   const hasFigs = figures.length > 0
   const hasSummary = !!summaryHtml && summaryHtml.replace(/<[^>]+>/g, '').trim().length > 0
   if (!hasFigs && !hasSummary) return null
@@ -440,10 +451,10 @@ function DiagnosticSection({ num, en, kr, figures, summaryHtml, v, design, onUpd
       ))}
 
       {/* 3단: 구내 그룹 + 텍스트 */}
-      <IntraoralGroup figures={intraorals} summaryHtml={summaryHtml} design={design} onUpdateCaption={onUpdateCaption} onOpenMarker={onOpenMarker} />
+      <IntraoralGroup figures={intraorals} summaryHtml={summaryHtml} design={design} onUpdateCaption={onUpdateCaption} onOpenMarker={onOpenMarker} variant={variant} heading={kr} />
 
       {/* 구내가 텍스트를 소비 안 했고 텍스트만 남아있으면 단독 렌더 */}
-      {!intraoralConsumesText && hasSummary && <Summary html={summaryHtml} />}
+      {!intraoralConsumesText && hasSummary && <Summary html={summaryHtml} variant={variant} heading={kr} />}
     </div>
   )
 }
@@ -467,7 +478,7 @@ function EditableCaption({ caption, src, design, onUpdateCaption, full }) {
 }
 
 // 구내 그룹 + 텍스트 통합 레이아웃
-function IntraoralGroup({ figures, summaryHtml, design, onUpdateCaption, onOpenMarker }) {
+function IntraoralGroup({ figures, summaryHtml, design, onUpdateCaption, onOpenMarker, variant, heading }) {
   const count = figures.length
   const hasSummary = !!summaryHtml && summaryHtml.replace(/<[^>]+>/g, '').trim().length > 0
 
@@ -485,7 +496,7 @@ function IntraoralGroup({ figures, summaryHtml, design, onUpdateCaption, onOpenM
     return (
       <div className="v4-split">
         <div className="v4-split-photo">{img(figures[0], 0)}</div>
-        <div className="v4-split-text"><Summary html={summaryHtml} inSplit /></div>
+        <div className="v4-split-text"><Summary html={summaryHtml} inSplit variant={variant} heading={heading} /></div>
       </div>
     )
   }
@@ -502,7 +513,7 @@ function IntraoralGroup({ figures, summaryHtml, design, onUpdateCaption, onOpenM
     return (
       <>
         <div className="v4-grid2">{figures.map(img)}</div>
-        {hasSummary && <Summary html={summaryHtml} />}
+        {hasSummary && <Summary html={summaryHtml} variant={variant} heading={heading} />}
       </>
     )
   }
@@ -512,7 +523,7 @@ function IntraoralGroup({ figures, summaryHtml, design, onUpdateCaption, onOpenM
     return (
       <div className="v4-grid3">
         {figures.map(img)}
-        <div className="v4-grid3-text"><Summary html={summaryHtml} inSplit /></div>
+        <div className="v4-grid3-text"><Summary html={summaryHtml} inSplit variant={variant} heading={heading} /></div>
       </div>
     )
   }
@@ -531,7 +542,7 @@ function IntraoralGroup({ figures, summaryHtml, design, onUpdateCaption, onOpenM
   return (
     <>
       <div className="v4-grid2">{figures.map(img)}</div>
-      {hasSummary && <Summary html={summaryHtml} />}
+      {hasSummary && <Summary html={summaryHtml} variant={variant} heading={heading} />}
     </>
   )
 }
@@ -867,10 +878,45 @@ function splitSummary(html) {
   return { lead: sentences[0] || '', points: sentences.slice(1) }
 }
 
-function Summary({ html, inSplit }) {
+/** 문장 앞에 붙는 접속어 — 소제목으로 뽑을 때 걷어낸다 */
+const SENTENCE_LEAD_RE = /^(그러나|하지만|또한|아울러|특히|이로 인해|이에 따라|따라서|다만|그리고|한편)\s+/
+
+/**
+ * 문장 하나를 [소제목 + 설명]으로 나눈다.
+ * 한국어 서술문은 대개 "무엇은 ~하다" 구조라 주제어까지를 소제목으로 쓴다.
+ *   "어금니 맞물림은 좌우 모두 정상입니다" → [어금니 맞물림] 좌우 모두 정상입니다
+ * 주제어를 못 찾으면 소제목 없이 설명만 보여 준다.
+ */
+function toSummaryCard(sentence) {
+  const t = sentence.trim().replace(SENTENCE_LEAD_RE, '')
+  const m = t.match(/^(.{2,22}?)(은|는|이|가|에서는|에는|의 경우)\s+/)
+  if (!m) return { title: '', desc: t }
+  return { title: m[1].trim(), desc: t.slice(m[0].length).trim() }
+}
+
+function Summary({ html, inSplit, variant, heading }) {
   const { lead, points } = splitSummary(html)
   if (!lead && points.length === 0) return null
   const wrapStyle = inSplit ? { ...S.summary, maxWidth: '100%', paddingTop: 12, marginTop: 0 } : S.summary
+
+  // 구간별 디자인 — 카드형 (소제목 + 설명)
+  if (variant === 'cards') {
+    const cards = [lead, ...points].filter(Boolean).map(toSummaryCard)
+    return (
+      <div style={wrapStyle}>
+        {heading && <div style={S.cardHead}>{heading}</div>}
+        <div style={S.cardList}>
+          {cards.map((c, i) => (
+            <div key={i} style={S.card}>
+              {c.title && <div style={S.cardTitle}>{c.title}</div>}
+              <div style={S.cardDesc}>{c.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={wrapStyle}>
       {!inSplit && <div style={S.summaryMark} />}
@@ -1125,6 +1171,20 @@ const S = {
     wordBreak: 'keep-all',
   },
   sumArrow: { flex: '0 0 auto', color: C.gold, fontWeight: 400, lineHeight: 1.75 },
+
+  /* 카드형 소견 — 상단 머리띠 + [소제목 / 설명] 카드 목록 */
+  cardHead: {
+    padding: 'clamp(12px, 3vw, 16px)',
+    background: 'rgba(181,151,106,0.16)',
+    textAlign: 'center',
+    fontFamily: FONTS.kor, fontWeight: 700,
+    fontSize: 'clamp(15px, 4vw, 18px)', color: C.ink,
+    marginBottom: 'clamp(10px, 2.4vw, 14px)',
+  },
+  cardList: { display: 'flex', flexDirection: 'column', gap: 'clamp(10px, 2.4vw, 14px)' },
+  card: { background: C.paper, padding: 'clamp(16px, 4vw, 22px) clamp(16px, 4vw, 24px)' },
+  cardTitle: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: 'clamp(15px, 4vw, 17px)', color: C.ink, marginBottom: 'clamp(6px, 1.6vw, 9px)' },
+  cardDesc: { fontSize: FS.body, lineHeight: 1.8, color: C.mid, wordBreak: 'keep-all' },
   summaryDot: { width: 4, height: 4, background: C.gold, borderRadius: '50%' },
 
   // 치료 계획
