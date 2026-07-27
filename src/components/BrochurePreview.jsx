@@ -36,6 +36,7 @@ const EN_LABEL = {
   '구내 소견': 'Intra-oral Findings',
   '치료 계획': 'Treatment Plan',
   '종합 안내': 'Overall Assessment',
+  '종합 소견': 'Overall Assessment',
   // 옛 섹션명 (기존 저장된 진단서 호환용)
   '문제 목록': 'Problem Findings',
   '치성 관계': 'Dental Relationship',
@@ -425,9 +426,14 @@ const SUMMARY_VARIANT = {
   '구내 소견': 'cards',
 }
 
-/** 소견 아래에 가로형 사진 한 장이 들어가는 구간 (저장된 섹션 이름 기준) */
+/**
+ * 소견 아래에 가로형 사진 한 장이 들어가는 구간.
+ * AI 가 이 섹션 제목을 "종합 안내" 로도 "종합 소견" 으로도 쓰기 때문에 둘 다 등록한다.
+ * 하나라도 빠지면 사진이 일반 배치로 흘러가 좌우 분할(사진 45%)로 붙는다.
+ */
 const WIDE_PHOTO_SECTION = {
   '종합 안내': true,
+  '종합 소견': true,
 }
 
 /**
