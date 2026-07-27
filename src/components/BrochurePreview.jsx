@@ -705,6 +705,34 @@ function StrengthCard({ card }) {
   )
 }
 
+/** 이 길이를 넘는 계획 제목만 두 줄로 끊는다 */
+const PLAN_TITLE_WRAP_MIN = 26
+
+/**
+ * 긴 계획 제목을 뜻이 끊기지 않는 자리에서 두 줄로 나눈다.
+ * 그냥 흘려 쓰면 화면 폭에 따라 아무 데서나 줄이 바뀐다.
+ *
+ * 끊는 자리 후보: 쉼표 / 연결어미(하여·하고·하면서·후) / 관형형(통한·위한·이용한) / + 기호
+ * 후보가 여럿이면 가운데에 가장 가까운 곳을 골라 두 줄 길이를 비슷하게 맞춘다.
+ *   "…작은어금니를 포함하여 / 위아래 좌우 …전체 교정"
+ * 후보가 없으면 한 줄로 두고 브라우저가 알아서 흘리게 한다.
+ */
+function splitPlanTitle(title) {
+  const t = String(title || '').trim()
+  if (t.length <= PLAN_TITLE_WRAP_MIN) return [t]
+  const boundary = /(,\s+|\s\+\s|(?:하여|하고|하면서|면서|이용한|통한|위한|후)\s+)/g
+  const cands = []
+  let m
+  while ((m = boundary.exec(t)) !== null) {
+    const end = m.index + m[0].length
+    if (end > 2 && end < t.length - 2) cands.push(end)
+  }
+  if (cands.length === 0) return [t]
+  const mid = t.length / 2
+  const best = cands.reduce((a, b) => (Math.abs(b - mid) < Math.abs(a - mid) ? b : a))
+  return [t.slice(0, best).trim(), t.slice(best).trim()]
+}
+
 // 치료 계획 구간은 바탕색 교차(tone)를 쓰지 않고 항상 어두운 판이다
 function TreatmentSection({ num, en, kr, summaryHtml, v }) {
   const plans = parseTreatmentPlans(summaryHtml)
@@ -745,7 +773,13 @@ function PlanBlock({ idx, plan, isLast }) {
           {plan.duration && <span style={S.planBadge}>교정치료 기간 : {plan.duration}</span>}
         </div>
 
-        {plan.title && <h3 style={S.planName}>{plan.title}</h3>}
+        {plan.title && (
+          <h3 style={S.planName}>
+            {splitPlanTitle(plan.title).map((line, i) => (
+              <span key={i} style={{ display: 'block' }}>{line}</span>
+            ))}
+          </h3>
+        )}
 
         {plan.methodHtml && (
           <div style={S.planMethod}>
