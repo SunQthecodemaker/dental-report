@@ -340,27 +340,34 @@ function parseTreatmentPlans(summaryHtml) {
 
 /* ═════════════ 컴포넌트 ═════════════ */
 
+/** 얇은 선 가운데 마름모 하나 — 표지·구분에 쓰는 장식 */
+function OrnamentRule({ style }) {
+  return (
+    <div style={{ ...S.ornRow, ...style }}>
+      <span style={S.ornLine} />
+      <span style={S.ornDiamond} />
+      <span style={S.ornLine} />
+    </div>
+  )
+}
+
+/** 2026-04-18 → 2026. 04. 18 */
+function formatCoverDate(d) {
+  const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})/)
+  return m ? `${m[1]}. ${m[2]}. ${m[3]}` : (d || '____. __. __')
+}
+
 function Cover({ patientName, consultDate, v }) {
   return (
     <div style={S.cover}>
-      <div style={S.coverBorder} />
-      <div style={S.coverTop}>
-        <span>Prime S Dental</span>
-        <span>2026</span>
-      </div>
-      <div style={S.coverCenter}>
-        <div style={S.coverEyebrow}>Consultation Report</div>
-        <div style={S.coverRule} />
-        <div style={S.coverTitle}>
-          <span style={S.coverFor}>for</span>
-          <span className="brochure-cover-name" style={S.coverName}>{patientName || '○○○'}</span>
-        </div>
-        <div style={S.coverVolume}>VOL. 01 · 초진 상담 결과서</div>
-      </div>
-      <div style={S.coverBottom}>
-        <span>Prime S · 2026</span>
-        <span style={S.coverDate}>{consultDate || '____. __. __'}</span>
-      </div>
+      <div style={S.coverBrand}>Prime S Dental</div>
+      <OrnamentRule />
+      <div style={S.coverDisplay}>Consultation</div>
+      <div style={S.coverDisplay}>Report</div>
+      <div style={S.coverShortRule} />
+      <div className="brochure-cover-name" style={S.coverName}>{patientName || '○○○'} 님</div>
+      <div style={S.coverSub}>초진 상담 결과서</div>
+      <div style={S.coverDate}>{formatCoverDate(consultDate)}</div>
     </div>
   )
 }
@@ -644,10 +651,11 @@ function CaseSlider({ pairs }) {
 function CasePhoto({ label, url }) {
   if (!url) return null
   // 라벨은 사진 위에 얹지 않고 아래로 — 사진을 가리지 않도록.
-  // 구내 사진 캡션(figCap)과 같은 금색 구분선 규칙을 따른다.
+  // 위쪽 모서리를 아치로 — 참고 레퍼런스의 아치형 이미지 처리.
+  // 환자 본인의 구내 사진에는 쓰지 않는다(진단 정보가 잘릴 수 있어서).
   return (
     <figure style={{ margin: 0 }}>
-      <img src={url} alt={label} style={{ width: '100%', display: 'block', borderRadius: 2 }} />
+      <img src={url} alt={label} style={S.caseImg} />
       <figcaption style={S.caseCap}>{label}</figcaption>
     </figure>
   )
@@ -971,11 +979,12 @@ const FS = {
   secKr: 'clamp(23px, 5.8vw, 34px)',
   // 번호는 헤어라인 끝에 붙는 표식 — 제목이 주인공이다
   secNum: 'clamp(15px, 3.8vw, 19px)',
-  // Cover 디스플레이
-  coverName: 'clamp(40px, 11vw, 68px)',
-  coverFor: 'clamp(22px, 5vw, 30px)',
-  coverEyebrow: 'clamp(13px, 3vw, 16px)',
-  coverDate: 'clamp(14px, 4vw, 20px)',
+  // Cover 디스플레이 — "CONSULTATION"(12자)이 좁은 화면에서 넘치지 않도록
+  // 글자크기와 자간을 함께 줄인다
+  coverDisplay: 'clamp(21px, 5.6vw, 42px)',
+  coverDisplayLS: 'clamp(0.1em, 0.5vw, 0.22em)',
+  coverName: 'clamp(30px, 8vw, 52px)',
+  coverDate: 'clamp(14px, 3.6vw, 18px)',
   // Footer
   footerBrand: 'clamp(20px, 5vw, 26px)',
 }
@@ -991,32 +1000,39 @@ const S = {
   empty: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px', color: '#9ca3af', fontSize: '14px', textAlign: 'center', padding: '40px', fontFamily: FONTS.sans },
   // 본문 기본은 고딕(Pretendard) — 읽는 글은 전부 여기서 상속받는다.
   // 명조(FONTS.kor)·영문 세리프(FONTS.serif)는 표지·섹션 제목 등 디자인 요소에만 남긴다.
-  page: { fontFamily: FONTS.sans, color: C.ink, lineHeight: 1.8, background: C.paper, WebkitFontSmoothing: 'antialiased' },
+  // 바탕은 흰색이 아니라 따뜻한 크림 — 카드·사진만 흰색으로 떠오르게 한다
+  page: { fontFamily: FONTS.sans, color: C.ink, lineHeight: 1.8, background: C.cream, WebkitFontSmoothing: 'antialiased' },
 
-  // COVER — 홈페이지 히어로처럼 어두운 판에 골드 악센트
+  /* COVER — 크림 바탕에 가운데 정렬. 위에서부터
+     브랜드 → 마름모 헤어라인 → 큰 세리프 두 줄 → 짧은 룰 → 이름 → 안내 → 날짜 */
   cover: {
-    minHeight: 600, background: C.dark, padding: SP.coverPad,
-    display: 'grid', gridTemplateRows: 'auto 1fr auto', position: 'relative',
+    background: C.cream,
+    padding: 'clamp(60px, 15vw, 120px) clamp(22px, 7vw, 64px)',
+    textAlign: 'center',
   },
-  coverBorder: { position: 'absolute', inset: SP.coverBorderInset, border: '1px solid rgba(181,151,106,0.32)', pointerEvents: 'none' },
-  coverTop: { display: 'flex', justifyContent: 'space-between', padding: SP.coverFramePad, fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.tightWide, color: C.gold, textTransform: 'uppercase', position: 'relative', zIndex: 1 },
-  coverCenter: { display: 'grid', placeItems: 'center', textAlign: 'center', padding: SP.coverCenterPad, position: 'relative', zIndex: 1 },
-  // 홈페이지 .hero-eyebrow 언어 — 골드 대문자에 넓은 자간
-  coverEyebrow: { fontFamily: FONTS.serif, fontWeight: 500, fontSize: FS.coverEyebrow, letterSpacing: LS.looseWide, textTransform: 'uppercase', color: C.gold, marginBottom: 'clamp(18px, 4vw, 30px)' },
-  coverRule: { width: 1, height: 'clamp(32px, 8vw, 56px)', background: C.gold, marginBottom: 'clamp(14px, 3vw, 24px)' },
-  coverTitle: { fontFamily: FONTS.serif, fontWeight: 400, lineHeight: 0.9, color: '#fdfcfa', display: 'flex', flexDirection: 'column', alignItems: 'center', maxWidth: '100%' },
-  coverFor: { fontStyle: 'italic', fontSize: FS.coverFor, color: C.goldL, marginBottom: 'clamp(8px, 2vw, 14px)' },
-  coverName: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.coverName, letterSpacing: '0.04em', wordBreak: 'keep-all', whiteSpace: 'nowrap' },
-  coverVolume: { marginTop: 'clamp(18px, 5vw, 32px)', fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.mediumWide, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' },
-  coverBottom: { display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', gap: 'clamp(6px, 2vw, 16px)', padding: SP.coverFramePad, fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.tightWide, color: C.gold, textTransform: 'uppercase', position: 'relative', zIndex: 1 },
-  coverDate: { fontFamily: FONTS.serif, fontWeight: 300, fontSize: FS.coverDate, color: '#fdfcfa', letterSpacing: 0, textTransform: 'none', whiteSpace: 'nowrap' },
+  coverBrand: { fontFamily: FONTS.sans, fontWeight: 600, fontSize: FS.label, letterSpacing: LS.looseWide, textTransform: 'uppercase', color: C.ink2 },
+
+  // 장식 — 얇은 선 + 가운데 마름모
+  ornRow: { display: 'flex', alignItems: 'center', gap: 'clamp(10px, 2.5vw, 16px)', maxWidth: 420, margin: 'clamp(18px, 4vw, 28px) auto clamp(44px, 10vw, 78px)' },
+  ornLine: { flex: 1, height: 1, background: 'rgba(181,151,106,0.55)' },
+  ornDiamond: { flex: '0 0 auto', width: 8, height: 8, background: C.gold, transform: 'rotate(45deg)' },
+
+  coverDisplay: {
+    fontFamily: FONTS.serif, fontWeight: 400,
+    fontSize: FS.coverDisplay, letterSpacing: FS.coverDisplayLS,
+    textTransform: 'uppercase', color: C.ink, lineHeight: 1.3,
+  },
+  coverShortRule: { width: 'clamp(40px, 10vw, 72px)', height: 1, background: C.gold, margin: 'clamp(28px, 6.5vw, 48px) auto' },
+  coverName: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.coverName, letterSpacing: '0.02em', color: C.ink, wordBreak: 'keep-all' },
+  coverSub: { marginTop: 'clamp(14px, 3vw, 22px)', fontFamily: FONTS.sans, fontSize: FS.caption, letterSpacing: LS.mediumWide, color: C.mid },
+  coverDate: { marginTop: 'clamp(6px, 1.5vw, 10px)', fontFamily: FONTS.serif, fontSize: FS.coverDate, letterSpacing: '0.12em', color: C.gold },
 
   // 공통 섹션
   // 섹션끼리는 구분선 대신 바탕색을 번갈아 써서 띠처럼 나뉘게 한다
   sec: { padding: `${SP.pageY} ${SP.pageX}` },
   secPlan: { padding: `${SP.pageY} ${SP.pageX}` },
-  toneLight: { background: C.paper },
-  toneCream: { background: C.ivory },
+  toneLight: { background: C.ivory },
+  toneCream: { background: C.cream },
 
   secHead: { marginBottom: 'clamp(30px, 6vw, 52px)' },
   secHeadCenter: { maxWidth: 720, margin: '0 auto clamp(30px, 6vw, 52px)' },
@@ -1063,6 +1079,13 @@ const S = {
     position: 'relative',
   },
   planBlockDivider: {},
+
+  /* 유사 치료 사례 — 위쪽 아치, 아래는 살짝만 둥글게 */
+  caseImg: {
+    width: '100%', display: 'block',
+    borderRadius: 'clamp(36px, 11vw, 80px) clamp(36px, 11vw, 80px) 4px 4px',
+    objectFit: 'cover',
+  },
 
   /* 유사 치료 사례 — 사진 아래 Before / After 라벨 */
   caseCap: {
