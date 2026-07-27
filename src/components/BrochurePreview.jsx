@@ -734,13 +734,12 @@ function PlanBlock({ idx, plan, isLast }) {
   return (
     <div style={S.planRow}>
       <div style={S.planRail}>
-        <span style={S.planRailNum}>{String(idx + 1).padStart(2, '0')}</span>
         {!isLast && <span style={S.planRailLine} />}
       </div>
 
       <div style={S.planBody}>
         <span style={S.planBadge}>{idx + 1}안</span>
-        {plan.title && <h3 style={S.planTitle}>{plan.title}</h3>}
+        {plan.title && <h3 style={S.planName}>{plan.title}</h3>}
 
         {plan.methodHtml && (
           <div style={S.planMethod}>
@@ -1225,9 +1224,8 @@ const S = {
   // 계획 목록 — 레퍼런스의 타임라인. 왼쪽 레일(번호+세로선) + 오른쪽 내용
   planList: { maxWidth: 720, margin: '0 auto' },
   planRow: { display: 'flex', gap: 'clamp(14px, 3.5vw, 26px)', alignItems: 'stretch' },
-  // 폰에서 본문 폭을 뺏기지 않도록 레일은 좁게
-  planRail: { flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', width: 'clamp(30px, 8vw, 54px)' },
-  planRailNum: { fontFamily: FONTS.serif, fontWeight: 300, fontSize: 'clamp(26px, 6.8vw, 44px)', lineHeight: 1, color: C.gold },
+  // 번호를 뺀 뒤로는 계획을 잇는 세로선만 남으므로 레일을 좁게 — 본문 폭 확보
+  planRail: { flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', width: 'clamp(10px, 2.5vw, 16px)' },
   planRailLine: { flex: 1, width: 1, background: 'rgba(181,151,106,0.4)', marginTop: 'clamp(10px, 2.5vw, 16px)' },
   planBody: { flex: 1, minWidth: 0, paddingBottom: 'clamp(34px, 8vw, 60px)' },
 
@@ -1307,7 +1305,10 @@ const S = {
     fontSize: 'clamp(13px, 3.4vw, 15px)', letterSpacing: '0.06em', lineHeight: 1,
     marginBottom: 'clamp(14px, 3.2vw, 20px)',
   },
+  // 유사 치료 사례 제목 (치료 계획 제목은 planName 을 따로 쓴다)
   planTitle: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.planTitle, lineHeight: 1.45, color: C.ink, letterSpacing: '-0.01em', margin: '0 0 clamp(18px, 4vw, 32px)', maxWidth: 640 },
+  // 치료 계획 제목 — 본문과 같은 크기의 브라운 굵은 고딕
+  planName: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: FS.body, lineHeight: 1.6, color: C.brown, letterSpacing: '-0.01em', margin: '0 0 clamp(14px, 3.2vw, 22px)', maxWidth: 640, wordBreak: 'keep-all' },
   planMethod: { marginBottom: 24 },
   planMethodHead: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: FS.caption, letterSpacing: '0.06em', color: C.gold, marginBottom: 10 },
   planMethodBody: { fontFamily: FONTS.sans, fontSize: FS.body, lineHeight: 1.85, color: C.ink2 },
