@@ -64,7 +64,7 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
     const en = EN_LABEL[sec.title] || ''
     const tone = toneOf(globalNum)
     if (sec.title === '치료 계획') {
-      return <TreatmentSection key={`t-${globalNum}`} num={num} en={en} kr={sec.title} summaryHtml={sec.summaryHtml} v={v} tone={tone} />
+      return <TreatmentSection key={`t-${globalNum}`} num={num} en={en} kr={sec.title} summaryHtml={sec.summaryHtml} v={v} />
     }
     return (
       <DiagnosticSection
@@ -705,12 +705,13 @@ function StrengthCard({ card }) {
   )
 }
 
-function TreatmentSection({ num, en, kr, summaryHtml, v, tone }) {
+// 치료 계획 구간은 바탕색 교차(tone)를 쓰지 않고 항상 어두운 판이다
+function TreatmentSection({ num, en, kr, summaryHtml, v }) {
   const plans = parseTreatmentPlans(summaryHtml)
   const hasParsed = plans.length > 0
   return (
-    <div style={{ ...S.secPlan, ...toneStyle(tone) }}>
-      <SecHead num={num} en={en} kr={kr} center />
+    <div style={{ ...S.secPlan, ...S.secDark }}>
+      <SecHead num={num} en={en} kr={kr} center dark />
       {hasParsed
         ? <div style={S.planList}>
             {plans.map((p, i) => (
@@ -738,12 +739,16 @@ function PlanBlock({ idx, plan, isLast }) {
       </div>
 
       <div style={S.planBody}>
-        <span style={S.planBadge}>{idx + 1}안</span>
+        {/* 참고 화면처럼 배지를 맨 위에 — 기간이 있으면 배지에 함께 담는다 */}
+        <div style={S.planBadgeRow}>
+          <span style={S.planBadge}>{idx + 1}안</span>
+          {plan.duration && <span style={S.planBadge}>교정치료 기간 : {plan.duration}</span>}
+        </div>
+
         {plan.title && <h3 style={S.planName}>{plan.title}</h3>}
 
         {plan.methodHtml && (
           <div style={S.planMethod}>
-            <div style={S.planMethodHead}>치료 방법</div>
             <div style={S.planMethodBody} dangerouslySetInnerHTML={{ __html: plan.methodHtml }} />
           </div>
         )}
@@ -752,13 +757,6 @@ function PlanBlock({ idx, plan, isLast }) {
           <div style={S.planEffect}>
             <div style={S.planEffectHead}>기대 효과</div>
             <div style={S.planEffectQuote}>&ldquo;{plan.effect}&rdquo;</div>
-          </div>
-        )}
-
-        {plan.duration && (
-          <div style={S.planMeta}>
-            <span style={S.planMetaKey}>기간</span>
-            {plan.duration}
           </div>
         )}
       </div>
@@ -771,17 +769,17 @@ function PlanBlock({ idx, plan, isLast }) {
  * 위에 골드 헤어라인이 가로지르고 오른쪽 끝에 번호가 붙는다.
  * 그 아래 영문 라벨, 그 아래 큰 한글 제목 — 제목이 시선의 주인공.
  */
-function SecHead({ num, en, kr, center }) {
+function SecHead({ num, en, kr, center, dark }) {
   return (
     <div style={{ ...S.secHead, ...(center ? S.secHeadCenter : {}) }}>
       <div style={S.secHeadRow}>
         <span style={S.secNum}>{num}</span>
         <div style={{ minWidth: 0 }}>
           {en && <div style={S.secEn}>{en}</div>}
-          <div style={S.secKr}>{kr}</div>
+          <div style={dark ? { ...S.secKr, color: C.paper } : S.secKr}>{kr}</div>
         </div>
       </div>
-      <div style={S.secUnderRule} />
+      <div style={dark ? { ...S.secUnderRule, background: 'rgba(181,151,106,0.45)' } : S.secUnderRule} />
     </div>
   )
 }
@@ -1226,7 +1224,7 @@ const S = {
   planRow: { display: 'flex', gap: 'clamp(14px, 3.5vw, 26px)', alignItems: 'stretch' },
   // 번호를 뺀 뒤로는 계획을 잇는 세로선만 남으므로 레일을 좁게 — 본문 폭 확보
   planRail: { flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', width: 'clamp(10px, 2.5vw, 16px)' },
-  planRailLine: { flex: 1, width: 1, background: 'rgba(181,151,106,0.4)', marginTop: 'clamp(10px, 2.5vw, 16px)' },
+  planRailLine: { flex: 1, width: 1, background: 'rgba(255,255,255,0.14)', marginTop: 'clamp(10px, 2.5vw, 16px)' },
   planBody: { flex: 1, minWidth: 0, paddingBottom: 'clamp(34px, 8vw, 60px)' },
 
   // 쓰지 않지만 남겨 둠 (유사 사례 카드가 참조)
@@ -1295,31 +1293,34 @@ const S = {
     fontFamily: FONTS.sans, fontSize: 11, letterSpacing: '0.08em',
     color: C.mid, minWidth: 34, textAlign: 'center',
   },
-  // 레퍼런스의 알약형 배지 — 흰 바탕에 얇은 골드 테두리
+  // 참고 화면의 배지 — 어두운 바탕에 얇은 골드 테두리, 각진 모서리
+  planBadgeRow: { display: 'flex', flexWrap: 'wrap', gap: 'clamp(8px, 2vw, 12px)', marginBottom: 'clamp(18px, 4vw, 26px)' },
   planBadge: {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-    padding: 'clamp(7px, 1.8vw, 10px) clamp(18px, 4.5vw, 26px)',
-    background: C.paper, color: C.ink,
-    border: `1px solid ${C.gold}`, borderRadius: 999,
-    fontFamily: FONTS.sans, fontWeight: 700,
-    fontSize: 'clamp(13px, 3.4vw, 15px)', letterSpacing: '0.06em', lineHeight: 1,
-    marginBottom: 'clamp(14px, 3.2vw, 20px)',
+    padding: 'clamp(8px, 2vw, 11px) clamp(14px, 3.6vw, 20px)',
+    background: 'transparent', color: C.goldL,
+    border: `1px solid rgba(181,151,106,0.55)`, borderRadius: 3,
+    fontFamily: FONTS.sans, fontWeight: 500,
+    fontSize: 'clamp(13px, 3.4vw, 15px)', letterSpacing: '0.02em', lineHeight: 1,
   },
   // 유사 치료 사례 제목 (치료 계획 제목은 planName 을 따로 쓴다)
   planTitle: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.planTitle, lineHeight: 1.45, color: C.ink, letterSpacing: '-0.01em', margin: '0 0 clamp(18px, 4vw, 32px)', maxWidth: 640 },
-  // 치료 계획 제목 — 본문과 같은 크기의 브라운 굵은 고딕
-  planName: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: FS.body, lineHeight: 1.6, color: C.brown, letterSpacing: '-0.01em', margin: '0 0 clamp(14px, 3.2vw, 22px)', maxWidth: 640, wordBreak: 'keep-all' },
+  // 치료 계획 구간은 어두운 판 (참고 화면)
+  secDark: { background: '#1c1a18' },
+  // 어두운 배경이라 제목은 브라운 대신 밝게 — 브라운(#7a5c38)은 검은 바탕에서 2.3:1 로 안 읽힌다
+  planName: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: 'clamp(18px, 4.8vw, 22px)', lineHeight: 1.55, color: '#f5f1ea', letterSpacing: '-0.01em', margin: '0 0 clamp(14px, 3.2vw, 20px)', maxWidth: 640, wordBreak: 'keep-all' },
   planMethod: { marginBottom: 24 },
   planMethodHead: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: FS.caption, letterSpacing: '0.06em', color: C.gold, marginBottom: 10 },
-  planMethodBody: { fontFamily: FONTS.sans, fontSize: FS.body, lineHeight: 1.85, color: C.ink2 },
-  // 레퍼런스가 전부 밝은 톤이라 검은 패널 → 흰 바탕 + 왼쪽 골드 선
-  planEffect: { padding: 'clamp(16px, 4vw, 24px) clamp(18px, 4vw, 26px)', background: C.paper, borderLeft: `2px solid ${C.gold}` },
+  planMethodBody: { fontFamily: FONTS.sans, fontSize: FS.body, lineHeight: 1.9, color: 'rgba(255,255,255,0.62)' },
+  // 어두운 판 위에서는 배경 대신 얇은 구분선으로 나눈다 (참고 화면)
+  planEffect: { marginTop: 'clamp(22px, 5vw, 32px)', paddingTop: 'clamp(20px, 4.5vw, 28px)', borderTop: '1px solid rgba(255,255,255,0.12)' },
   // 한글 라벨은 고딕 유지 — 세리프로 두면 명조로 폴백돼 작은 글씨가 흐려진다
-  planEffectHead: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: FS.caption, letterSpacing: '0.18em', color: C.gold, marginBottom: 12 },
-  planEffectQuote: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: FS.planEffect, lineHeight: 1.75, color: C.ink2 },
+  planEffectHead: { fontFamily: FONTS.sans, fontWeight: 500, fontSize: FS.caption, letterSpacing: '0.28em', color: C.gold, marginBottom: 'clamp(12px, 3vw, 18px)' },
+  planEffectQuote: { fontFamily: FONTS.serif, fontStyle: 'italic', fontWeight: 400, fontSize: FS.planEffect, lineHeight: 1.8, color: C.goldL },
   planMeta: { marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.line}`, fontFamily: FONTS.sans, fontSize: FS.caption, color: C.mid },
   planMetaKey: { fontFamily: FONTS.sans, fontStyle: 'normal', fontWeight: 500, fontSize: FS.label, letterSpacing: '0.3em', color: C.gold, textTransform: 'uppercase', marginRight: 10 },
-  planFallback: { maxWidth: 720, margin: '0 auto', fontSize: FS.body, lineHeight: 2, color: C.ink2 },
+  // 계획 파싱 실패 시 원문 그대로 나오는 자리 — 어두운 판이라 밝은 글씨여야 한다
+  planFallback: { maxWidth: 720, margin: '0 auto', fontSize: FS.body, lineHeight: 2, color: 'rgba(255,255,255,0.72)' },
 
   // 맞춤 안내
   note: { padding: SP.notePad, background: C.ivory, color: C.ink, textAlign: 'center', position: 'relative' },
