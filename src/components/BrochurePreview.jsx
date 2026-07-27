@@ -17,6 +17,11 @@ import { parseMarkingsAttr } from '../lib/markings'
  */
 const PLAN_HEADER_RE = /^(?:계획\s*[#[]?\s*\d+\s*\]?\s*(?:안|번)?|[#[]?\s*\d+\s*\]?\s*(?:안|번))\s*[:：]\s*/
 
+/** 섹션 바탕색 — 흰색과 아이보리를 번갈아 써서 스크롤할 때 띠처럼 나뉘어 보이게 한다 */
+function toneStyle(tone) {
+  return tone === 'cream' ? S.toneCream : S.toneLight
+}
+
 const EN_LABEL = {
   // 새 4섹션 구조
   '구외 소견': 'Extra-oral Findings',
@@ -51,16 +56,20 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
   const tIdx = sections.findIndex(s => s.title === '치료 계획')
   const secBefore = tIdx >= 0 ? sections.slice(0, tIdx + 1) : sections
   const secAfter  = tIdx >= 0 ? sections.slice(tIdx + 1) : []
+  // 홀수 섹션은 흰 바탕, 짝수 섹션은 아이보리 — 스크롤하면 띠처럼 번갈아 나온다
+  const toneOf = (i) => (i % 2 === 0 ? 'cream' : 'light')
+
   const renderSection = (sec, globalNum) => {
     const num = String(globalNum).padStart(2, '0')
     const en = EN_LABEL[sec.title] || ''
+    const tone = toneOf(globalNum)
     if (sec.title === '치료 계획') {
-      return <TreatmentSection key={`t-${globalNum}`} num={num} en={en} kr={sec.title} summaryHtml={sec.summaryHtml} v={v} />
+      return <TreatmentSection key={`t-${globalNum}`} num={num} en={en} kr={sec.title} summaryHtml={sec.summaryHtml} v={v} tone={tone} />
     }
     return (
       <DiagnosticSection
         key={`s-${globalNum}`} num={num} en={en} kr={sec.title}
-        figures={sec.figures} summaryHtml={sec.summaryHtml} v={v}
+        figures={sec.figures} summaryHtml={sec.summaryHtml} v={v} tone={tone}
         design={design} onUpdateCaption={onUpdateCaption} onOpenMarker={onOpenMarker}
       />
     )
@@ -69,8 +78,8 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
   let n = 0
   const blocks = []
   for (const sec of secBefore) { n++; blocks.push(renderSection(sec, n)) }
-  if (hasCases)     { n++; blocks.push(<CasesSection    key={`cases-${n}`}     num={String(n).padStart(2, '0')} cases={cases} />) }
-  if (hasStrengths) { n++; blocks.push(<StrengthsSection key={`strengths-${n}`} num={String(n).padStart(2, '0')} strengths={strengths} />) }
+  if (hasCases)     { n++; blocks.push(<CasesSection    key={`cases-${n}`}     num={String(n).padStart(2, '0')} cases={cases} tone={toneOf(n)} />) }
+  if (hasStrengths) { n++; blocks.push(<StrengthsSection key={`strengths-${n}`} num={String(n).padStart(2, '0')} strengths={strengths} tone={toneOf(n)} />) }
   for (const sec of secAfter)  { n++; blocks.push(renderSection(sec, n)) }
 
   return (
@@ -391,7 +400,7 @@ const markerBtnStyle = {
   zIndex: 2,
 }
 
-function DiagnosticSection({ num, en, kr, figures, summaryHtml, v, design, onUpdateCaption, onOpenMarker }) {
+function DiagnosticSection({ num, en, kr, figures, summaryHtml, v, design, onUpdateCaption, onOpenMarker, tone }) {
   const hasFigs = figures.length > 0
   const hasSummary = !!summaryHtml && summaryHtml.replace(/<[^>]+>/g, '').trim().length > 0
   if (!hasFigs && !hasSummary) return null
@@ -405,7 +414,7 @@ function DiagnosticSection({ num, en, kr, figures, summaryHtml, v, design, onUpd
   const intraoralConsumesText = intraorals.length > 0 && hasSummary
 
   return (
-    <div style={S.sec}>
+    <div style={{ ...S.sec, ...toneStyle(tone) }}>
       <SecHead num={num} en={en} kr={kr} />
 
       {/* 1단: 파노라마 풀폭 */}
@@ -521,10 +530,10 @@ function IntraoralGroup({ figures, summaryHtml, design, onUpdateCaption, onOpenM
   )
 }
 
-function CasesSection({ num, cases }) {
+function CasesSection({ num, cases, tone }) {
   if (!cases?.length) return null
   return (
-    <div style={S.secPlan}>
+    <div style={{ ...S.secPlan, ...toneStyle(tone) }}>
       <SecHead num={num} en="Similar Cases" kr="유사 치료 사례" center />
       {cases.map((c, i) => (
         <div key={c.id || i} style={{ ...S.planBlock, ...(i > 0 ? S.planBlockDivider : {}) }}>
@@ -644,10 +653,10 @@ function CasePhoto({ label, url }) {
   )
 }
 
-function StrengthsSection({ num, strengths }) {
+function StrengthsSection({ num, strengths, tone }) {
   if (!strengths?.length) return null
   return (
-    <div style={S.sec}>
+    <div style={{ ...S.sec, ...toneStyle(tone) }}>
       <SecHead num={num} en="Why Choose Us" kr="프라임에스가 특별한 이유" />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 24, maxWidth: 720, margin: '0 auto' }}>
         {strengths.map((s, i) => (
@@ -691,11 +700,11 @@ function StrengthCard({ card }) {
   )
 }
 
-function TreatmentSection({ num, en, kr, summaryHtml, v }) {
+function TreatmentSection({ num, en, kr, summaryHtml, v, tone }) {
   const plans = parseTreatmentPlans(summaryHtml)
   const hasParsed = plans.length > 0
   return (
-    <div style={S.secPlan}>
+    <div style={{ ...S.secPlan, ...toneStyle(tone) }}>
       <SecHead num={num} en={en} kr={kr} center />
       {hasParsed
         ? plans.map((p, i) => <PlanBlock key={i} idx={i} plan={p} />)
@@ -742,15 +751,20 @@ function PlanBlock({ idx, plan }) {
   )
 }
 
+/**
+ * 섹션 머리말 — 홈페이지의 label + title 적층 방식.
+ * 위에 골드 헤어라인이 가로지르고 오른쪽 끝에 번호가 붙는다.
+ * 그 아래 영문 라벨, 그 아래 큰 한글 제목 — 제목이 시선의 주인공.
+ */
 function SecHead({ num, en, kr, center }) {
   return (
     <div style={{ ...S.secHead, ...(center ? S.secHeadCenter : {}) }}>
-      {/* 제목이 왼쪽, 번호가 오른쪽 */}
-      <div style={S.secLabels}>
-        {en && <div style={S.secEn}>{en}</div>}
-        <div style={S.secKr}>{kr}</div>
+      <div style={S.secRuleRow}>
+        <span style={S.secRule} />
+        <span style={S.secNum}>{num}</span>
       </div>
-      <span style={S.secNum}>{num}</span>
+      {en && <div style={S.secEn}>{en}</div>}
+      <div style={S.secKr}>{kr}</div>
     </div>
   )
 }
@@ -955,8 +969,8 @@ const FS = {
   planTitle: 'clamp(19px, 5.2vw, 25px)',
   secEn: 'clamp(11px, 2.9vw, 14px)',
   secKr: 'clamp(23px, 5.8vw, 34px)',
-  // 번호는 제목을 눌러선 안 되는 악센트 — 기존 96px 은 과했다
-  secNum: 'clamp(30px, 8vw, 46px)',
+  // 번호는 헤어라인 끝에 붙는 표식 — 제목이 주인공이다
+  secNum: 'clamp(15px, 3.8vw, 19px)',
   // Cover 디스플레이
   coverName: 'clamp(40px, 11vw, 68px)',
   coverFor: 'clamp(22px, 5vw, 30px)',
@@ -979,34 +993,37 @@ const S = {
   // 명조(FONTS.kor)·영문 세리프(FONTS.serif)는 표지·섹션 제목 등 디자인 요소에만 남긴다.
   page: { fontFamily: FONTS.sans, color: C.ink, lineHeight: 1.8, background: C.paper, WebkitFontSmoothing: 'antialiased' },
 
-  // COVER — 고정 높이(뷰포트 의존 제거) + 반응형 내부
+  // COVER — 홈페이지 히어로처럼 어두운 판에 골드 악센트
   cover: {
-    minHeight: 560, background: C.ivory, padding: SP.coverPad,
+    minHeight: 600, background: C.dark, padding: SP.coverPad,
     display: 'grid', gridTemplateRows: 'auto 1fr auto', position: 'relative',
   },
-  coverBorder: { position: 'absolute', inset: SP.coverBorderInset, border: `1px solid ${C.line}`, pointerEvents: 'none' },
+  coverBorder: { position: 'absolute', inset: SP.coverBorderInset, border: '1px solid rgba(181,151,106,0.32)', pointerEvents: 'none' },
   coverTop: { display: 'flex', justifyContent: 'space-between', padding: SP.coverFramePad, fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.tightWide, color: C.gold, textTransform: 'uppercase', position: 'relative', zIndex: 1 },
   coverCenter: { display: 'grid', placeItems: 'center', textAlign: 'center', padding: SP.coverCenterPad, position: 'relative', zIndex: 1 },
   // 홈페이지 .hero-eyebrow 언어 — 골드 대문자에 넓은 자간
   coverEyebrow: { fontFamily: FONTS.serif, fontWeight: 500, fontSize: FS.coverEyebrow, letterSpacing: LS.looseWide, textTransform: 'uppercase', color: C.gold, marginBottom: 'clamp(18px, 4vw, 30px)' },
   coverRule: { width: 1, height: 'clamp(32px, 8vw, 56px)', background: C.gold, marginBottom: 'clamp(14px, 3vw, 24px)' },
-  coverTitle: { fontFamily: FONTS.serif, fontWeight: 400, lineHeight: 0.9, color: C.dark, display: 'flex', flexDirection: 'column', alignItems: 'center', maxWidth: '100%' },
-  coverFor: { fontStyle: 'italic', fontSize: FS.coverFor, color: C.gold, marginBottom: 'clamp(8px, 2vw, 14px)' },
+  coverTitle: { fontFamily: FONTS.serif, fontWeight: 400, lineHeight: 0.9, color: '#fdfcfa', display: 'flex', flexDirection: 'column', alignItems: 'center', maxWidth: '100%' },
+  coverFor: { fontStyle: 'italic', fontSize: FS.coverFor, color: C.goldL, marginBottom: 'clamp(8px, 2vw, 14px)' },
   coverName: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.coverName, letterSpacing: '0.04em', wordBreak: 'keep-all', whiteSpace: 'nowrap' },
-  coverVolume: { marginTop: 'clamp(18px, 5vw, 32px)', fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.mediumWide, color: C.mid, textTransform: 'uppercase' },
+  coverVolume: { marginTop: 'clamp(18px, 5vw, 32px)', fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.mediumWide, color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' },
   coverBottom: { display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', gap: 'clamp(6px, 2vw, 16px)', padding: SP.coverFramePad, fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.tightWide, color: C.gold, textTransform: 'uppercase', position: 'relative', zIndex: 1 },
-  coverDate: { fontFamily: FONTS.serif, fontWeight: 300, fontSize: FS.coverDate, color: C.dark, letterSpacing: 0, textTransform: 'none', whiteSpace: 'nowrap' },
+  coverDate: { fontFamily: FONTS.serif, fontWeight: 300, fontSize: FS.coverDate, color: '#fdfcfa', letterSpacing: 0, textTransform: 'none', whiteSpace: 'nowrap' },
 
   // 공통 섹션
-  sec: { padding: `${SP.pageY} ${SP.pageX}`, borderBottom: `1px solid ${C.line}` },
-  secPlan: { padding: `${SP.pageY} ${SP.pageX}`, background: C.ivory, borderBottom: `1px solid ${C.line}` },
+  // 섹션끼리는 구분선 대신 바탕색을 번갈아 써서 띠처럼 나뉘게 한다
+  sec: { padding: `${SP.pageY} ${SP.pageX}` },
+  secPlan: { padding: `${SP.pageY} ${SP.pageX}` },
+  toneLight: { background: C.paper },
+  toneCream: { background: C.ivory },
 
-  // 밑줄을 골드 톤으로 — 홈페이지가 구분선에 골드를 쓰는 것과 맞춤
-  secHead: { display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 'clamp(12px, 3vw, 32px)', paddingBottom: 'clamp(18px, 4vw, 28px)', marginBottom: 'clamp(28px, 5.5vw, 44px)', borderBottom: '1px solid rgba(181,151,106,0.35)' },
-  secHeadCenter: { maxWidth: 720, margin: '0 auto clamp(24px, 5vw, 40px)' },
-  // marginLeft:auto — 좁은 화면에서 번호가 아랫줄로 접혀도 오른쪽에 붙어 있게
-  secNum: { fontFamily: FONTS.serif, fontWeight: 300, fontStyle: 'italic', fontSize: FS.secNum, lineHeight: 0.82, color: C.gold, letterSpacing: '-0.04em', marginLeft: 'auto' },
-  secLabels: { textAlign: 'left', flex: 1, minWidth: 0 },
+  secHead: { marginBottom: 'clamp(30px, 6vw, 52px)' },
+  secHeadCenter: { maxWidth: 720, margin: '0 auto clamp(30px, 6vw, 52px)' },
+  // 골드 헤어라인이 가로지르고 오른쪽 끝에 번호
+  secRuleRow: { display: 'flex', alignItems: 'center', gap: 'clamp(12px, 3vw, 18px)', marginBottom: 'clamp(18px, 4vw, 30px)' },
+  secRule: { flex: 1, height: 1, background: 'rgba(181,151,106,0.5)' },
+  secNum: { flex: '0 0 auto', fontFamily: FONTS.serif, fontWeight: 400, fontSize: FS.secNum, lineHeight: 1, color: C.gold, letterSpacing: '0.1em' },
   // 홈페이지 .section-label 과 같은 언어 — 이탤릭 없이 골드 대문자 + 넓은 자간
   secEn: {
     fontFamily: FONTS.serif, fontWeight: 500, fontSize: FS.secEn,
@@ -1038,8 +1055,14 @@ const S = {
   summaryDot: { width: 4, height: 4, background: C.gold, borderRadius: '50%' },
 
   // 치료 계획
-  planBlock: { maxWidth: 720, margin: '0 auto', padding: 'clamp(36px, 7vw, 56px) 0', position: 'relative' },
-  planBlockDivider: { borderTop: `1px solid ${C.line}` },
+  // 각 안을 카드로 — 어디서 끊기는지 한눈에 보이게
+  planBlock: {
+    maxWidth: 720, margin: '0 auto clamp(20px, 4vw, 32px)',
+    padding: 'clamp(26px, 5.5vw, 44px) clamp(20px, 4.5vw, 40px)',
+    background: C.paper, border: '1px solid rgba(181,151,106,0.28)',
+    position: 'relative',
+  },
+  planBlockDivider: {},
 
   /* 유사 치료 사례 — 사진 아래 Before / After 라벨 */
   caseCap: {
