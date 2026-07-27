@@ -674,32 +674,19 @@ function StrengthsSection({ num, strengths, tone }) {
   )
 }
 
+/** 강조 장점 — 레퍼런스처럼 아치형 사진 + 얇은 구분선 + 알약 버튼 */
 function StrengthCard({ card }) {
   return (
-    <div style={{
-      display: 'grid', gridTemplateColumns: card.photo_url ? '160px 1fr' : '1fr',
-      gap: 18, alignItems: 'start',
-      padding: '18px 0', borderTop: `1px solid ${C.line}`,
-    }}>
+    <div style={S.strCard}>
       {card.photo_url && (
-        <img src={card.photo_url} alt={card.title || ''}
-             style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover', borderRadius: 2 }} />
+        <img src={card.photo_url} alt={card.title || ''} style={S.strImg} />
       )}
-      <div>
-        {card.title && (
-          <div style={{ fontFamily: FONTS.kor, fontWeight: 700, fontSize: 17, color: C.ink, marginBottom: 8 }}>
-            {card.title}
-          </div>
-        )}
-        {card.description && (
-          <div style={{ fontSize: FS.body, lineHeight: 1.85, color: C.ink2, whiteSpace: 'pre-wrap', marginBottom: card.detail_url ? 10 : 0 }}>
-            {card.description}
-          </div>
-        )}
+      <div style={{ minWidth: 0 }}>
+        {card.title && <div style={S.strTitle}>{card.title}</div>}
+        {card.description && <div style={S.strDesc}>{card.description}</div>}
         {card.detail_url && (
-          <a href={card.detail_url} target="_blank" rel="noreferrer"
-             style={{ fontFamily: FONTS.sans, fontSize: 12, fontWeight: 600, letterSpacing: '0.2em', textTransform: 'uppercase', color: C.gold, textDecoration: 'none', borderBottom: `1px solid ${C.gold}`, paddingBottom: 3 }}>
-            자세히 보기 →
+          <a href={card.detail_url} target="_blank" rel="noreferrer" style={S.strLink}>
+            자세히 보기
           </a>
         )}
       </div>
@@ -714,7 +701,11 @@ function TreatmentSection({ num, en, kr, summaryHtml, v, tone }) {
     <div style={{ ...S.secPlan, ...toneStyle(tone) }}>
       <SecHead num={num} en={en} kr={kr} center />
       {hasParsed
-        ? plans.map((p, i) => <PlanBlock key={i} idx={i} plan={p} />)
+        ? <div style={S.planList}>
+            {plans.map((p, i) => (
+              <PlanBlock key={i} idx={i} plan={p} isLast={i === plans.length - 1} />
+            ))}
+          </div>
         : summaryHtml && (
           <div style={S.planFallback}>
             <div dangerouslySetInnerHTML={{ __html: summaryHtml }} />
@@ -724,36 +715,43 @@ function TreatmentSection({ num, en, kr, summaryHtml, v, tone }) {
   )
 }
 
-function PlanBlock({ idx, plan }) {
+/**
+ * 계획 한 건 — 레퍼런스(인테리어 프로세스)의 타임라인 배치.
+ * 왼쪽에 큰 가는 번호와 세로 연결선, 오른쪽에 내용.
+ */
+function PlanBlock({ idx, plan, isLast }) {
   return (
-    <div style={{ ...S.planBlock, ...(idx > 0 ? S.planBlockDivider : {}) }}>
-      {/* 몇 번째 안인지 한눈에 — 로마숫자 대신 "1안 / 2안" */}
-      <div style={S.planTag}>
-        <span style={S.planBadge}>{idx + 1}안</span>
-        <span style={S.planTagRule} />
+    <div style={S.planRow}>
+      <div style={S.planRail}>
+        <span style={S.planRailNum}>{String(idx + 1).padStart(2, '0')}</span>
+        {!isLast && <span style={S.planRailLine} />}
       </div>
-      {plan.title && <h3 style={S.planTitle}>{plan.title}</h3>}
 
-      {plan.methodHtml && (
-        <div style={S.planMethod}>
-          <div style={S.planMethodHead}>치료 방법</div>
-          <div style={S.planMethodBody} dangerouslySetInnerHTML={{ __html: plan.methodHtml }} />
-        </div>
-      )}
+      <div style={S.planBody}>
+        <span style={S.planBadge}>{idx + 1}안</span>
+        {plan.title && <h3 style={S.planTitle}>{plan.title}</h3>}
 
-      {plan.effect && (
-        <div style={S.planEffect}>
-          <div style={S.planEffectHead}>기대 효과</div>
-          <div style={S.planEffectQuote}>&ldquo;{plan.effect}&rdquo;</div>
-        </div>
-      )}
+        {plan.methodHtml && (
+          <div style={S.planMethod}>
+            <div style={S.planMethodHead}>치료 방법</div>
+            <div style={S.planMethodBody} dangerouslySetInnerHTML={{ __html: plan.methodHtml }} />
+          </div>
+        )}
 
-      {plan.duration && (
-        <div style={S.planMeta}>
-          <span style={S.planMetaKey}>기간</span>
-          {plan.duration}
-        </div>
-      )}
+        {plan.effect && (
+          <div style={S.planEffect}>
+            <div style={S.planEffectHead}>기대 효과</div>
+            <div style={S.planEffectQuote}>&ldquo;{plan.effect}&rdquo;</div>
+          </div>
+        )}
+
+        {plan.duration && (
+          <div style={S.planMeta}>
+            <span style={S.planMetaKey}>기간</span>
+            {plan.duration}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -766,12 +764,14 @@ function PlanBlock({ idx, plan }) {
 function SecHead({ num, en, kr, center }) {
   return (
     <div style={{ ...S.secHead, ...(center ? S.secHeadCenter : {}) }}>
-      <div style={S.secRuleRow}>
-        <span style={S.secRule} />
+      <div style={S.secHeadRow}>
         <span style={S.secNum}>{num}</span>
+        <div style={{ minWidth: 0 }}>
+          {en && <div style={S.secEn}>{en}</div>}
+          <div style={S.secKr}>{kr}</div>
+        </div>
       </div>
-      {en && <div style={S.secEn}>{en}</div>}
-      <div style={S.secKr}>{kr}</div>
+      <div style={S.secUnderRule} />
     </div>
   )
 }
@@ -976,8 +976,8 @@ const FS = {
   planTitle: 'clamp(19px, 5.2vw, 25px)',
   secEn: 'clamp(11px, 2.9vw, 14px)',
   secKr: 'clamp(23px, 5.8vw, 34px)',
-  // 번호는 헤어라인 끝에 붙는 표식 — 제목이 주인공이다
-  secNum: 'clamp(15px, 3.8vw, 19px)',
+  // 레퍼런스의 큰 가는 번호
+  secNum: 'clamp(38px, 10vw, 64px)',
   // Cover 디스플레이 — "CONSULTATION REPORT" 19자를 한 줄로 유지해야 하므로
   // 좁은 화면(320px)에서도 넘치지 않게 크기·자간을 보수적으로 잡는다
   coverDisplay: 'clamp(15px, 4vw, 26px)',
@@ -1034,12 +1034,12 @@ const S = {
   toneLight: { background: C.ivory },
   toneCream: { background: C.cream },
 
+  // 레퍼런스(인테리어 프로세스)처럼 큰 가는 번호가 제목 왼쪽에 서고, 아래에 헤어라인
   secHead: { marginBottom: 'clamp(30px, 6vw, 52px)' },
   secHeadCenter: { maxWidth: 720, margin: '0 auto clamp(30px, 6vw, 52px)' },
-  // 골드 헤어라인이 가로지르고 오른쪽 끝에 번호
-  secRuleRow: { display: 'flex', alignItems: 'center', gap: 'clamp(12px, 3vw, 18px)', marginBottom: 'clamp(18px, 4vw, 30px)' },
-  secRule: { flex: 1, height: 1, background: 'rgba(181,151,106,0.5)' },
-  secNum: { flex: '0 0 auto', fontFamily: FONTS.serif, fontWeight: 400, fontSize: FS.secNum, lineHeight: 1, color: C.gold, letterSpacing: '0.1em' },
+  secHeadRow: { display: 'flex', alignItems: 'baseline', gap: 'clamp(14px, 3.5vw, 26px)' },
+  secNum: { flex: '0 0 auto', fontFamily: FONTS.serif, fontWeight: 300, fontSize: FS.secNum, lineHeight: 1, color: C.gold, letterSpacing: '0.02em' },
+  secUnderRule: { height: 1, background: 'rgba(181,151,106,0.4)', marginTop: 'clamp(18px, 4vw, 28px)' },
   // 홈페이지 .section-label 과 같은 언어 — 이탤릭 없이 골드 대문자 + 넓은 자간
   secEn: {
     fontFamily: FONTS.serif, fontWeight: 500, fontSize: FS.secEn,
@@ -1071,7 +1071,15 @@ const S = {
   summaryDot: { width: 4, height: 4, background: C.gold, borderRadius: '50%' },
 
   // 치료 계획
-  // 각 안을 카드로 — 어디서 끊기는지 한눈에 보이게
+  // 계획 목록 — 레퍼런스의 타임라인. 왼쪽 레일(번호+세로선) + 오른쪽 내용
+  planList: { maxWidth: 720, margin: '0 auto' },
+  planRow: { display: 'flex', gap: 'clamp(14px, 3.5vw, 26px)', alignItems: 'stretch' },
+  planRail: { flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', width: 'clamp(38px, 10vw, 62px)' },
+  planRailNum: { fontFamily: FONTS.serif, fontWeight: 300, fontSize: 'clamp(30px, 8vw, 50px)', lineHeight: 1, color: C.gold },
+  planRailLine: { flex: 1, width: 1, background: 'rgba(181,151,106,0.4)', marginTop: 'clamp(10px, 2.5vw, 16px)' },
+  planBody: { flex: 1, minWidth: 0, paddingBottom: 'clamp(34px, 8vw, 60px)' },
+
+  // 쓰지 않지만 남겨 둠 (유사 사례 카드가 참조)
   planBlock: {
     maxWidth: 720, margin: '0 auto clamp(20px, 4vw, 32px)',
     padding: 'clamp(26px, 5.5vw, 44px) clamp(20px, 4.5vw, 40px)',
@@ -1079,6 +1087,19 @@ const S = {
     position: 'relative',
   },
   planBlockDivider: {},
+
+  /* 강조 장점 카드 */
+  strCard: { display: 'grid', gridTemplateColumns: 'clamp(120px, 32vw, 168px) 1fr', gap: 'clamp(16px, 4vw, 26px)', alignItems: 'start', paddingTop: 'clamp(22px, 5vw, 32px)', borderTop: '1px solid rgba(181,151,106,0.3)' },
+  strImg: { width: '100%', aspectRatio: '3/4', objectFit: 'cover', borderRadius: 'clamp(30px, 9vw, 60px) clamp(30px, 9vw, 60px) 4px 4px' },
+  strTitle: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: 'clamp(17px, 4.6vw, 21px)', color: C.ink, marginBottom: 10 },
+  strDesc: { fontSize: FS.body, lineHeight: 1.85, color: C.ink2, whiteSpace: 'pre-wrap', marginBottom: 14 },
+  strLink: {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    padding: 'clamp(8px, 2vw, 11px) clamp(18px, 4.5vw, 26px)',
+    border: `1px solid ${C.gold}`, borderRadius: 999,
+    fontFamily: FONTS.sans, fontSize: 'clamp(12px, 3.2vw, 13px)', fontWeight: 600,
+    letterSpacing: '0.14em', color: C.ink, textDecoration: 'none', background: C.paper,
+  },
 
   /* 유사 치료 사례 — 위쪽 아치, 아래는 살짝만 둥글게 */
   caseImg: {
@@ -1124,36 +1145,36 @@ const S = {
     fontFamily: FONTS.sans, fontSize: 11, letterSpacing: '0.08em',
     color: C.mid, minWidth: 34, textAlign: 'center',
   },
-  planTag: { display: 'flex', alignItems: 'center', gap: 'clamp(10px, 2.5vw, 16px)', marginBottom: 'clamp(16px, 3.5vw, 22px)' },
+  // 레퍼런스의 알약형 배지 — 흰 바탕에 얇은 골드 테두리
   planBadge: {
-    flex: '0 0 auto',
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-    padding: 'clamp(7px, 1.8vw, 9px) clamp(12px, 3vw, 16px)',
-    background: C.gold, color: '#fff',
+    padding: 'clamp(7px, 1.8vw, 10px) clamp(18px, 4.5vw, 26px)',
+    background: C.paper, color: C.ink,
+    border: `1px solid ${C.gold}`, borderRadius: 999,
     fontFamily: FONTS.sans, fontWeight: 700,
-    fontSize: 'clamp(14px, 3.8vw, 16px)', letterSpacing: '0.02em', lineHeight: 1,
-    borderRadius: 2,
+    fontSize: 'clamp(13px, 3.4vw, 15px)', letterSpacing: '0.06em', lineHeight: 1,
+    marginBottom: 'clamp(14px, 3.2vw, 20px)',
   },
-  planTagRule: { flex: 1, height: 1, background: C.line },
   planTitle: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.planTitle, lineHeight: 1.45, color: C.ink, letterSpacing: '-0.01em', margin: '0 0 clamp(18px, 4vw, 32px)', maxWidth: 640 },
   planMethod: { marginBottom: 24 },
   planMethodHead: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: FS.caption, letterSpacing: '0.06em', color: C.gold, marginBottom: 10 },
   planMethodBody: { fontFamily: FONTS.sans, fontSize: FS.body, lineHeight: 1.85, color: C.ink2 },
-  planEffect: { padding: 'clamp(16px, 4vw, 24px) clamp(18px, 4vw, 28px)', background: C.dark, color: '#fff', position: 'relative' },
+  // 레퍼런스가 전부 밝은 톤이라 검은 패널 → 흰 바탕 + 왼쪽 골드 선
+  planEffect: { padding: 'clamp(16px, 4vw, 24px) clamp(18px, 4vw, 26px)', background: C.paper, borderLeft: `2px solid ${C.gold}` },
   // 한글 라벨은 고딕 유지 — 세리프로 두면 명조로 폴백돼 작은 글씨가 흐려진다
   planEffectHead: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: FS.caption, letterSpacing: '0.18em', color: C.gold, marginBottom: 12 },
-  planEffectQuote: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: FS.planEffect, lineHeight: 1.75, color: 'rgba(255,255,255,0.94)' },
+  planEffectQuote: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: FS.planEffect, lineHeight: 1.75, color: C.ink2 },
   planMeta: { marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.line}`, fontFamily: FONTS.sans, fontSize: FS.caption, color: C.mid },
   planMetaKey: { fontFamily: FONTS.sans, fontStyle: 'normal', fontWeight: 500, fontSize: FS.label, letterSpacing: '0.3em', color: C.gold, textTransform: 'uppercase', marginRight: 10 },
   planFallback: { maxWidth: 720, margin: '0 auto', fontSize: FS.body, lineHeight: 2, color: C.ink2 },
 
   // 맞춤 안내
-  note: { padding: SP.notePad, background: C.dark, color: '#fff', textAlign: 'center', position: 'relative' },
+  note: { padding: SP.notePad, background: C.ivory, color: C.ink, textAlign: 'center', position: 'relative' },
   noteTopRule: { position: 'absolute', top: 'clamp(20px, 5vw, 40px)', left: '50%', transform: 'translateX(-50%)', width: 1, height: 'clamp(36px, 8vw, 64px)', background: `linear-gradient(to bottom, transparent, ${C.gold})` },
   // 한글이 섞여 있어 고딕 유지 (세리프면 한글만 명조로 폴백돼 어색해진다)
   noteLabel: { fontFamily: FONTS.sans, fontWeight: 500, fontSize: FS.caption, letterSpacing: LS.mediumWide, color: C.gold, marginBottom: 'clamp(20px, 5vw, 36px)' },
-  noteQuote: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: FS.noteQuote, lineHeight: 1.85, color: 'rgba(255,255,255,0.94)', maxWidth: 640, margin: '0 auto 24px', whiteSpace: 'pre-wrap' },
-  noteSign: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.caption, color: C.goldL },
+  noteQuote: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: FS.noteQuote, lineHeight: 1.85, color: C.ink2, maxWidth: 640, margin: '0 auto 24px', whiteSpace: 'pre-wrap' },
+  noteSign: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.caption, color: C.gold },
 
   // 푸터
   footer: { padding: SP.footerPad, background: '#0e0e0c', color: '#fff', textAlign: 'center' },
