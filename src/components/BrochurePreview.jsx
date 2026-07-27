@@ -841,7 +841,35 @@ function _LegacyFigCard({ fig, variant, design, onUpdateCaption }) {
   )
 }
 
+/**
+ * 소견 본문을 [첫 문장 = 리드] + [나머지 = → 항목]으로 나눈다.
+ *
+ * AI 가 한 <p> 안에 3~4문장을 붙여 주기 때문에 그대로 두면 긴 덩어리로 읽힌다.
+ * 문장 단위로 끊어 리드 한 줄과 화살표 목록으로 정리한다.
+ * 마침표 뒤 공백 기준이라 "1.5mm" 같은 소수점은 쪼개지지 않는다.
+ */
+function splitSummary(html) {
+  if (!html) return { lead: '', points: [] }
+  let text = ''
+  try {
+    const doc = new DOMParser().parseFromString(`<div id="r">${html}</div>`, 'text/html')
+    // 문단 사이는 공백으로 이어 붙여 문장 단위로만 나뉘게 한다
+    text = (doc.getElementById('r')?.textContent || '').replace(/\s+/g, ' ').trim()
+  } catch {
+    text = String(html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  }
+  if (!text) return { lead: '', points: [] }
+  const sentences = text
+    .replace(/([.!?])\s+/g, '$1\n')
+    .split('\n')
+    .map(s => s.trim())
+    .filter(Boolean)
+  return { lead: sentences[0] || '', points: sentences.slice(1) }
+}
+
 function Summary({ html, inSplit }) {
+  const { lead, points } = splitSummary(html)
+  if (!lead && points.length === 0) return null
   const wrapStyle = inSplit ? { ...S.summary, maxWidth: '100%', paddingTop: 12, marginTop: 0 } : S.summary
   return (
     <div style={wrapStyle}>
@@ -851,7 +879,19 @@ function Summary({ html, inSplit }) {
         <span style={S.summaryDot} />
         <span style={S.summaryKr}>종합 소견</span>
       </div>
-      <div className={inSplit ? 'brochure-summary brochure-summary-narrow' : 'brochure-summary'} dangerouslySetInnerHTML={{ __html: html }} />
+
+      {lead && <p style={inSplit ? { ...S.sumLead, fontSize: FS.body } : S.sumLead}>{lead}</p>}
+
+      {points.length > 0 && (
+        <ul style={S.sumList}>
+          {points.map((p, i) => (
+            <li key={i} style={S.sumItem}>
+              <span style={S.sumArrow} aria-hidden="true">&rarr;</span>
+              <span>{p}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
@@ -976,8 +1016,8 @@ const FS = {
   planTitle: 'clamp(19px, 5.2vw, 25px)',
   secEn: 'clamp(11px, 2.9vw, 14px)',
   secKr: 'clamp(23px, 5.8vw, 34px)',
-  // 레퍼런스의 큰 가는 번호
-  secNum: 'clamp(38px, 10vw, 64px)',
+  // 레퍼런스의 큰 가는 번호 — 폰에서는 제목을 누르지 않을 정도로
+  secNum: 'clamp(30px, 7.5vw, 52px)',
   // Cover 디스플레이 — "CONSULTATION REPORT" 19자를 한 줄로 유지해야 하므로
   // 좁은 화면(320px)에서도 넘치지 않게 크기·자간을 보수적으로 잡는다
   coverDisplay: 'clamp(15px, 4vw, 26px)',
@@ -1068,14 +1108,32 @@ const S = {
   summaryLabel: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginBottom: 22 },
   summaryEn: { fontFamily: FONTS.serif, fontWeight: 500, fontSize: FS.secEn, letterSpacing: LS.looseWide, color: C.gold, textTransform: 'uppercase' },
   summaryKr: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.body, color: C.ink, letterSpacing: '0.02em' },
+
+  /* 소견 본문 — 리드 한 줄 + 화살표 항목 (참고 스크린샷 구조) */
+  sumLead: {
+    fontFamily: FONTS.sans, fontWeight: 500,
+    fontSize: 'clamp(16px, 4.4vw, 19px)', lineHeight: 1.75,
+    color: C.ink, margin: '0 0 clamp(20px, 4.5vw, 30px)',
+    wordBreak: 'keep-all',
+  },
+  sumList: { listStyle: 'none', margin: 0, padding: 0 },
+  sumItem: {
+    display: 'flex', gap: 'clamp(10px, 2.6vw, 14px)', alignItems: 'flex-start',
+    padding: 'clamp(12px, 3vw, 16px) 0',
+    borderTop: '1px solid rgba(181,151,106,0.22)',
+    fontSize: FS.body, lineHeight: 1.75, color: C.ink2,
+    wordBreak: 'keep-all',
+  },
+  sumArrow: { flex: '0 0 auto', color: C.gold, fontWeight: 400, lineHeight: 1.75 },
   summaryDot: { width: 4, height: 4, background: C.gold, borderRadius: '50%' },
 
   // 치료 계획
   // 계획 목록 — 레퍼런스의 타임라인. 왼쪽 레일(번호+세로선) + 오른쪽 내용
   planList: { maxWidth: 720, margin: '0 auto' },
   planRow: { display: 'flex', gap: 'clamp(14px, 3.5vw, 26px)', alignItems: 'stretch' },
-  planRail: { flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', width: 'clamp(38px, 10vw, 62px)' },
-  planRailNum: { fontFamily: FONTS.serif, fontWeight: 300, fontSize: 'clamp(30px, 8vw, 50px)', lineHeight: 1, color: C.gold },
+  // 폰에서 본문 폭을 뺏기지 않도록 레일은 좁게
+  planRail: { flex: '0 0 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', width: 'clamp(30px, 8vw, 54px)' },
+  planRailNum: { fontFamily: FONTS.serif, fontWeight: 300, fontSize: 'clamp(26px, 6.8vw, 44px)', lineHeight: 1, color: C.gold },
   planRailLine: { flex: 1, width: 1, background: 'rgba(181,151,106,0.4)', marginTop: 'clamp(10px, 2.5vw, 16px)' },
   planBody: { flex: 1, minWidth: 0, paddingBottom: 'clamp(34px, 8vw, 60px)' },
 
