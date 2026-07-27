@@ -115,7 +115,7 @@ input, textarea, button, select {
 .brochure-summary p {
   font-family: 'Pretendard', -apple-system, sans-serif;
   font-size: 16.5px;
-  line-height: 1.85;
+  line-height: 2.0;   /* 홈페이지 .section-body(2.2)에 가깝게 — 길게 읽는 글이라 여유를 준다 */
   color: #3a3a36;
   margin: 0 0 18px;
   letter-spacing: -0.003em;

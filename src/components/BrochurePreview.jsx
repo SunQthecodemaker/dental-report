@@ -953,8 +953,10 @@ const FS = {
   planEffect: 'clamp(16px, 4.6vw, 19px)',
   // 헤딩
   planTitle: 'clamp(19px, 5.2vw, 25px)',
-  secKr: 'clamp(21px, 5.2vw, 28px)',
-  secNum: 'clamp(52px, 15vw, 96px)',
+  secEn: 'clamp(11px, 2.9vw, 14px)',
+  secKr: 'clamp(23px, 5.8vw, 34px)',
+  // 번호는 제목을 눌러선 안 되는 악센트 — 기존 96px 은 과했다
+  secNum: 'clamp(30px, 8vw, 46px)',
   // Cover 디스플레이
   coverName: 'clamp(40px, 11vw, 68px)',
   coverFor: 'clamp(22px, 5vw, 30px)',
@@ -985,7 +987,8 @@ const S = {
   coverBorder: { position: 'absolute', inset: SP.coverBorderInset, border: `1px solid ${C.line}`, pointerEvents: 'none' },
   coverTop: { display: 'flex', justifyContent: 'space-between', padding: SP.coverFramePad, fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.tightWide, color: C.gold, textTransform: 'uppercase', position: 'relative', zIndex: 1 },
   coverCenter: { display: 'grid', placeItems: 'center', textAlign: 'center', padding: SP.coverCenterPad, position: 'relative', zIndex: 1 },
-  coverEyebrow: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.coverEyebrow, color: C.mid, marginBottom: 'clamp(14px, 3vw, 24px)' },
+  // 홈페이지 .hero-eyebrow 언어 — 골드 대문자에 넓은 자간
+  coverEyebrow: { fontFamily: FONTS.serif, fontWeight: 500, fontSize: FS.coverEyebrow, letterSpacing: LS.looseWide, textTransform: 'uppercase', color: C.gold, marginBottom: 'clamp(18px, 4vw, 30px)' },
   coverRule: { width: 1, height: 'clamp(32px, 8vw, 56px)', background: C.gold, marginBottom: 'clamp(14px, 3vw, 24px)' },
   coverTitle: { fontFamily: FONTS.serif, fontWeight: 400, lineHeight: 0.9, color: C.dark, display: 'flex', flexDirection: 'column', alignItems: 'center', maxWidth: '100%' },
   coverFor: { fontStyle: 'italic', fontSize: FS.coverFor, color: C.gold, marginBottom: 'clamp(8px, 2vw, 14px)' },
@@ -998,13 +1001,20 @@ const S = {
   sec: { padding: `${SP.pageY} ${SP.pageX}`, borderBottom: `1px solid ${C.line}` },
   secPlan: { padding: `${SP.pageY} ${SP.pageX}`, background: C.ivory, borderBottom: `1px solid ${C.line}` },
 
-  secHead: { display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 'clamp(12px, 3vw, 32px)', paddingBottom: 'clamp(18px, 4vw, 28px)', marginBottom: 'clamp(24px, 5vw, 40px)', borderBottom: `1px solid ${C.line}` },
+  // 밑줄을 골드 톤으로 — 홈페이지가 구분선에 골드를 쓰는 것과 맞춤
+  secHead: { display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between', gap: 'clamp(12px, 3vw, 32px)', paddingBottom: 'clamp(18px, 4vw, 28px)', marginBottom: 'clamp(28px, 5.5vw, 44px)', borderBottom: '1px solid rgba(181,151,106,0.35)' },
   secHeadCenter: { maxWidth: 720, margin: '0 auto clamp(24px, 5vw, 40px)' },
   // marginLeft:auto — 좁은 화면에서 번호가 아랫줄로 접혀도 오른쪽에 붙어 있게
   secNum: { fontFamily: FONTS.serif, fontWeight: 300, fontStyle: 'italic', fontSize: FS.secNum, lineHeight: 0.82, color: C.gold, letterSpacing: '-0.04em', marginLeft: 'auto' },
   secLabels: { textAlign: 'left', flex: 1, minWidth: 0 },
-  secEn: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.caption, color: C.mid, letterSpacing: '0.04em', marginBottom: 6 },
-  secKr: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.secKr, color: C.ink, letterSpacing: '-0.01em' },
+  // 홈페이지 .section-label 과 같은 언어 — 이탤릭 없이 골드 대문자 + 넓은 자간
+  secEn: {
+    fontFamily: FONTS.serif, fontWeight: 500, fontSize: FS.secEn,
+    letterSpacing: LS.looseWide, textTransform: 'uppercase',
+    color: C.gold, marginBottom: 'clamp(8px, 2vw, 14px)',
+  },
+  // 홈페이지 .section-title — 명조 굵게, 여유 있는 행간
+  secKr: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.secKr, lineHeight: 1.45, color: C.ink, letterSpacing: '-0.01em' },
 
   // 사진 — 크롭 금지: 자연 비율 유지
   photos: { marginBottom: 40 },
@@ -1023,7 +1033,7 @@ const S = {
   summary: { maxWidth: 680, margin: '0 auto', paddingTop: 28, borderTop: `1px solid ${C.line}`, position: 'relative' },
   summaryMark: { position: 'absolute', top: -1, left: '50%', transform: 'translateX(-50%)', width: 72, height: 3, background: C.gold },
   summaryLabel: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginBottom: 22 },
-  summaryEn: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: FS.label, letterSpacing: LS.mediumWide, color: C.gold, textTransform: 'uppercase' },
+  summaryEn: { fontFamily: FONTS.serif, fontWeight: 500, fontSize: FS.secEn, letterSpacing: LS.looseWide, color: C.gold, textTransform: 'uppercase' },
   summaryKr: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.body, color: C.ink, letterSpacing: '0.02em' },
   summaryDot: { width: 4, height: 4, background: C.gold, borderRadius: '50%' },
 
@@ -1084,7 +1094,8 @@ const S = {
   planMethodHead: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: FS.caption, letterSpacing: '0.06em', color: C.gold, marginBottom: 10 },
   planMethodBody: { fontFamily: FONTS.sans, fontSize: FS.body, lineHeight: 1.85, color: C.ink2 },
   planEffect: { padding: 'clamp(16px, 4vw, 24px) clamp(18px, 4vw, 28px)', background: C.dark, color: '#fff', position: 'relative' },
-  planEffectHead: { fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.mediumWide, color: C.gold, textTransform: 'uppercase', marginBottom: 12 },
+  // 한글 라벨은 고딕 유지 — 세리프로 두면 명조로 폴백돼 작은 글씨가 흐려진다
+  planEffectHead: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: FS.caption, letterSpacing: '0.18em', color: C.gold, marginBottom: 12 },
   planEffectQuote: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: FS.planEffect, lineHeight: 1.75, color: 'rgba(255,255,255,0.94)' },
   planMeta: { marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.line}`, fontFamily: FONTS.sans, fontSize: FS.caption, color: C.mid },
   planMetaKey: { fontFamily: FONTS.sans, fontStyle: 'normal', fontWeight: 500, fontSize: FS.label, letterSpacing: '0.3em', color: C.gold, textTransform: 'uppercase', marginRight: 10 },
@@ -1093,14 +1104,15 @@ const S = {
   // 맞춤 안내
   note: { padding: SP.notePad, background: C.dark, color: '#fff', textAlign: 'center', position: 'relative' },
   noteTopRule: { position: 'absolute', top: 'clamp(20px, 5vw, 40px)', left: '50%', transform: 'translateX(-50%)', width: 1, height: 'clamp(36px, 8vw, 64px)', background: `linear-gradient(to bottom, transparent, ${C.gold})` },
-  noteLabel: { fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.looseWide, color: C.gold, textTransform: 'uppercase', marginBottom: 'clamp(20px, 5vw, 36px)' },
+  // 한글이 섞여 있어 고딕 유지 (세리프면 한글만 명조로 폴백돼 어색해진다)
+  noteLabel: { fontFamily: FONTS.sans, fontWeight: 500, fontSize: FS.caption, letterSpacing: LS.mediumWide, color: C.gold, marginBottom: 'clamp(20px, 5vw, 36px)' },
   noteQuote: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: FS.noteQuote, lineHeight: 1.85, color: 'rgba(255,255,255,0.94)', maxWidth: 640, margin: '0 auto 24px', whiteSpace: 'pre-wrap' },
   noteSign: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.caption, color: C.goldL },
 
   // 푸터
   footer: { padding: SP.footerPad, background: '#0e0e0c', color: '#fff', textAlign: 'center' },
   footerBrand: { fontFamily: FONTS.serif, fontSize: FS.footerBrand, letterSpacing: '0.1em', marginBottom: 4 },
-  footerTag: { fontFamily: FONTS.sans, fontSize: FS.label, letterSpacing: LS.mediumWide, color: C.gold, textTransform: 'uppercase', marginBottom: 20 },
+  footerTag: { fontFamily: FONTS.serif, fontWeight: 500, fontSize: FS.secEn, letterSpacing: LS.looseWide, color: C.gold, textTransform: 'uppercase', marginBottom: 20 },
   footerInfo: { fontFamily: FONTS.sans, fontSize: FS.caption, lineHeight: 1.9, color: 'rgba(255,255,255,0.5)', marginBottom: 20 },
   // 버튼 3개가 한 줄에 균등하게. 폭이 모자라면 2개 → 1개로 자동으로 접힌다.
   cta: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 8, maxWidth: 460, margin: '0 auto 20px' },

@@ -5,6 +5,19 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>프라임S 진단서</title>
+
+    <!--
+      진단서 브로셔의 세리프 서체. 홈페이지(primes.co.kr)와 같은 조합을 쓴다.
+      이걸 빼면 Cormorant·명조 지정이 전부 기기 기본 세리프(윈도우 Times/바탕,
+      아이폰 Apple Myungjo)로 대체돼 기기마다 다르게 보인다.
+      본문 고딕(Pretendard)은 src/index.css 에서 따로 불러온다.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Nanum+Myeongjo:wght@400;700;800&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <div id="root"></div>
