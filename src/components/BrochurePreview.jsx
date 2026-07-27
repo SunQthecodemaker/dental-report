@@ -362,8 +362,7 @@ function Cover({ patientName, consultDate, v }) {
     <div style={S.cover}>
       <div style={S.coverBrand}>Prime S Dental</div>
       <OrnamentRule />
-      <div style={S.coverDisplay}>Consultation</div>
-      <div style={S.coverDisplay}>Report</div>
+      <div style={S.coverDisplay}>Consultation Report</div>
       <div style={S.coverShortRule} />
       <div className="brochure-cover-name" style={S.coverName}>{patientName || '○○○'} 님</div>
       <div style={S.coverSub}>초진 상담 결과서</div>
@@ -979,10 +978,10 @@ const FS = {
   secKr: 'clamp(23px, 5.8vw, 34px)',
   // 번호는 헤어라인 끝에 붙는 표식 — 제목이 주인공이다
   secNum: 'clamp(15px, 3.8vw, 19px)',
-  // Cover 디스플레이 — "CONSULTATION"(12자)이 좁은 화면에서 넘치지 않도록
-  // 글자크기와 자간을 함께 줄인다
-  coverDisplay: 'clamp(21px, 5.6vw, 42px)',
-  coverDisplayLS: 'clamp(0.1em, 0.5vw, 0.22em)',
+  // Cover 디스플레이 — "CONSULTATION REPORT" 19자를 한 줄로 유지해야 하므로
+  // 좁은 화면(320px)에서도 넘치지 않게 크기·자간을 보수적으로 잡는다
+  coverDisplay: 'clamp(15px, 4vw, 26px)',
+  coverDisplayLS: 'clamp(0.1em, 0.4vw, 0.18em)',
   coverName: 'clamp(30px, 8vw, 52px)',
   coverDate: 'clamp(14px, 3.6vw, 18px)',
   // Footer
@@ -1021,6 +1020,7 @@ const S = {
     fontFamily: FONTS.serif, fontWeight: 400,
     fontSize: FS.coverDisplay, letterSpacing: FS.coverDisplayLS,
     textTransform: 'uppercase', color: C.ink, lineHeight: 1.3,
+    whiteSpace: 'nowrap',
   },
   coverShortRule: { width: 'clamp(40px, 10vw, 72px)', height: 1, background: C.gold, margin: 'clamp(28px, 6.5vw, 48px) auto' },
   coverName: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.coverName, letterSpacing: '0.02em', color: C.ink, wordBreak: 'keep-all' },
