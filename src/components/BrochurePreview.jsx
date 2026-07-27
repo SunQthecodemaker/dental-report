@@ -890,8 +890,37 @@ const SENTENCE_LEAD_RE = /^(그러나|하지만|또한|아울러|특히|이로 �
 function toSummaryCard(sentence) {
   const t = sentence.trim().replace(SENTENCE_LEAD_RE, '')
   const m = t.match(/^(.{2,22}?)(은|는|이|가|에서는|에는|의 경우)\s+/)
-  if (!m) return { title: '', desc: t }
-  return { title: m[1].trim(), desc: t.slice(m[0].length).trim() }
+  if (!m) return { title: '', desc: t, full: t }
+  return { title: m[1].trim(), desc: t.slice(m[0].length).trim(), full: t }
+}
+
+/** 소제목 뒤에 붙는 범위 수식어 — "앞니 부분", "앞니 전체" 를 "앞니" 로 묶기 위해 */
+const TITLE_MODIFIER_RE = /\s*(부분|전체|부위|영역|쪽)$/
+
+/**
+ * 같은 부위를 가리키는 카드를 하나로 묶는다.
+ * 소제목이 여러 개 합쳐질 때는 잘라낸 설명 대신 원래 문장을 그대로 쓴다
+ * — 주어를 떼면 "돌출되어 보이는 경향이 뚜렷합니다" 처럼 말이 끊겨 보인다.
+ */
+function buildSummaryCards(sentences) {
+  const cards = sentences.map(toSummaryCard)
+  const order = []
+  const groups = new Map()
+  cards.forEach((c, i) => {
+    const key = c.title ? c.title.replace(TITLE_MODIFIER_RE, '').trim() : `__solo${i}`
+    if (!groups.has(key)) {
+      groups.set(key, { title: c.title ? key : '', items: [] })
+      order.push(key)
+    }
+    groups.get(key).items.push(c)
+  })
+  return order.map(k => {
+    const g = groups.get(k)
+    return {
+      title: g.title,
+      lines: g.items.length === 1 ? [g.items[0].desc] : g.items.map(it => it.full),
+    }
+  })
 }
 
 function Summary({ html, inSplit, variant, heading }) {
@@ -901,7 +930,7 @@ function Summary({ html, inSplit, variant, heading }) {
 
   // 구간별 디자인 — 카드형 (소제목 + 설명)
   if (variant === 'cards') {
-    const cards = [lead, ...points].filter(Boolean).map(toSummaryCard)
+    const cards = buildSummaryCards([lead, ...points].filter(Boolean))
     return (
       <div style={wrapStyle}>
         {heading && <div style={S.cardHead}>{heading}</div>}
@@ -909,7 +938,9 @@ function Summary({ html, inSplit, variant, heading }) {
           {cards.map((c, i) => (
             <div key={i} style={S.card}>
               {c.title && <div style={S.cardTitle}>{c.title}</div>}
-              <div style={S.cardDesc}>{c.desc}</div>
+              {c.lines.map((line, j) => (
+                <div key={j} style={{ ...S.cardDesc, marginTop: j === 0 ? 0 : 'clamp(8px, 2vw, 12px)' }}>{line}</div>
+              ))}
             </div>
           ))}
         </div>
@@ -1021,6 +1052,8 @@ function Footer({ v }) {
 const C = {
   paper: '#ffffff', ivory: '#faf8f3', cream: '#f3efe7',
   gold: '#b5976a', goldL: '#d4b896',
+  // 소제목용 브라운 — 골드보다 진해 흰 바탕에서 또렷하게 읽힌다 (대비 약 6.4:1)
+  brown: '#7a5c38',
   dark: '#1a1a18', ink: '#1a1a18', ink2: '#3a3a36',
   mid: '#6a6a65', line: '#e8e3d8',
 }
@@ -1183,7 +1216,8 @@ const S = {
   },
   cardList: { display: 'flex', flexDirection: 'column', gap: 'clamp(10px, 2.4vw, 14px)' },
   card: { background: C.paper, padding: 'clamp(16px, 4vw, 22px) clamp(16px, 4vw, 24px)' },
-  cardTitle: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: 'clamp(15px, 4vw, 17px)', color: C.ink, marginBottom: 'clamp(6px, 1.6vw, 9px)' },
+  // 소제목 — 브라운톤 굵은 고딕
+  cardTitle: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: 'clamp(15px, 4vw, 17px)', color: C.brown, letterSpacing: '-0.01em', marginBottom: 'clamp(6px, 1.6vw, 9px)' },
   cardDesc: { fontSize: FS.body, lineHeight: 1.8, color: C.mid, wordBreak: 'keep-all' },
   summaryDot: { width: 4, height: 4, background: C.gold, borderRadius: '50%' },
 
