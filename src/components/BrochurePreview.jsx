@@ -841,62 +841,57 @@ function _LegacyFigCard({ fig, variant, design, onUpdateCaption }) {
   )
 }
 
-/** 한 문단이 너무 길어지지 않게 문장을 묶는다. 130자 기준. */
-const SUMMARY_PARA_MAX = 130
-
 /**
- * 소견 본문을 문단으로 정리한다.
+ * 소견 본문을 [첫 문장 = 리드] + [나머지 = → 항목]으로 나눈다.
  *
- * AI 가 한 <p> 안에 3~5문장을 붙여 주기 때문에 그대로 두면 긴 덩어리로 읽힌다.
- * 문장 단위로 끊은 뒤 글자 수 기준으로 다시 묶어 문단을 만든다.
- * 문장마다 한 줄씩 떼면 너무 잘게 쪼개져 오히려 읽기 힘들어진다.
+ * AI 가 한 <p> 안에 3~4문장을 붙여 주기 때문에 그대로 두면 긴 덩어리로 읽힌다.
+ * 문장 단위로 끊어 리드 한 줄과 화살표 목록으로 정리한다.
  * 마침표 뒤 공백 기준이라 "1.5mm" 같은 소수점은 쪼개지지 않는다.
  */
-function summaryParagraphs(html) {
-  if (!html) return []
+function splitSummary(html) {
+  if (!html) return { lead: '', points: [] }
   let text = ''
   try {
     const doc = new DOMParser().parseFromString(`<div id="r">${html}</div>`, 'text/html')
+    // 문단 사이는 공백으로 이어 붙여 문장 단위로만 나뉘게 한다
     text = (doc.getElementById('r')?.textContent || '').replace(/\s+/g, ' ').trim()
   } catch {
     text = String(html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
   }
-  if (!text) return []
-
+  if (!text) return { lead: '', points: [] }
   const sentences = text
     .replace(/([.!?])\s+/g, '$1\n')
     .split('\n')
     .map(s => s.trim())
     .filter(Boolean)
-
-  const paras = []
-  let cur = []
-  let len = 0
-  for (const s of sentences) {
-    if (cur.length && len + s.length > SUMMARY_PARA_MAX) {
-      paras.push(cur.join(' '))
-      cur = []
-      len = 0
-    }
-    cur.push(s)
-    len += s.length
-  }
-  if (cur.length) paras.push(cur.join(' '))
-  return paras
+  return { lead: sentences[0] || '', points: sentences.slice(1) }
 }
 
 function Summary({ html, inSplit }) {
-  const paras = summaryParagraphs(html)
-  if (paras.length === 0) return null
-  const wrapStyle = inSplit ? { ...S.summary, maxWidth: '100%', paddingTop: 12 } : S.summary
+  const { lead, points } = splitSummary(html)
+  if (!lead && points.length === 0) return null
+  const wrapStyle = inSplit ? { ...S.summary, maxWidth: '100%', paddingTop: 12, marginTop: 0 } : S.summary
   return (
     <div style={wrapStyle}>
-      <div style={S.summaryEn}>Summary</div>
-      <div style={S.summaryKr}>종합 소견</div>
-      <div style={S.summaryRule} />
-      {paras.map((p, i) => (
-        <p key={i} style={{ ...S.sumPara, marginBottom: i === paras.length - 1 ? 0 : undefined }}>{p}</p>
-      ))}
+      {!inSplit && <div style={S.summaryMark} />}
+      <div style={S.summaryLabel}>
+        <span style={S.summaryEn}>Summary</span>
+        <span style={S.summaryDot} />
+        <span style={S.summaryKr}>종합 소견</span>
+      </div>
+
+      {lead && <p style={inSplit ? { ...S.sumLead, fontSize: FS.body } : S.sumLead}>{lead}</p>}
+
+      {points.length > 0 && (
+        <ul style={S.sumList}>
+          {points.map((p, i) => (
+            <li key={i} style={S.sumItem}>
+              <span style={S.sumArrow} aria-hidden="true">&rarr;</span>
+              <span>{p}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
@@ -1107,16 +1102,30 @@ const S = {
   imgGrid: { width: '100%', display: 'block', borderRadius: 2 },
   figCap: { marginTop: 10, paddingTop: 8, borderTop: `1px solid ${C.gold}`, fontFamily: FONTS.sans, fontSize: FS.caption, lineHeight: 1.7, color: C.mid, textAlign: 'center', letterSpacing: '0.01em' },
 
-  /* 종합 소견 — 참고 화면 구조: 작은 영문 라벨 / 큰 한글 제목 / 짧은 룰 / 문단들
-     가운데 정렬이던 것을 왼쪽 정렬로 바꿨다 (참고 화면이 왼쪽 정렬) */
-  summary: { maxWidth: 680, margin: '0 auto', paddingTop: 'clamp(26px, 5.5vw, 40px)' },
+  // 종합 소견
+  summary: { maxWidth: 680, margin: '0 auto', paddingTop: 28, borderTop: `1px solid ${C.line}`, position: 'relative' },
+  summaryMark: { position: 'absolute', top: -1, left: '50%', transform: 'translateX(-50%)', width: 72, height: 3, background: C.gold },
+  summaryLabel: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginBottom: 22 },
   summaryEn: { fontFamily: FONTS.serif, fontWeight: 500, fontSize: FS.secEn, letterSpacing: LS.looseWide, color: C.gold, textTransform: 'uppercase' },
-  summaryKr: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: 'clamp(21px, 5.4vw, 30px)', lineHeight: 1.4, color: C.ink, letterSpacing: '-0.01em', marginTop: 'clamp(8px, 2vw, 12px)' },
-  summaryRule: { width: 'clamp(36px, 9vw, 60px)', height: 1, background: C.gold, margin: 'clamp(20px, 4.5vw, 30px) 0' },
-  sumPara: {
-    fontSize: FS.body, lineHeight: 1.95, color: C.ink2,
-    margin: '0 0 clamp(18px, 4vw, 26px)', wordBreak: 'keep-all',
+  summaryKr: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.body, color: C.ink, letterSpacing: '0.02em' },
+
+  /* 소견 본문 — 리드 한 줄 + 화살표 항목 (참고 스크린샷 구조) */
+  sumLead: {
+    fontFamily: FONTS.sans, fontWeight: 500,
+    fontSize: 'clamp(16px, 4.4vw, 19px)', lineHeight: 1.75,
+    color: C.ink, margin: '0 0 clamp(20px, 4.5vw, 30px)',
+    wordBreak: 'keep-all',
   },
+  sumList: { listStyle: 'none', margin: 0, padding: 0 },
+  sumItem: {
+    display: 'flex', gap: 'clamp(10px, 2.6vw, 14px)', alignItems: 'flex-start',
+    padding: 'clamp(12px, 3vw, 16px) 0',
+    borderTop: '1px solid rgba(181,151,106,0.22)',
+    fontSize: FS.body, lineHeight: 1.75, color: C.ink2,
+    wordBreak: 'keep-all',
+  },
+  sumArrow: { flex: '0 0 auto', color: C.gold, fontWeight: 400, lineHeight: 1.75 },
+  summaryDot: { width: 4, height: 4, background: C.gold, borderRadius: '50%' },
 
   // 치료 계획
   // 계획 목록 — 레퍼런스의 타임라인. 왼쪽 레일(번호+세로선) + 오른쪽 내용
