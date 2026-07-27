@@ -557,12 +557,16 @@ function CasesSection({ num, cases, tone }) {
           {c.title && <h3 style={S.planTitle}>{c.title}</h3>}
           <CaseSlider pairs={c.pairs || []} />
           {c.description && (
-            <div style={{ ...S.planMethodBody, maxWidth: 640, margin: '0 auto', whiteSpace: 'pre-wrap' }}>
-              {c.description}
-            </div>
+            <div style={S.caseDesc}>{c.description}</div>
           )}
         </div>
       ))}
+
+      {/* 슬라이더 아래 — 홈페이지 치료 전후 갤러리로 */}
+      <a href={LINKS.cases} target="_blank" rel="noopener noreferrer" style={S.moreBanner}>
+        <span>더 많은 치료 사례 보기</span>
+        <span style={S.moreArrow} aria-hidden="true">&rarr;</span>
+      </a>
     </div>
   )
 }
@@ -1052,6 +1056,8 @@ function PersonalNote({ patientName, note, v, design, onUpdateNote }) {
  * 카카오톡은 http 로 넣으면 308 로 https 에 다시 붙으므로 처음부터 https 로.
  */
 const LINKS = {
+  // 홈페이지 치료 전후 갤러리 (유사 치료 사례 "더 많은 사례 보기")
+  cases: 'http://primes.co.kr/on/index/before_after/before_after.html',
   kakao: 'https://pf.kakao.com/_kxmrXj',
   naver: 'https://map.naver.com/p/entry/place/1013847092?placePath=%252Fhome%253Fentry%253Dplt&searchType=place&lng=126.7221497&lat=37.4910957',
   home: 'http://primes.co.kr',
@@ -1283,6 +1289,23 @@ const S = {
     letterSpacing: '0.14em', color: C.ink, textDecoration: 'none', background: C.paper,
   },
 
+  /* 유사 치료 사례 설명 — 밝은 바탕이므로 어두운 글씨.
+     치료 계획(planMethodBody)은 어두운 판이라 흰 글씨여서 같이 쓸 수 없다 */
+  caseDesc: { fontFamily: FONTS.sans, fontSize: FS.body, lineHeight: 1.85, color: C.ink2, maxWidth: 640, margin: '0 auto', whiteSpace: 'pre-wrap' },
+
+  /* "더 많은 치료 사례 보기" 배너 */
+  moreBanner: {
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    gap: 'clamp(8px, 2vw, 12px)',
+    maxWidth: 640, margin: 'clamp(28px, 6vw, 44px) auto 0',
+    padding: 'clamp(15px, 3.6vw, 20px) clamp(18px, 4vw, 28px)',
+    border: `1px solid ${C.gold}`, background: C.paper,
+    fontFamily: FONTS.sans, fontWeight: 600,
+    fontSize: 'clamp(14px, 3.6vw, 16px)', letterSpacing: '0.02em',
+    color: C.ink, textDecoration: 'none',
+  },
+  moreArrow: { color: C.gold, fontWeight: 400 },
+
   /* 유사 치료 사례 — 위쪽 아치, 아래는 살짝만 둥글게 */
   caseImg: {
     width: '100%', display: 'block',
@@ -1337,8 +1360,8 @@ const S = {
     fontFamily: FONTS.sans, fontWeight: 500,
     fontSize: 'clamp(13px, 3.4vw, 15px)', letterSpacing: '0.02em', lineHeight: 1,
   },
-  // 유사 치료 사례 제목 (치료 계획 제목은 planName 을 따로 쓴다)
-  planTitle: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.planTitle, lineHeight: 1.45, color: C.ink, letterSpacing: '-0.01em', margin: '0 0 clamp(18px, 4vw, 32px)', maxWidth: 640 },
+  // 유사 치료 사례 제목 — 가운데 정렬 (치료 계획 제목은 planName 을 따로 쓴다)
+  planTitle: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.planTitle, lineHeight: 1.45, color: C.ink, letterSpacing: '-0.01em', margin: '0 auto clamp(18px, 4vw, 32px)', maxWidth: 640, textAlign: 'center' },
   // 치료 계획 구간은 어두운 판 (참고 화면)
   secDark: { background: '#1c1a18' },
   // 어두운 배경이라 제목은 브라운 대신 밝게 — 브라운(#7a5c38)은 검은 바탕에서 2.3:1 로 안 읽힌다
