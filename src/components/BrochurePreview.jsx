@@ -1076,11 +1076,18 @@ function formatNote(note) {
 
 function PersonalNote({ patientName, note, v, design, onUpdateNote }) {
   const shown = formatNote(note)
+  // 마지막 문단은 맺음말이라 강조 박스로 뺀다 (참고 화면의 세로선 박스)
+  const paras = shown.split(/\n{2,}/).map(s => s.trim()).filter(Boolean)
+  const body = paras.length > 1 ? paras.slice(0, -1) : paras
+  const highlight = paras.length > 1 ? paras[paras.length - 1] : ''
+
   return (
     <div style={S.note}>
       <div style={S.noteTopRule} />
       <div style={S.noteLabel}>A Personal Note · 드리는 말씀</div>
+
       {design ? (
+        // 편집 모드는 원문 그대로 — 쪼개면 저장 시 문장이 도로 붙는다
         <div
           style={{ ...S.noteQuote, outline: 'none', minHeight: '1em', cursor: 'text' }}
           contentEditable
@@ -1089,8 +1096,16 @@ function PersonalNote({ patientName, note, v, design, onUpdateNote }) {
           data-placeholder="맞춤 메시지 입력..."
         >{shown}</div>
       ) : (
-        <div style={S.noteQuote}>{shown}</div>
+        <>
+          {body.map((p, i) => (
+            <p key={i} style={S.noteQuote}>{p}</p>
+          ))}
+          {highlight && (
+            <div style={S.noteHighlight}>{highlight}</div>
+          )}
+        </>
       )}
+
       <div style={S.noteSign}>— Prime-S</div>
     </div>
   )
@@ -1441,12 +1456,23 @@ const S = {
   planFallback: { maxWidth: 720, margin: '0 auto', fontSize: FS.body, lineHeight: 2, color: 'rgba(255,255,255,0.72)' },
 
   // 맞춤 안내
-  note: { padding: SP.notePad, background: C.ivory, color: C.ink, textAlign: 'center', position: 'relative' },
+  // 참고 화면 — 검은 판에 연한 본문, 맺음말은 베이지 세로선 박스. 왼쪽 정렬.
+  note: { padding: SP.notePad, background: '#1c1a18', color: C.paper, textAlign: 'left', position: 'relative' },
+  noteHighlight: {
+    maxWidth: 640, margin: 'clamp(22px, 5vw, 32px) auto 0',
+    padding: 'clamp(16px, 3.6vw, 22px) clamp(18px, 4vw, 26px)',
+    background: 'rgba(255,255,255,0.05)',
+    borderLeft: `3px solid ${C.gold}`,
+    fontFamily: FONTS.sans, fontWeight: 700,
+    fontSize: FS.body, lineHeight: 1.75,
+    color: C.goldL, wordBreak: 'keep-all',
+  },
   noteTopRule: { position: 'absolute', top: 'clamp(20px, 5vw, 40px)', left: '50%', transform: 'translateX(-50%)', width: 1, height: 'clamp(36px, 8vw, 64px)', background: `linear-gradient(to bottom, transparent, ${C.gold})` },
   // 한글이 섞여 있어 고딕 유지 (세리프면 한글만 명조로 폴백돼 어색해진다)
-  noteLabel: { fontFamily: FONTS.sans, fontWeight: 500, fontSize: FS.caption, letterSpacing: LS.mediumWide, color: C.gold, marginBottom: 'clamp(20px, 5vw, 36px)' },
-  noteQuote: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: FS.noteQuote, lineHeight: 1.85, color: C.ink2, maxWidth: 640, margin: '0 auto 24px', whiteSpace: 'pre-wrap' },
-  noteSign: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.caption, color: C.gold },
+  noteLabel: { fontFamily: FONTS.sans, fontWeight: 500, fontSize: FS.caption, letterSpacing: LS.mediumWide, color: C.gold, maxWidth: 640, margin: '0 auto clamp(20px, 5vw, 36px)' },
+  // 글자가 너무 커서 본문 크기로 낮춤 (기존 17~22px → 15~17px)
+  noteQuote: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: FS.body, lineHeight: 1.9, color: 'rgba(255,255,255,0.68)', maxWidth: 640, margin: '0 auto clamp(14px, 3vw, 20px)', whiteSpace: 'pre-wrap', wordBreak: 'keep-all' },
+  noteSign: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.caption, color: C.gold, maxWidth: 640, margin: 'clamp(22px, 5vw, 32px) auto 0' },
 
   // 푸터
   footer: { padding: SP.footerPad, background: '#0e0e0c', color: '#fff', textAlign: 'center' },
