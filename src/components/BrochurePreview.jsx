@@ -22,6 +22,14 @@ function toneStyle(tone) {
   return tone === 'cream' ? S.toneCream : S.toneLight
 }
 
+/**
+ * 화면에 보일 섹션 이름. AI 가 쓴 <h2> 제목을 그대로 두면 내부 로직(파싱·분기)이
+ * 다 깨지므로, 저장된 이름은 두고 표시할 때만 바꾼다.
+ */
+const KR_LABEL = {
+  '종합 안내': '종합 소견',
+}
+
 const EN_LABEL = {
   // 새 4섹션 구조
   '구외 소견': 'Extra-oral Findings',
@@ -62,13 +70,14 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
   const renderSection = (sec, globalNum) => {
     const num = String(globalNum).padStart(2, '0')
     const en = EN_LABEL[sec.title] || ''
+    const krLabel = KR_LABEL[sec.title] || sec.title
     const tone = toneOf(globalNum)
     if (sec.title === '치료 계획') {
-      return <TreatmentSection key={`t-${globalNum}`} num={num} en={en} kr={sec.title} summaryHtml={sec.summaryHtml} v={v} />
+      return <TreatmentSection key={`t-${globalNum}`} num={num} en={en} kr={krLabel} summaryHtml={sec.summaryHtml} v={v} />
     }
     return (
       <DiagnosticSection
-        key={`s-${globalNum}`} num={num} en={en} kr={sec.title}
+        key={`s-${globalNum}`} num={num} en={en} kr={krLabel} sectionKey={sec.title}
         figures={sec.figures} summaryHtml={sec.summaryHtml} v={v} tone={tone}
         design={design} onUpdateCaption={onUpdateCaption} onOpenMarker={onOpenMarker}
       />
@@ -416,8 +425,35 @@ const SUMMARY_VARIANT = {
   '구내 소견': 'cards',
 }
 
-function DiagnosticSection({ num, en, kr, figures, summaryHtml, v, design, onUpdateCaption, onOpenMarker, tone }) {
+/** 소견 아래에 가로형 사진 한 장이 들어가는 구간 (저장된 섹션 이름 기준) */
+const WIDE_PHOTO_SECTION = {
+  '종합 안내': true,
+}
+
+/**
+ * 가로형 사진 자리.
+ * 사진이 들어오면 16:9 로 꽉 차게 보여주고,
+ * 아직 없으면 편집 화면에서만 자리 틀을 보여 준다 — 환자 화면에는 빈 칸이 뜨지 않는다.
+ */
+function WidePhotoSlot({ figure, design, onOpenMarker }) {
+  if (figure?.src) {
+    return (
+      <figure style={S.wideFig}>
+        <MarkedImage f={figure} imgStyle={S.wideImg} design={design} onOpenMarker={onOpenMarker} />
+      </figure>
+    )
+  }
+  if (!design) return null
+  return (
+    <div style={S.widePlaceholder}>
+      <span style={S.widePlaceholderText}>가로형 사진 자리 (16:9)</span>
+    </div>
+  )
+}
+
+function DiagnosticSection({ num, en, kr, sectionKey, figures, summaryHtml, v, design, onUpdateCaption, onOpenMarker, tone }) {
   const variant = SUMMARY_VARIANT[kr]
+  const wantsWidePhoto = !!WIDE_PHOTO_SECTION[sectionKey || kr]
   const hasFigs = figures.length > 0
   const hasSummary = !!summaryHtml && summaryHtml.replace(/<[^>]+>/g, '').trim().length > 0
   if (!hasFigs && !hasSummary) return null
@@ -429,6 +465,17 @@ function DiagnosticSection({ num, en, kr, figures, summaryHtml, v, design, onUpd
 
   // 구내 그룹이 텍스트를 소비하는지
   const intraoralConsumesText = intraorals.length > 0 && hasSummary
+
+  // 가로형 사진 구간 — 소견 아래에 사진 한 장이 통으로 들어간다
+  if (wantsWidePhoto) {
+    return (
+      <div style={{ ...S.sec, ...toneStyle(tone) }}>
+        <SecHead num={num} en={en} kr={kr} />
+        {hasSummary && <Summary html={summaryHtml} variant={variant} heading={kr} />}
+        <WidePhotoSlot figure={figures[0]} design={design} onOpenMarker={onOpenMarker} />
+      </div>
+    )
+  }
 
   return (
     <div style={{ ...S.sec, ...toneStyle(tone) }}>
@@ -983,15 +1030,9 @@ function Summary({ html, inSplit, variant, heading }) {
     )
   }
 
+  // 섹션 머리말에 이미 제목이 있어 "Summary / 종합 소견" 라벨은 중복 — 표시하지 않는다
   return (
     <div style={wrapStyle}>
-      {!inSplit && <div style={S.summaryMark} />}
-      <div style={S.summaryLabel}>
-        <span style={S.summaryEn}>Summary</span>
-        <span style={S.summaryDot} />
-        <span style={S.summaryKr}>종합 소견</span>
-      </div>
-
       {lead && <p style={inSplit ? { ...S.sumLead, fontSize: FS.body } : S.sumLead}>{lead}</p>}
 
       {points.length > 0 && (
@@ -1292,6 +1333,20 @@ const S = {
   /* 유사 치료 사례 설명 — 밝은 바탕이므로 어두운 글씨.
      치료 계획(planMethodBody)은 어두운 판이라 흰 글씨여서 같이 쓸 수 없다 */
   caseDesc: { fontFamily: FONTS.sans, fontSize: FS.body, lineHeight: 1.85, color: C.ink2, maxWidth: 640, margin: '0 auto', whiteSpace: 'pre-wrap' },
+
+  /* 가로형 사진 자리 — 종합 소견 아래 */
+  wideFig: { maxWidth: 720, margin: 'clamp(28px, 6vw, 44px) auto 0' },
+  wideImg: { width: '100%', aspectRatio: '16 / 9', objectFit: 'cover', display: 'block', borderRadius: 2 },
+  widePlaceholder: {
+    maxWidth: 720, margin: 'clamp(28px, 6vw, 44px) auto 0',
+    aspectRatio: '16 / 9',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    border: `1px dashed ${C.gold}`, borderRadius: 2,
+    background: 'rgba(181,151,106,0.06)',
+  },
+  widePlaceholderText: {
+    fontFamily: FONTS.sans, fontSize: FS.caption, letterSpacing: '0.08em', color: C.gold,
+  },
 
   /* "더 많은 치료 사례 보기" 배너 */
   moreBanner: {
