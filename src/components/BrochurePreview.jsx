@@ -236,6 +236,10 @@ const LEGACY_SECTION_MAP = {
   '치성 관계': '구내 소견',
   '문제 목록': '구내 소견',
   '추가 사항': '종합 안내',
+  // AI 가 마지막 섹션을 "종합 안내" 로도 "종합 소견" 으로도 쓴다.
+  // 한 진단서 안에 둘 다 나오면(글은 안내에, 사진은 소견에) 섹션이 06·07 로 갈라지고
+  // 화면에는 같은 이름이 두 번 찍힌다. 하나로 합쳐 둔다.
+  '종합 소견': '종합 안내',
 }
 function mergeLegacySections(sections) {
   if (!Array.isArray(sections) || sections.length === 0) return sections
