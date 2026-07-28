@@ -441,12 +441,19 @@ const WIDE_PHOTO_SECTION = {
  * 사진이 들어오면 16:9 로 꽉 차게 보여주고,
  * 아직 없으면 편집 화면에서만 자리 틀을 보여 준다 — 환자 화면에는 빈 칸이 뜨지 않는다.
  */
-function WidePhotoSlot({ figure, design, onOpenMarker }) {
-  if (figure?.src) {
+function WidePhotoSlot({ figures = [], design, onUpdateCaption, onOpenMarker }) {
+  const usable = figures.filter(f => f?.src)
+  if (usable.length > 0) {
+    // 여러 장이 붙어 있어도 하나도 버리지 않는다
     return (
-      <figure style={S.wideFig}>
-        <MarkedImage f={figure} imgStyle={S.wideImg} design={design} onOpenMarker={onOpenMarker} />
-      </figure>
+      <>
+        {usable.map((f, i) => (
+          <figure key={i} style={S.wideFig}>
+            <MarkedImage f={f} imgStyle={S.wideImg} design={design} onOpenMarker={onOpenMarker} />
+            <EditableCaption caption={f.caption} src={f.src} design={design} onUpdateCaption={onUpdateCaption} full />
+          </figure>
+        ))}
+      </>
     )
   }
   if (!design) return null
@@ -478,7 +485,7 @@ function DiagnosticSection({ num, en, kr, sectionKey, figures, summaryHtml, v, d
       <div style={{ ...S.sec, ...toneStyle(tone) }}>
         <SecHead num={num} en={en} kr={kr} />
         {hasSummary && <Summary html={summaryHtml} variant={variant} heading={kr} />}
-        <WidePhotoSlot figure={figures[0]} design={design} onOpenMarker={onOpenMarker} />
+        <WidePhotoSlot figures={figures} design={design} onUpdateCaption={onUpdateCaption} onOpenMarker={onOpenMarker} />
       </div>
     )
   }
@@ -755,7 +762,7 @@ function StrengthCard({ card }) {
         {card.description && <div style={S.strDesc}>{card.description}</div>}
         {card.detail_url && (
           <a href={card.detail_url} target="_blank" rel="noreferrer" style={S.strLink}>
-            자세히 보기
+            자세히 보기 &rarr;
           </a>
         )}
       </div>
@@ -841,6 +848,7 @@ function PlanBlock({ idx, plan, isLast }) {
 
         {plan.methodHtml && (
           <div style={S.planMethod}>
+            <div style={S.planMethodHead}>치료 방법</div>
             <div style={S.planMethodBody} dangerouslySetInnerHTML={{ __html: plan.methodHtml }} />
           </div>
         )}
@@ -1450,7 +1458,8 @@ const S = {
   // 1안·2안 소제목 — 밝은 베이지 (검은 판 대비 9.17:1)
   planName: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: 'clamp(18px, 4.8vw, 22px)', lineHeight: 1.55, color: C.goldL, letterSpacing: '-0.01em', margin: '0 0 clamp(14px, 3.2vw, 20px)', maxWidth: 640, wordBreak: 'keep-all' },
   planMethod: { marginBottom: 24 },
-  planMethodHead: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: FS.caption, letterSpacing: '0.06em', color: C.gold, marginBottom: 10 },
+  // 어두운 판 위 라벨 — 기대 효과 라벨과 같은 처리
+  planMethodHead: { fontFamily: FONTS.sans, fontWeight: 500, fontSize: FS.caption, letterSpacing: '0.28em', color: C.gold, marginBottom: 'clamp(10px, 2.4vw, 14px)' },
   planMethodBody: { fontFamily: FONTS.sans, fontSize: FS.body, lineHeight: 1.9, color: 'rgba(255,255,255,0.62)' },
   // 어두운 판 위에서는 배경 대신 얇은 구분선으로 나눈다 (참고 화면)
   planEffect: { marginTop: 'clamp(22px, 5vw, 32px)', paddingTop: 'clamp(20px, 4.5vw, 28px)', borderTop: '1px solid rgba(255,255,255,0.12)' },
