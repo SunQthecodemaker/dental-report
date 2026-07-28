@@ -975,49 +975,55 @@ function splitSummary(html) {
   return { lead: sentences[0] || '', points: sentences.slice(1) }
 }
 
-/** 문장 앞에 붙는 접속어 — 소제목으로 뽑을 때 걷어낸다 */
-const SENTENCE_LEAD_RE = /^(그러나|하지만|또한|아울러|특히|이로 인해|이에 따라|따라서|다만|그리고|한편)\s+/
 
 /**
- * 문장 하나를 [소제목 + 설명]으로 나눈다.
- * 한국어 서술문은 대개 "무엇은 ~하다" 구조라 주제어까지를 소제목으로 쓴다.
- *   "어금니 맞물림은 좌우 모두 정상입니다" → [어금니 맞물림] 좌우 모두 정상입니다
- * 주제어를 못 찾으면 소제목 없이 설명만 보여 준다.
+ * 소견 문장을 주제별로 나누는 기준.
+ * 화면에 나오는 순서도 이 순서를 따른다. 단어를 추가·수정하면 분류가 바로 바뀐다.
  */
-function toSummaryCard(sentence) {
-  const t = sentence.trim().replace(SENTENCE_LEAD_RE, '')
-  const m = t.match(/^(.{2,22}?)(은|는|이|가|에서는|에는|의 경우)\s+/)
-  if (!m) return { title: '', desc: t, full: t }
-  return { title: m[1].trim(), desc: t.slice(m[0].length).trim(), full: t }
+const SUMMARY_TOPICS = [
+  { key: '앞니', kw: ['앞니', '전치', '송곳니', '견치', '정중선'] },
+  { key: '교합', kw: ['교합', '맞물림', '맞물려', '물림', '피개', '오버젯', 'Class'] },
+  { key: '어금니', kw: ['어금니', '구치', '사랑니', '임플란트'] },
+  { key: '잇몸·치아 상태', kw: ['잇몸', '치주', '충치', '우식', '치근', '신경치료', '병소'] },
+]
+
+/**
+ * 문장 하나가 어느 주제인지 고른다.
+ * 키워드가 "몇 번" 나오는지로 판단한다 — 위치로만 보면
+ * "어금니의 맞물림은 Class I …" 이 맨 앞 단어 때문에 어금니로 잘못 묶인다.
+ * 개수가 같으면 먼저 나온 쪽을 택한다.
+ */
+function topicOf(sentence) {
+  let best = '기타', bestCount = 0, bestPos = Infinity
+  for (const t of SUMMARY_TOPICS) {
+    let count = 0, pos = Infinity
+    for (const k of t.kw) {
+      let i = sentence.indexOf(k)
+      if (i >= 0 && i < pos) pos = i
+      while (i >= 0) { count++; i = sentence.indexOf(k, i + k.length) }
+    }
+    if (count > bestCount || (count === bestCount && count > 0 && pos < bestPos)) {
+      best = t.key; bestCount = count; bestPos = pos
+    }
+  }
+  return best
 }
 
-/** 소제목 뒤에 붙는 범위 수식어 — "앞니 부분", "앞니 전체" 를 "앞니" 로 묶기 위해 */
-const TITLE_MODIFIER_RE = /\s*(부분|전체|부위|영역|쪽)$/
-
 /**
- * 같은 부위를 가리키는 카드를 하나로 묶는다.
- * 소제목이 여러 개 합쳐질 때는 잘라낸 설명 대신 원래 문장을 그대로 쓴다
- * — 주어를 떼면 "돌출되어 보이는 경향이 뚜렷합니다" 처럼 말이 끊겨 보인다.
+ * 문장들을 주제별 카드로 묶는다 (앞니 / 교합 / 어금니 …).
+ * 문장은 자르지 않고 그대로 넣는다 — 주어를 떼면 말이 끊겨 보이고 내용도 흐려진다.
  */
 function buildSummaryCards(sentences) {
-  const cards = sentences.map(toSummaryCard)
-  const order = []
   const groups = new Map()
-  cards.forEach((c, i) => {
-    const key = c.title ? c.title.replace(TITLE_MODIFIER_RE, '').trim() : `__solo${i}`
-    if (!groups.has(key)) {
-      groups.set(key, { title: c.title ? key : '', items: [] })
-      order.push(key)
-    }
-    groups.get(key).items.push(c)
-  })
-  return order.map(k => {
-    const g = groups.get(k)
-    return {
-      title: g.title,
-      lines: g.items.length === 1 ? [g.items[0].desc] : g.items.map(it => it.full),
-    }
-  })
+  for (const s of sentences) {
+    const key = topicOf(s)
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(s)
+  }
+  const order = [...SUMMARY_TOPICS.map(t => t.key), '기타']
+  return order
+    .filter(k => groups.has(k))
+    .map(k => ({ title: k, lines: groups.get(k) }))
 }
 
 function Summary({ html, inSplit, variant, heading }) {
