@@ -623,14 +623,14 @@ function CasesSection({ num, cases, tone }) {
           {c.description && (
             <div style={S.caseDesc}>{c.description}</div>
           )}
+
+          {/* 카드 안, 슬라이더 아래 — 홈페이지 치료 전후 갤러리로 */}
+          <a href={LINKS.cases} target="_blank" rel="noopener noreferrer" style={S.moreBanner}>
+            <span>더 많은 치료 사례 보기</span>
+            <span style={S.moreArrow} aria-hidden="true">&rarr;</span>
+          </a>
         </div>
       ))}
-
-      {/* 슬라이더 아래 — 홈페이지 치료 전후 갤러리로 */}
-      <a href={LINKS.cases} target="_blank" rel="noopener noreferrer" style={S.moreBanner}>
-        <span>더 많은 치료 사례 보기</span>
-        <span style={S.moreArrow} aria-hidden="true">&rarr;</span>
-      </a>
     </div>
   )
 }
@@ -1393,18 +1393,18 @@ const S = {
     fontFamily: FONTS.sans, fontSize: FS.caption, letterSpacing: '0.08em', color: C.gold,
   },
 
-  /* "더 많은 치료 사례 보기" 배너 */
+  /* "더 많은 치료 사례 보기" 배너 — 케이스 카드 안, 브라운 바탕 (흰 글씨 대비 8.87:1) */
   moreBanner: {
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     gap: 'clamp(8px, 2vw, 12px)',
-    maxWidth: 640, margin: 'clamp(28px, 6vw, 44px) auto 0',
-    padding: 'clamp(15px, 3.6vw, 20px) clamp(18px, 4vw, 28px)',
-    border: `1px solid ${C.gold}`, background: C.paper,
+    maxWidth: 640, margin: 'clamp(20px, 4.5vw, 30px) auto 0',
+    padding: 'clamp(14px, 3.4vw, 18px) clamp(18px, 4vw, 28px)',
+    background: C.brownDeep, borderRadius: 2,
     fontFamily: FONTS.sans, fontWeight: 600,
     fontSize: 'clamp(14px, 3.6vw, 16px)', letterSpacing: '0.02em',
-    color: C.ink, textDecoration: 'none',
+    color: '#ffffff', textDecoration: 'none',
   },
-  moreArrow: { color: C.gold, fontWeight: 400 },
+  moreArrow: { color: C.goldL, fontWeight: 400 },
 
   /* 유사 치료 사례 — 위쪽 아치, 아래는 살짝만 둥글게 */
   caseImg: {
