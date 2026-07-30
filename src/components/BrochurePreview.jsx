@@ -49,12 +49,11 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
   const design = mode === 'design'
   const bodyHtml = content?.body || ''
   const hasBody = !!bodyHtml && bodyHtml.replace(/<[^>]+>/g, '').trim().length > 0
-  const hasNote = !!content?.personalNote
   const hasPhotos = Array.isArray(photos) && photos.length > 0
   const hasCases = Array.isArray(cases) && cases.length > 0
   const hasStrengths = Array.isArray(strengths) && strengths.length > 0
 
-  if (!hasBody && !hasNote && !hasPhotos && !hasCases && !hasStrengths) {
+  if (!hasBody && !hasPhotos && !hasCases && !hasStrengths) {
     return (
       <div style={S.empty}>AI 텍스트를 생성하면<br />여기에 미리보기가 표시됩니다</div>
     )
@@ -98,9 +97,6 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
       <Cover patientName={patientName} consultDate={consultDate} v={v} />
 
       {blocks}
-
-      {/* 맞춤 안내 */}
-      {hasNote && <PersonalNote patientName={patientName} note={content.personalNote} v={v} design={design} onUpdateNote={onUpdateNote} />}
 
       {/* 푸터 */}
       <Footer v={v} />
@@ -441,30 +437,23 @@ const WIDE_PHOTO_SECTION = {
 }
 
 /**
- * 가로형 사진 자리.
- * 사진이 들어오면 16:9 로 꽉 차게 보여주고,
- * 아직 없으면 편집 화면에서만 자리 틀을 보여 준다 — 환자 화면에는 빈 칸이 뜨지 않는다.
+ * 이 구간에 이미 붙어 있는 사진은 16:9 가로형으로 보여 준다.
+ * 빈 자리 틀은 두지 않는다 — 사진이 없으면 아무것도 그리지 않는다.
+ * (틀을 없앤 뒤에도 이 처리는 남겨 둔다. 없애면 기존 사진이 일반 배치로 흘러가
+ *  좌우 분할(사진 45%)로 붙어 버린다.)
  */
 function WidePhotoSlot({ figures = [], design, onUpdateCaption, onOpenMarker }) {
   const usable = figures.filter(f => f?.src)
-  if (usable.length > 0) {
-    // 여러 장이 붙어 있어도 하나도 버리지 않는다
-    return (
-      <>
-        {usable.map((f, i) => (
-          <figure key={i} style={S.wideFig}>
-            <MarkedImage f={f} imgStyle={S.wideImg} design={design} onOpenMarker={onOpenMarker} />
-            <EditableCaption caption={f.caption} src={f.src} design={design} onUpdateCaption={onUpdateCaption} full />
-          </figure>
-        ))}
-      </>
-    )
-  }
-  if (!design) return null
+  if (usable.length === 0) return null
   return (
-    <div style={S.widePlaceholder}>
-      <span style={S.widePlaceholderText}>가로형 사진 자리 (16:9)</span>
-    </div>
+    <>
+      {usable.map((f, i) => (
+        <figure key={i} style={S.wideFig}>
+          <MarkedImage f={f} imgStyle={S.wideImg} design={design} onOpenMarker={onOpenMarker} />
+          <EditableCaption caption={f.caption} src={f.src} design={design} onUpdateCaption={onUpdateCaption} full />
+        </figure>
+      ))}
+    </>
   )
 }
 
@@ -1075,62 +1064,6 @@ function Summary({ html, inSplit, variant, heading }) {
 }
 
 /**
- * 드리는 말씀을 읽기 좋게 끊는다.
- *
- * AI 가 100~250자를 줄바꿈 없이 한 덩어리로 주기 때문에 문장 사이에 빈 줄을 넣는다.
- * DOM 을 쪼개지 않고 문자열에만 줄바꿈을 넣는 이유:
- *   noteQuote 가 pre-wrap 이라 그대로 문단처럼 보이고,
- *   편집 모드(contentEditable)의 textContent 저장이 줄바꿈을 그대로 보존한다.
- *   <p> 로 쪼개면 저장 시 문장들이 도로 붙어버린다.
- *
- * 이미 줄바꿈이 있으면(직접 넣었거나 한 번 저장된 것) 손대지 않는다 — 반복 적용해도 안전.
- * 마침표 뒤 공백 기준이라 "1.5mm" 같은 소수점은 쪼개지지 않는다.
- */
-function formatNote(note) {
-  const text = String(note || '').trim()
-  if (!text) return ''
-  if (/\n/.test(text)) return text
-  return text.replace(/([.!?])\s+/g, '$1\n\n')
-}
-
-function PersonalNote({ patientName, note, v, design, onUpdateNote }) {
-  const shown = formatNote(note)
-  // 마지막 문단은 맺음말이라 강조 박스로 뺀다 (참고 화면의 세로선 박스)
-  const paras = shown.split(/\n{2,}/).map(s => s.trim()).filter(Boolean)
-  const body = paras.length > 1 ? paras.slice(0, -1) : paras
-  const highlight = paras.length > 1 ? paras[paras.length - 1] : ''
-
-  return (
-    <div style={S.note}>
-      <div style={S.noteTopRule} />
-      <div style={S.noteLabel}>A Personal Note · 드리는 말씀</div>
-
-      {design ? (
-        // 편집 모드는 원문 그대로 — 쪼개면 저장 시 문장이 도로 붙는다
-        <div
-          style={{ ...S.noteQuote, outline: 'none', minHeight: '1em', cursor: 'text' }}
-          contentEditable
-          suppressContentEditableWarning
-          onBlur={(e) => onUpdateNote?.(e.currentTarget.textContent.trim())}
-          data-placeholder="맞춤 메시지 입력..."
-        >{shown}</div>
-      ) : (
-        <>
-          {body.map((p, i) => (
-            <p key={i} style={S.noteQuote}>{p}</p>
-          ))}
-          {highlight && (
-            <div style={S.noteHighlight}>{highlight}</div>
-          )}
-        </>
-      )}
-
-      <div style={S.noteSign}>— Prime-S</div>
-    </div>
-  )
-}
-
-/**
  * 푸터 배너 링크.
  * 홈페이지는 http 로 둔다 — primes.co.kr 은 https 로 접속하면 도메인 전체가
  * NHN 호스팅 안내 페이지로 302 된다. 호스팅에 SSL 이 붙으면 https 로 바꿀 것.
@@ -1304,10 +1237,6 @@ const S = {
 
   // 종합 소견
   summary: { maxWidth: 680, margin: '0 auto', paddingTop: 28, borderTop: `1px solid ${C.line}`, position: 'relative' },
-  summaryMark: { position: 'absolute', top: -1, left: '50%', transform: 'translateX(-50%)', width: 72, height: 3, background: C.gold },
-  summaryLabel: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, marginBottom: 22 },
-  summaryEn: { fontFamily: FONTS.serif, fontWeight: 500, fontSize: FS.secEn, letterSpacing: LS.looseWide, color: C.gold, textTransform: 'uppercase' },
-  summaryKr: { fontFamily: FONTS.kor, fontWeight: 700, fontSize: FS.body, color: C.ink, letterSpacing: '0.02em' },
 
   /* 소견 본문 — 리드 한 줄 + 화살표 항목 (참고 스크린샷 구조) */
   sumLead: {
@@ -1340,7 +1269,6 @@ const S = {
   // 소제목 — 브라운톤 굵은 고딕
   cardTitle: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: 'clamp(15px, 4vw, 17px)', color: C.brown, letterSpacing: '-0.01em', marginBottom: 'clamp(6px, 1.6vw, 9px)' },
   cardDesc: { fontSize: FS.body, lineHeight: 1.8, color: C.mid, wordBreak: 'keep-all' },
-  summaryDot: { width: 4, height: 4, background: C.gold, borderRadius: '50%' },
 
   // 치료 계획
   // 계획 목록 — 레퍼런스의 타임라인. 왼쪽 레일(번호+세로선) + 오른쪽 내용
@@ -1382,16 +1310,6 @@ const S = {
   /* 가로형 사진 자리 — 종합 소견 아래 */
   wideFig: { maxWidth: 720, margin: 'clamp(28px, 6vw, 44px) auto 0' },
   wideImg: { width: '100%', aspectRatio: '16 / 9', objectFit: 'cover', display: 'block', borderRadius: 2 },
-  widePlaceholder: {
-    maxWidth: 720, margin: 'clamp(28px, 6vw, 44px) auto 0',
-    aspectRatio: '16 / 9',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    border: `1px dashed ${C.gold}`, borderRadius: 2,
-    background: 'rgba(181,151,106,0.06)',
-  },
-  widePlaceholderText: {
-    fontFamily: FONTS.sans, fontSize: FS.caption, letterSpacing: '0.08em', color: C.gold,
-  },
 
   /* "더 많은 치료 사례 보기" 배너 — 케이스 카드 안, 브라운 바탕 (흰 글씨 대비 8.87:1) */
   moreBanner: {
@@ -1476,30 +1394,13 @@ const S = {
   // 한글 라벨은 고딕 유지 — 세리프로 두면 명조로 폴백돼 작은 글씨가 흐려진다
   planEffectHead: { fontFamily: FONTS.sans, fontWeight: 500, fontSize: FS.caption, letterSpacing: '0.28em', color: C.gold, marginBottom: 'clamp(12px, 3vw, 18px)' },
   planEffectQuote: { fontFamily: FONTS.serif, fontStyle: 'italic', fontWeight: 400, fontSize: FS.planEffect, lineHeight: 1.8, color: C.goldL },
-  planMeta: { marginTop: 18, paddingTop: 14, borderTop: `1px solid ${C.line}`, fontFamily: FONTS.sans, fontSize: FS.caption, color: C.mid },
-  planMetaKey: { fontFamily: FONTS.sans, fontStyle: 'normal', fontWeight: 500, fontSize: FS.label, letterSpacing: '0.3em', color: C.gold, textTransform: 'uppercase', marginRight: 10 },
   // 계획 파싱 실패 시 원문 그대로 나오는 자리 — 어두운 판이라 밝은 글씨여야 한다
   planFallback: { maxWidth: 720, margin: '0 auto', fontSize: FS.body, lineHeight: 2, color: 'rgba(255,255,255,0.72)' },
 
   // 맞춤 안내
   // 검은 판에 연한 본문, 맺음말은 베이지 강조 박스. 전체 가운데 정렬.
-  note: { padding: SP.notePad, background: '#1c1a18', color: C.paper, textAlign: 'center', position: 'relative' },
-  noteHighlight: {
-    maxWidth: 640, margin: 'clamp(22px, 5vw, 32px) auto 0',
-    padding: 'clamp(16px, 3.6vw, 22px) clamp(18px, 4vw, 26px)',
-    background: 'rgba(255,255,255,0.05)',
-    // 가운데 정렬이라 한쪽 선 대신 위아래 골드 선으로 감싼다
-    borderTop: `1px solid ${C.gold}`, borderBottom: `1px solid ${C.gold}`,
-    fontFamily: FONTS.sans, fontWeight: 700,
-    fontSize: FS.body, lineHeight: 1.75,
-    color: C.goldL, wordBreak: 'keep-all',
-  },
-  noteTopRule: { position: 'absolute', top: 'clamp(20px, 5vw, 40px)', left: '50%', transform: 'translateX(-50%)', width: 1, height: 'clamp(36px, 8vw, 64px)', background: `linear-gradient(to bottom, transparent, ${C.gold})` },
   // 한글이 섞여 있어 고딕 유지 (세리프면 한글만 명조로 폴백돼 어색해진다)
-  noteLabel: { fontFamily: FONTS.sans, fontWeight: 500, fontSize: FS.caption, letterSpacing: LS.mediumWide, color: C.gold, maxWidth: 640, margin: '0 auto clamp(20px, 5vw, 36px)' },
   // 글자가 너무 커서 본문 크기로 낮춤 (기존 17~22px → 15~17px)
-  noteQuote: { fontFamily: FONTS.sans, fontWeight: 400, fontSize: FS.body, lineHeight: 1.9, color: 'rgba(255,255,255,0.68)', maxWidth: 640, margin: '0 auto clamp(14px, 3vw, 20px)', whiteSpace: 'pre-wrap', wordBreak: 'keep-all' },
-  noteSign: { fontFamily: FONTS.serif, fontStyle: 'italic', fontSize: FS.caption, color: C.gold, maxWidth: 640, margin: 'clamp(22px, 5vw, 32px) auto 0' },
 
   // 푸터
   footer: { padding: SP.footerPad, background: '#0e0e0c', color: '#fff', textAlign: 'center' },
