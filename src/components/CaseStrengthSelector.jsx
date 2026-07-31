@@ -8,6 +8,9 @@ import { useMemo, useState } from 'react'
 import { normalizeTag, normalizeTags, matchCount } from '../lib/library'
 import { CASE_CATEGORIES } from '../lib/caseSheet'
 
+/** 폴더 하나에서 기본으로 보여줄 케이스 수 — 너무 많으면 고르기 어렵다 */
+const CASES_PER_FOLDER = 6
+
 export default function CaseStrengthSelector({
   cases, strengths,
   selectedCaseIds, selectedStrengthIds,
@@ -68,23 +71,32 @@ export default function CaseStrengthSelector({
    * AI 가 추천한 태그(caseTags)는 위로 올리고 표시를 단다.
    */
   const [openFolder, setOpenFolder] = useState(null)
+  const [showAllIn, setShowAllIn] = useState(null)   // 전부 펼친 폴더
   const caseFolders = useMemo(() => {
     const rec = new Set((caseTags || []).map(t => t.toLowerCase()))
     const byTag = new Map()
-    for (const c of catCases) {
+    catCases.forEach((c, order) => {
       const tags = (c.tags || []).length ? c.tags : ['(태그 없음)']
       for (const t of tags) {
         const k = t.toLowerCase()
         if (!byTag.has(k)) byTag.set(k, { tag: t, cases: [] })
-        byTag.get(k).cases.push(c)
+        byTag.get(k).cases.push({ ...c, _order: order })
       }
-    }
+    })
     return [...byTag.entries()]
-      .map(([k, v]) => ({
-        ...v,
-        recommended: rec.has(k),
-        picked: v.cases.filter(c => selectedCaseIds.includes(c.id)).length,
-      }))
+      .map(([k, v]) => {
+        // 폴더 안에서도 보여줄 순서를 정한다.
+        // 전후 세트가 많은 케이스일수록 여러 각도가 담겨 상담에 쓰기 좋아 앞에 둔다.
+        // 같으면 시트에 적힌 순서를 지킨다.
+        const ranked = [...v.cases].sort((a, b) =>
+          ((b.pairs || []).length - (a.pairs || []).length) || (a._order - b._order))
+        return {
+          ...v,
+          cases: ranked,
+          recommended: rec.has(k),
+          picked: v.cases.filter(c => selectedCaseIds.includes(c.id)).length,
+        }
+      })
       // AI 추천 → 선택된 게 있는 폴더 → 케이스 많은 순
       .sort((a, b) =>
         (b.recommended - a.recommended) ||
@@ -124,6 +136,14 @@ export default function CaseStrengthSelector({
           <div style={S.folderList}>
             {caseFolders.map(f => {
               const open = openFolder === f.tag
+              // 폴더당 기본 6개만. 고른 케이스는 6위 밖이어도 항상 보이게 끌어올린다.
+              const expanded = showAllIn === f.tag
+              const head = f.cases.slice(0, CASES_PER_FOLDER)
+              const pickedOutside = f.cases
+                .slice(CASES_PER_FOLDER)
+                .filter(c => selectedCaseIds.includes(c.id))
+              const shown = expanded ? f.cases : [...head, ...pickedOutside]
+              const hidden = f.cases.length - shown.length
               return (
                 <div key={f.tag} style={{ ...S.folder, ...(open ? S.folderOpen : {}) }}>
                   <button
@@ -134,13 +154,17 @@ export default function CaseStrengthSelector({
                     <span style={S.folderCaret}>{open ? '▾' : '▸'}</span>
                     <span style={S.folderName}>#{f.tag}</span>
                     {f.recommended && <span style={S.folderRec}>AI 추천</span>}
-                    <span style={S.folderCount}>{f.cases.length}건</span>
+                    <span style={S.folderCount}>
+                      {f.cases.length > CASES_PER_FOLDER
+                        ? `${CASES_PER_FOLDER} / ${f.cases.length}건`
+                        : `${f.cases.length}건`}
+                    </span>
                     {f.picked > 0 && <span style={S.folderPicked}>선택 {f.picked}</span>}
                   </button>
 
                   {open && (
                     <div style={S.grid}>
-                      {f.cases.map(c => {
+                      {shown.map(c => {
                         const active = selectedCaseIds.includes(c.id)
                         const firstPair = (c.pairs || [])[0] || {}
                         return (
@@ -160,6 +184,16 @@ export default function CaseStrengthSelector({
                         )
                       })}
                     </div>
+                  )}
+
+                  {open && (hidden > 0 || expanded) && (
+                    <button
+                      type="button"
+                      onClick={() => setShowAllIn(expanded ? null : f.tag)}
+                      style={S.folderMore}
+                    >
+                      {expanded ? '접기 ▴' : `+${hidden}개 더 보기 ▾`}
+                    </button>
                   )}
                 </div>
               )
@@ -384,6 +418,12 @@ const S = {
   folderRec: { padding: '2px 7px', borderRadius: 8, background: '#b5976a', color: '#fff', fontSize: 10, fontWeight: 700 },
   folderCount: { marginLeft: 'auto', fontSize: 12, color: '#9ca3af' },
   folderPicked: { padding: '2px 7px', borderRadius: 8, background: '#6a9b7a', color: '#fff', fontSize: 10, fontWeight: 700 },
+  folderMore: {
+    display: 'block', width: '100%', padding: '10px 14px',
+    border: 'none', borderTop: '1px solid #f3f4f6', background: '#fafafa',
+    color: '#6b7280', fontSize: 12, fontWeight: 600,
+    cursor: 'pointer', fontFamily: 'inherit',
+  },
   catBar: { display: 'flex', flexWrap: 'wrap', gap: 8 },
   catBtn: {
     display: 'inline-flex', alignItems: 'center', gap: 6,
