@@ -13,7 +13,8 @@ export default function CaseStrengthSelector({
   selectedCaseIds, selectedStrengthIds,
   onChangeCases, onChangeStrengths,
   caseTags = [], strengthTags = [],
-  onChangeCaseTags, onChangeStrengthTags,
+  // 케이스 태그는 이제 직접 고르지 않고 폴더로 탐색한다 — onChangeCaseTags 는 쓰지 않는다
+  onChangeStrengthTags,
   onSuggestTags, isSuggesting = false,
 }) {
   const toggle = (ids, id, setter) => {
@@ -21,14 +22,8 @@ export default function CaseStrengthSelector({
     else setter([...ids, id])
   }
 
-  // 케이스 태그 토글 (클릭형 팔레트) — 홈페이지 filterByTag 와 동일 (OR 다중선택)
-  const toggleCaseTag = (t) => {
-    const l = t.toLowerCase()
-    const has = (caseTags || []).some(x => x.toLowerCase() === l)
-    onChangeCaseTags(has
-      ? caseTags.filter(x => x.toLowerCase() !== l)
-      : normalizeTags([...(caseTags || []), t]))
-  }
+  // 케이스는 태그 칩 대신 폴더로 고른다 (아래 caseFolders 참고).
+  // caseTags 는 AI 추천 결과로만 남아 폴더 정렬·표시에 쓰인다.
 
   // 케이스 카테고리 (전체/치아교정/심미치료/임플란트) — 홈페이지 치료 전·후와 동일 구조
   const [caseCategory, setCaseCategory] = useState('전체')
@@ -48,15 +43,6 @@ export default function CaseStrengthSelector({
     return m
   }, [cases])
 
-  // 태그 풀 추출 — 선택 카테고리 범위로 스코프
-  const casePool = useMemo(() => {
-    const set = new Map()
-    for (const c of catCases) for (const t of (c.tags || [])) {
-      const lc = t.toLowerCase(); if (!set.has(lc)) set.set(lc, t)
-    }
-    return [...set.values()]
-  }, [catCases])
-
   const strengthPool = useMemo(() => {
     const set = new Map()
     for (const s of strengths || []) for (const t of (s.tags || [])) {
@@ -75,6 +61,37 @@ export default function CaseStrengthSelector({
       .map(x => x.c)
   }, [catCases, caseTags])
 
+  /**
+   * 태그를 폴더로 묶는다. 61건이 한 번에 펼쳐져 있으면 고르기 어려워
+   * 기본은 전부 접어 두고, 폴더를 눌렀을 때만 그 태그의 사진을 보여 준다.
+   * 한 케이스에 태그가 여러 개면 해당 폴더마다 나온다(찾아가는 길이 여럿).
+   * AI 가 추천한 태그(caseTags)는 위로 올리고 표시를 단다.
+   */
+  const [openFolder, setOpenFolder] = useState(null)
+  const caseFolders = useMemo(() => {
+    const rec = new Set((caseTags || []).map(t => t.toLowerCase()))
+    const byTag = new Map()
+    for (const c of catCases) {
+      const tags = (c.tags || []).length ? c.tags : ['(태그 없음)']
+      for (const t of tags) {
+        const k = t.toLowerCase()
+        if (!byTag.has(k)) byTag.set(k, { tag: t, cases: [] })
+        byTag.get(k).cases.push(c)
+      }
+    }
+    return [...byTag.entries()]
+      .map(([k, v]) => ({
+        ...v,
+        recommended: rec.has(k),
+        picked: v.cases.filter(c => selectedCaseIds.includes(c.id)).length,
+      }))
+      // AI 추천 → 선택된 게 있는 폴더 → 케이스 많은 순
+      .sort((a, b) =>
+        (b.recommended - a.recommended) ||
+        ((b.picked > 0) - (a.picked > 0)) ||
+        (b.cases.length - a.cases.length))
+  }, [catCases, caseTags, selectedCaseIds])
+
   const sortedStrengths = useMemo(() => {
     if (!strengthTags.length) return strengths
     return [...strengths]
@@ -92,49 +109,59 @@ export default function CaseStrengthSelector({
       </section>
 
       <section>
-        <SectionHead label="🏷️ 태그로 좁히기" suffix={caseTags.length ? `${caseTags.length}개 선택` : '태그를 눌러보세요'} />
-        <TagPalette
-          pool={casePool}
-          active={caseTags}
-          onToggle={toggleCaseTag}
-          onClear={() => onChangeCaseTags([])}
-          emptyHint="이 카테고리에 등록된 태그가 없습니다."
+        <SectionHead
+          label="유사 치료 사례"
+          count={selectedCaseIds.length}
+          total={sortedCases.length}
+          totalLabel={caseTags.length ? '추천' : (caseCategory === '전체' ? '전체' : caseCategory)}
         />
         <TagActions onSuggest={onSuggestTags} isSuggesting={isSuggesting} />
-      </section>
-
-      <section>
-        <SectionHead label="유사 치료 사례" count={selectedCaseIds.length} total={sortedCases.length} totalLabel={caseTags.length ? '매칭됨' : (caseCategory === '전체' ? '전체' : caseCategory)} />
         {cases.length === 0 ? (
           <Empty hint="공용 케이스 시트를 불러오지 못했습니다. 잠시 후 다시 시도해주세요." />
-        ) : sortedCases.length === 0 ? (
-          <Empty hint="선택한 카테고리·태그와 일치하는 케이스가 없습니다. 조건을 조정해보세요." />
+        ) : caseFolders.length === 0 ? (
+          <Empty hint="이 카테고리에 등록된 케이스가 없습니다." />
         ) : (
-          <div style={S.grid}>
-            {sortedCases.map(c => {
-              const active = selectedCaseIds.includes(c.id)
-              const firstPair = (c.pairs || [])[0] || {}
-              const matched = (c.tags || []).filter(t => caseTags.some(s => s.toLowerCase() === t.toLowerCase()))
+          <div style={S.folderList}>
+            {caseFolders.map(f => {
+              const open = openFolder === f.tag
               return (
-                <button
-                  key={c.id} type="button"
-                  onClick={() => toggle(selectedCaseIds, c.id, onChangeCases)}
-                  style={{ ...S.card, ...(active ? S.cardActive : {}) }}
-                >
-                  <div style={S.cardThumbRow}>
-                    <Thumb url={firstPair.before_url} label="Before" />
-                    <Thumb url={firstPair.after_url} label="After" />
-                  </div>
-                  <div style={S.cardTitle}>{c.title || '(제목 없음)'}</div>
-                  {c.description && <div style={S.cardDesc}>{c.description}</div>}
-                  {matched.length > 0 && (
-                    <div style={S.matchTags}>
-                      {matched.map(t => <span key={t} style={S.matchChip}>#{t}</span>)}
-                      <span style={S.matchCount}>{matched.length}개 일치</span>
+                <div key={f.tag} style={{ ...S.folder, ...(open ? S.folderOpen : {}) }}>
+                  <button
+                    type="button"
+                    onClick={() => setOpenFolder(open ? null : f.tag)}
+                    style={S.folderHead}
+                  >
+                    <span style={S.folderCaret}>{open ? '▾' : '▸'}</span>
+                    <span style={S.folderName}>#{f.tag}</span>
+                    {f.recommended && <span style={S.folderRec}>AI 추천</span>}
+                    <span style={S.folderCount}>{f.cases.length}건</span>
+                    {f.picked > 0 && <span style={S.folderPicked}>선택 {f.picked}</span>}
+                  </button>
+
+                  {open && (
+                    <div style={S.grid}>
+                      {f.cases.map(c => {
+                        const active = selectedCaseIds.includes(c.id)
+                        const firstPair = (c.pairs || [])[0] || {}
+                        return (
+                          <button
+                            key={c.id} type="button"
+                            onClick={() => toggle(selectedCaseIds, c.id, onChangeCases)}
+                            style={{ ...S.card, ...(active ? S.cardActive : {}) }}
+                          >
+                            <div style={S.cardThumbRow}>
+                              <Thumb url={firstPair.before_url} label="Before" />
+                              <Thumb url={firstPair.after_url} label="After" />
+                            </div>
+                            <div style={S.cardTitle}>{c.title || '(제목 없음)'}</div>
+                            {c.description && <div style={S.cardDesc}>{c.description}</div>}
+                            <Checkmark active={active} />
+                          </button>
+                        )
+                      })}
                     </div>
                   )}
-                  <Checkmark active={active} />
-                </button>
+                </div>
               )
             })}
           </div>
@@ -209,33 +236,6 @@ function CategoryTabs({ value, onChange, counts }) {
           </button>
         )
       })}
-    </div>
-  )
-}
-
-// ─────── 클릭형 태그 팔레트 (홈페이지 치료 전·후와 동일 UX — 태그 버튼 나열, 클릭 토글)
-function TagPalette({ pool, active, onToggle, onClear, emptyHint }) {
-  const lower = (active || []).map(t => t.toLowerCase())
-  if (!pool || pool.length === 0) {
-    return (
-      <div style={S.paletteEmpty}>{emptyHint || '태그가 없습니다.'}</div>
-    )
-  }
-  return (
-    <div style={S.palette}>
-      {pool.map(t => {
-        const on = lower.includes(t.toLowerCase())
-        return (
-          <button
-            key={t} type="button"
-            onClick={() => onToggle(t)}
-            style={{ ...S.paletteChip, ...(on ? S.paletteChipOn : {}) }}
-          >#{t}</button>
-        )
-      })}
-      {lower.length > 0 && (
-        <button type="button" onClick={onClear} style={S.paletteClear}>선택 해제 ×</button>
-      )}
     </div>
   )
 }
@@ -369,6 +369,21 @@ function Checkmark({ active }) {
 
 const S = {
   grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 },
+
+  /* 태그 폴더 — 기본은 접힘, 누르면 그 태그의 케이스만 펼쳐진다 */
+  folderList: { display: 'flex', flexDirection: 'column', gap: 8 },
+  folder: { border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff', overflow: 'hidden' },
+  folderOpen: { borderColor: '#b5976a', boxShadow: '0 1px 6px rgba(181,151,106,0.18)' },
+  folderHead: {
+    display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+    padding: '12px 14px', border: 'none', background: 'transparent',
+    cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+  },
+  folderCaret: { color: '#9ca3af', fontSize: 12, width: 12, flex: '0 0 auto' },
+  folderName: { fontSize: 14, fontWeight: 600, color: '#1f2937' },
+  folderRec: { padding: '2px 7px', borderRadius: 8, background: '#b5976a', color: '#fff', fontSize: 10, fontWeight: 700 },
+  folderCount: { marginLeft: 'auto', fontSize: 12, color: '#9ca3af' },
+  folderPicked: { padding: '2px 7px', borderRadius: 8, background: '#6a9b7a', color: '#fff', fontSize: 10, fontWeight: 700 },
   catBar: { display: 'flex', flexWrap: 'wrap', gap: 8 },
   catBtn: {
     display: 'inline-flex', alignItems: 'center', gap: 6,
