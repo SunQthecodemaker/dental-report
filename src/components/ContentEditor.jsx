@@ -21,7 +21,7 @@ function detectPhotoType(caption) {
   return 'other'
 }
 
-export default function ContentEditor({ original, edited, onChange, onUploadingChange, commitRef }) {
+export default function ContentEditor({ original, edited, onChange, onUploadingChange, commitRef, markPatchRef }) {
   const editorRef = useRef(null)
   const inputTimerRef = useRef(null)
   const [uploading, setUploading] = useState(false)
@@ -46,6 +46,23 @@ export default function ContentEditor({ original, edited, onChange, onUploadingC
     }
     return () => { if (commitRef) commitRef.current = null }
   }, [commitRef, edited, onChange])
+
+  /**
+   * 마킹 결과를 편집기 DOM 에 직접 반영한다.
+   * 본문은 아래에서 "최초 1회만" innerHTML 로 넣기 때문에, 밖에서 edited.body 만 바꾸면
+   * 편집기 DOM 은 옛 상태로 남는다. 그 상태로 다음 commit 이 돌면 마킹이 통째로 덮여 사라진다.
+   */
+  useEffect(() => {
+    if (!markPatchRef) return undefined
+    markPatchRef.current = (src, serialized) => {
+      if (!editorRef.current || !src) return
+      editorRef.current.querySelectorAll(`img[src="${src}"]`).forEach(img => {
+        if (serialized) img.setAttribute('data-markings', serialized)
+        else img.removeAttribute('data-markings')
+      })
+    }
+    return () => { markPatchRef.current = null }
+  }, [markPatchRef])
 
   // 최초 1회만 innerHTML 설정 + 레거시 데이터 자동 복구 (unnest + 종횡비로 타입 판정)
   useEffect(() => {

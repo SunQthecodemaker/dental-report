@@ -73,6 +73,8 @@ export default function Editor() {
   const [designerKey, setDesignerKey] = useState(0)  // 디자인하기 누를 때마다 증가 → 브로셔 강제 remount
   const [markerTarget, setMarkerTarget] = useState(null)  // { src, markings } or null
   const editorCommitRef = useRef(null)
+  // 마킹 결과를 3단계 편집기 DOM 에도 반영하기 위한 통로 (안 하면 다음 편집 때 덮여 사라진다)
+  const editorMarkPatchRef = useRef(null)
 
   const [saveState, setSaveState] = useState('idle')
   const [lastSavedAt, setLastSavedAt] = useState(null)
@@ -416,6 +418,9 @@ export default function Editor() {
       })
       if (changed) {
         setEditedContent({ ...editedContent, body: root.innerHTML })
+        // 3단계 편집기가 열려 있으면 그쪽 DOM 도 같이 고쳐야 한다.
+        // 편집기는 본문을 최초 1회만 넣기 때문에, 안 고치면 다음 commit 때 마킹이 덮인다.
+        editorMarkPatchRef.current?.(target.src, serialized)
         setDesignerKey(k => k + 1)  // 브로셔 강제 remount (parseSections 재실행)
       }
     } catch (err) { console.warn('markings update failed', err) }
@@ -550,7 +555,7 @@ export default function Editor() {
               <div style={infoBoxS.green}>
                 ✨ AI가 정리 소스와 환자 성향을 반영해 작성했습니다. 내용을 최종 확인·수정하세요.
               </div>
-              <ContentEditor original={refinedContent} edited={editedContent} onChange={setEditedContent} onUploadingChange={setIsUploadingPhoto} commitRef={editorCommitRef} />
+              <ContentEditor original={refinedContent} edited={editedContent} onChange={setEditedContent} onUploadingChange={setIsUploadingPhoto} commitRef={editorCommitRef} markPatchRef={editorMarkPatchRef} />
               <button
                 onClick={() => changeStep(4)}
                 disabled={isUploadingPhoto}
@@ -574,6 +579,8 @@ export default function Editor() {
                   cases={selectedCases}
                   strengths={selectedStrengths}
                   mode="preview"
+                  allowMarking
+                  onOpenMarker={handleOpenMarker}
                 />
               </div>
             </div>

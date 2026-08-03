@@ -44,7 +44,7 @@ const EN_LABEL = {
   '추가 사항': 'Additional Notes',
 }
 
-export default function BrochurePreview({ patientName, consultDate, content, photos = [], mode = 'preview', onUpdateCaption, onUpdateNote, onOpenMarker, cases = [], strengths = [] }) {
+export default function BrochurePreview({ patientName, consultDate, content, photos = [], mode = 'preview', allowMarking, onUpdateCaption, onUpdateNote, onOpenMarker, cases = [], strengths = [] }) {
   const v = mode === 'view' || mode === 'design'
   const design = mode === 'design'
   const bodyHtml = content?.body || ''
@@ -79,7 +79,7 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
       <DiagnosticSection
         key={`s-${globalNum}`} num={num} en={en} kr={krLabel} sectionKey={sec.title}
         figures={sec.figures} summaryHtml={sec.summaryHtml} v={v} tone={tone}
-        design={design} onUpdateCaption={onUpdateCaption} onOpenMarker={onOpenMarker}
+        design={design} allowMarking={allowMarking} onUpdateCaption={onUpdateCaption} onOpenMarker={onOpenMarker}
       />
     )
   }
@@ -385,13 +385,15 @@ function Cover({ patientName, consultDate, v }) {
  * MarkedImage — 이미지 + 마킹 오버레이 + (design 모드에서) 📍 편집 버튼
  * 모든 figure 렌더링에서 공용으로 사용
  */
-function MarkedImage({ f, imgStyle, design, onOpenMarker }) {
+// 마킹 버튼은 design 모드와 분리한다 — 사진을 넣는 3단계(초안)에서도 바로 표시할 수 있어야 한다
+function MarkedImage({ f, imgStyle, design, allowMarking, onOpenMarker }) {
   const hasMarkings = Array.isArray(f.markings) && f.markings.length > 0
+  const canMark = allowMarking ?? design
   return (
     <div style={{ position: 'relative', display: 'block' }}>
       <img src={f.src} alt={f.caption || ''} style={imgStyle} />
       <MarkingOverlay markings={f.markings || []} />
-      {design && onOpenMarker && (
+      {canMark && onOpenMarker && (
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onOpenMarker(f.src, f.markings || []) }}
@@ -442,14 +444,14 @@ const WIDE_PHOTO_SECTION = {
  * (틀을 없앤 뒤에도 이 처리는 남겨 둔다. 없애면 기존 사진이 일반 배치로 흘러가
  *  좌우 분할(사진 45%)로 붙어 버린다.)
  */
-function WidePhotoSlot({ figures = [], design, onUpdateCaption, onOpenMarker }) {
+function WidePhotoSlot({ figures = [], design, allowMarking, onUpdateCaption, onOpenMarker }) {
   const usable = figures.filter(f => f?.src)
   if (usable.length === 0) return null
   return (
     <>
       {usable.map((f, i) => (
         <figure key={i} style={S.wideFig}>
-          <MarkedImage f={f} imgStyle={S.wideImg} design={design} onOpenMarker={onOpenMarker} />
+          <MarkedImage f={f} imgStyle={S.wideImg} design={design} allowMarking={allowMarking} onOpenMarker={onOpenMarker} />
           <EditableCaption caption={f.caption} src={f.src} design={design} onUpdateCaption={onUpdateCaption} full />
         </figure>
       ))}
@@ -457,7 +459,7 @@ function WidePhotoSlot({ figures = [], design, onUpdateCaption, onOpenMarker }) 
   )
 }
 
-function DiagnosticSection({ num, en, kr, sectionKey, figures, summaryHtml, v, design, onUpdateCaption, onOpenMarker, tone }) {
+function DiagnosticSection({ num, en, kr, sectionKey, figures, summaryHtml, v, design, allowMarking, onUpdateCaption, onOpenMarker, tone }) {
   const variant = SUMMARY_VARIANT[kr]
   const wantsWidePhoto = !!WIDE_PHOTO_SECTION[sectionKey || kr]
   const hasFigs = figures.length > 0
@@ -478,7 +480,7 @@ function DiagnosticSection({ num, en, kr, sectionKey, figures, summaryHtml, v, d
       <div style={{ ...S.sec, ...toneStyle(tone) }}>
         <SecHead num={num} en={en} kr={kr} />
         {hasSummary && <Summary html={summaryHtml} variant={variant} heading={kr} />}
-        <WidePhotoSlot figures={figures} design={design} onUpdateCaption={onUpdateCaption} onOpenMarker={onOpenMarker} />
+        <WidePhotoSlot figures={figures} design={design} allowMarking={allowMarking} onUpdateCaption={onUpdateCaption} onOpenMarker={onOpenMarker} />
       </div>
     )
   }
@@ -490,7 +492,7 @@ function DiagnosticSection({ num, en, kr, sectionKey, figures, summaryHtml, v, d
       {/* 1단: 파노라마 풀폭 */}
       {panoramas.map((f, i) => (
         <figure key={`pano-${i}`} style={S.figFull}>
-          <MarkedImage f={f} imgStyle={S.imgFull} design={design} onOpenMarker={onOpenMarker} />
+          <MarkedImage f={f} imgStyle={S.imgFull} design={design} allowMarking={allowMarking} onOpenMarker={onOpenMarker} />
           <EditableCaption caption={f.caption} src={f.src} design={design} onUpdateCaption={onUpdateCaption} full />
         </figure>
       ))}
@@ -498,13 +500,13 @@ function DiagnosticSection({ num, en, kr, sectionKey, figures, summaryHtml, v, d
       {/* 2단: 기타(셉, 얼굴 등) - 사용자 지정: "따로 배치" */}
       {others.map((f, i) => (
         <figure key={`oth-${i}`} style={S.figCenter}>
-          <MarkedImage f={f} imgStyle={S.imgPortrait} design={design} onOpenMarker={onOpenMarker} />
+          <MarkedImage f={f} imgStyle={S.imgPortrait} design={design} allowMarking={allowMarking} onOpenMarker={onOpenMarker} />
           <EditableCaption caption={f.caption} src={f.src} design={design} onUpdateCaption={onUpdateCaption} />
         </figure>
       ))}
 
       {/* 3단: 구내 그룹 + 텍스트 */}
-      <IntraoralGroup figures={intraorals} summaryHtml={summaryHtml} design={design} onUpdateCaption={onUpdateCaption} onOpenMarker={onOpenMarker} variant={variant} heading={kr} />
+      <IntraoralGroup figures={intraorals} summaryHtml={summaryHtml} design={design} allowMarking={allowMarking} onUpdateCaption={onUpdateCaption} onOpenMarker={onOpenMarker} variant={variant} heading={kr} />
 
       {/* 구내가 텍스트를 소비 안 했고 텍스트만 남아있으면 단독 렌더 */}
       {!intraoralConsumesText && hasSummary && <Summary html={summaryHtml} variant={variant} heading={kr} />}
@@ -531,7 +533,7 @@ function EditableCaption({ caption, src, design, onUpdateCaption, full }) {
 }
 
 // 구내 그룹 + 텍스트 통합 레이아웃
-function IntraoralGroup({ figures, summaryHtml, design, onUpdateCaption, onOpenMarker, variant, heading }) {
+function IntraoralGroup({ figures, summaryHtml, design, allowMarking, onUpdateCaption, onOpenMarker, variant, heading }) {
   const count = figures.length
   const hasSummary = !!summaryHtml && summaryHtml.replace(/<[^>]+>/g, '').trim().length > 0
 
@@ -539,7 +541,7 @@ function IntraoralGroup({ figures, summaryHtml, design, onUpdateCaption, onOpenM
 
   const img = (f, i) => (
     <figure key={i} style={S.figGrid}>
-      <MarkedImage f={f} imgStyle={S.imgGrid} design={design} onOpenMarker={onOpenMarker} />
+      <MarkedImage f={f} imgStyle={S.imgGrid} design={design} allowMarking={allowMarking} onOpenMarker={onOpenMarker} />
       <EditableCaption caption={f.caption} src={f.src} design={design} onUpdateCaption={onUpdateCaption} />
     </figure>
   )
