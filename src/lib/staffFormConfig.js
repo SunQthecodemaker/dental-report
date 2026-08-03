@@ -11,10 +11,10 @@ import { supabase } from './supabase'
 
 export const DEFAULT_STAFF_FORM_CONFIG = {
   categories: {
-    personality:  { label: '환자 성향', options: ['꼼꼼한 편', '감성적', '결정 빠름', '망설임 많음', '바쁜 분', '고령'] },
-    anxiety:      { label: '불안 요소', options: ['치료 통증', '마취', '치과 공포', '부작용 우려', '치료 기간', '재발'] },
+    personality:  { label: '환자 성향', options: ['꼼꼼한 편', '감성적', '결정 빠름', '망설임 많음', '바쁜 분', '고령', '통증우려', '비발치 선호'] },
+    anxiety:      { label: '불안 요소', options: ['치료 통증', '마취', '치과 공포', '부작용 우려', '치료 기간', '재발', '발치 거부감'] },
     costReaction: { label: '비용 반응', options: ['신경 안 씀', '부담 있지만 수용', '분명히 부담', '할부 문의', '결정 못함'] },
-    interests:    { label: '관심사',    options: ['심미', '교정 후 인상', '빠른 치료', '최소 내원', '치아 유지', '자녀 상담'] },
+    interests:    { label: '관심사',    options: ['심미', '교정 후 인상', '빠른 치료', '최소 내원', '치아 유지', '자녀 상담', '급속교정'] },
   },
   sliders: {
     willingness:   { label: '치료 의지', min: '매우 소극적',  max: '매우 적극적' },
