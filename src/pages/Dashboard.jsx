@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { createPatient, listReports, isOtherPcEditing, isLockStale, PROGRESS_STAGES, todayYMD } from '../lib/reports'
+import { createPatient, listReports, deleteReport, isOtherPcEditing, isLockStale, PROGRESS_STAGES, todayYMD } from '../lib/reports'
 import { findAvailableChartNumber, makeBaseChartNumber, isChartNumberTaken, normalizeBirth } from '../lib/chartNumber'
 import { getSessionId, getPcName, setPcName, getPcLabel } from '../lib/session'
 
@@ -23,6 +23,24 @@ export default function Dashboard() {
 
   const [pcName, setPcNameState] = useState(getPcName())
   const [pcEditOpen, setPcEditOpen] = useState(false)
+
+  // 환자 삭제 — 확인 창을 거쳐야만 지워진다
+  const [pendingDelete, setPendingDelete] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await deleteReport(pendingDelete.id)
+      setPendingDelete(null)
+      await reload()
+    } catch (err) {
+      setDeleteError(err.message || '삭제에 실패했습니다.')
+    } finally { setDeleting(false) }
+  }
 
   const reloadTimer = useRef(null)
   const scheduleReload = () => {
@@ -140,7 +158,12 @@ export default function Dashboard() {
               <div style={styles.empty}>등록된 환자가 없습니다.</div>
             )}
             {filteredReports.map(r => (
-              <ReportCard key={r.id} report={r} onOpen={() => navigate(`/editor/${encodeURIComponent(r.chart_number)}`)} />
+              <ReportCard
+                key={r.id}
+                report={r}
+                onOpen={() => navigate(`/editor/${encodeURIComponent(r.chart_number)}`)}
+                onDelete={(rep) => { setDeleteError(''); setPendingDelete(rep) }}
+              />
             ))}
           </div>
         </div>
@@ -219,26 +242,75 @@ export default function Dashboard() {
           onClose={() => setPcEditOpen(false)}
         />
       )}
+
+      {pendingDelete && (
+        <DeleteConfirmModal
+          report={pendingDelete}
+          busy={deleting}
+          error={deleteError}
+          onConfirm={confirmDelete}
+          onClose={() => { setPendingDelete(null); setDeleteError('') }}
+        />
+      )}
     </div>
   )
 }
 
-function ReportCard({ report, onOpen }) {
+function ReportCard({ report, onOpen, onDelete }) {
   const stage = PROGRESS_STAGES[report.progress_stage] || PROGRESS_STAGES.registered
   const otherPc = isOtherPcEditing(report, null)
   const updatedAgo = timeAgo(report.updated_at)
 
   return (
-    <button onClick={onOpen} style={styles.card}>
-      <div style={styles.cardLine1}>
-        <strong style={{ fontSize: '13px' }}>{report.patient_name}</strong>
-        <span style={{ color: '#9ca3af', fontSize: '11px', marginLeft: '6px' }}>{report.chart_number}</span>
+    <div style={styles.cardWrap}>
+      <button onClick={onOpen} style={styles.card}>
+        <div style={styles.cardLine1}>
+          <strong style={{ fontSize: '13px' }}>{report.patient_name}</strong>
+          <span style={{ color: '#9ca3af', fontSize: '11px', marginLeft: '6px' }}>{report.chart_number}</span>
+        </div>
+        <div style={styles.cardLine2}>
+          <span style={{ ...styles.stageBadge, background: stage.color }}>{stage.label}</span>
+          <span style={styles.cardMeta}>{updatedAgo}{otherPc && ' · 🔴'}</span>
+        </div>
+      </button>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onDelete(report) }}
+        title="이 환자 삭제"
+        aria-label={`${report.patient_name} 삭제`}
+        style={styles.cardDelete}
+      >×</button>
+    </div>
+  )
+}
+
+/** 실수로 지우는 걸 막기 위해 환자명을 다시 한 번 보여주고 확인받는다 */
+function DeleteConfirmModal({ report, busy, error, onConfirm, onClose }) {
+  return (
+    <div style={styles.modalBg}>
+      <div style={styles.modal}>
+        <h3 style={{ marginTop: 0, color: '#b91c1c' }}>환자 삭제</h3>
+        <p style={{ fontSize: '14px', color: '#374151', lineHeight: 1.7 }}>
+          <strong>{report.patient_name}</strong>
+          <span style={{ color: '#9ca3af' }}> · {report.chart_number}</span>
+          <br />진단서와 작성한 내용이 <strong>모두 지워집니다.</strong>
+        </p>
+        <p style={{ fontSize: '12px', color: '#6b7280', lineHeight: 1.7 }}>
+          되돌릴 수 없습니다. 환자에게 보낸 진단서 링크도 함께 열리지 않게 됩니다.
+        </p>
+        {error && (
+          <div style={{ padding: '8px 10px', background: '#fef2f2', color: '#b91c1c', borderRadius: '6px', fontSize: '12px' }}>
+            {error}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+          <button onClick={onClose} disabled={busy} style={{ ...styles.secondaryBtn, flex: 1 }}>취소</button>
+          <button onClick={onConfirm} disabled={busy} style={{ ...styles.primaryBtn, flex: 1, background: '#dc2626' }}>
+            {busy ? '삭제 중...' : '삭제'}
+          </button>
+        </div>
       </div>
-      <div style={styles.cardLine2}>
-        <span style={{ ...styles.stageBadge, background: stage.color }}>{stage.label}</span>
-        <span style={styles.cardMeta}>{updatedAgo}{otherPc && ' · 🔴'}</span>
-      </div>
-    </button>
+    </div>
   )
 }
 
@@ -289,7 +361,16 @@ const styles = {
   listCount: { fontSize: '11px', color: '#6b7280', marginBottom: '6px' },
   list: { flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' },
   empty: { padding: '30px 10px', textAlign: 'center', color: '#9ca3af', fontSize: '13px' },
-  card: { display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.15s' },
+  // 카드 + 삭제 버튼을 겹쳐 놓는다 (버튼 안에 버튼을 넣을 수 없어 바깥으로 뺐다)
+  cardWrap: { position: 'relative' },
+  card: { display: 'block', width: '100%', textAlign: 'left', padding: '8px 30px 8px 10px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.15s' },
+  cardDelete: {
+    position: 'absolute', top: '6px', right: '6px',
+    width: '20px', height: '20px', padding: 0,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    border: 'none', borderRadius: '50%', background: 'transparent',
+    color: '#c4c4c4', fontSize: '15px', lineHeight: 1, cursor: 'pointer',
+  },
   cardLine1: { marginBottom: '4px' },
   cardLine2: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' },
   stageBadge: { display: 'inline-block', padding: '2px 7px', borderRadius: '8px', color: '#fff', fontSize: '10px', fontWeight: 600 },

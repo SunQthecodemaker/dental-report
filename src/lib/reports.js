@@ -111,6 +111,31 @@ export async function updateReport(id, patch) {
   return data
 }
 
+/**
+ * 환자(진단서) 삭제 — 되돌릴 수 없다.
+ *
+ * 진단서 행만 지운다. 본문에 들어간 사진은 Storage 에 그대로 남는다
+ * (다른 진단서가 같은 파일을 참조할 수 있어 같이 지우면 위험하다).
+ * 다른 PC 가 편집 중이면 막는다 — 열어 둔 쪽이 저장하면서 되살아나거나
+ * 저장 오류가 나기 때문.
+ */
+export async function deleteReport(id) {
+  const { data: cur, error: readErr } = await supabase
+    .from('dental_reports')
+    .select('id, patient_name, locked_by, locked_at')
+    .eq('id', id)
+    .single()
+  if (readErr) throw readErr
+
+  if (cur.locked_by && cur.locked_by !== getSessionId() && !isLockStale(cur.locked_at)) {
+    throw new Error('다른 PC에서 편집 중입니다. 그쪽에서 닫은 뒤 삭제해주세요.')
+  }
+
+  const { error } = await supabase.from('dental_reports').delete().eq('id', id)
+  if (error) throw error
+  return true
+}
+
 export async function acquireLock(id, stepKey) {
   return updateReport(id, {
     locked_by: getSessionId(),
