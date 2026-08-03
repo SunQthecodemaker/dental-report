@@ -546,57 +546,15 @@ function IntraoralGroup({ figures, summaryHtml, design, allowMarking, onUpdateCa
     </figure>
   )
 
-  // 1장 + 텍스트 → 좌 사진 / 우 텍스트 (모바일 세로)
-  if (count === 1 && hasSummary) {
-    return (
-      <div className="v4-split">
-        <div className="v4-split-photo">{img(figures[0], 0)}</div>
-        <div className="v4-split-text"><Summary html={summaryHtml} inSplit variant={variant} heading={heading} /></div>
-      </div>
-    )
-  }
-
-  // 1장 + 텍스트 없음 → 중앙 단독
-  if (count === 1) {
-    return (
-      <div style={S.figSolo}>{img(figures[0], 0)}</div>
-    )
-  }
-
-  // 2장 + 텍스트 → 2-up, 텍스트 아래
-  if (count === 2) {
-    return (
-      <>
-        <div className="v4-grid2">{figures.map(img)}</div>
-        {hasSummary && <Summary html={summaryHtml} variant={variant} heading={heading} />}
-      </>
-    )
-  }
-
-  // 3장 + 텍스트 → [1][2] / [3][텍스트]
-  if (count === 3 && hasSummary) {
-    return (
-      <div className="v4-grid3">
-        {figures.map(img)}
-        <div className="v4-grid3-text"><Summary html={summaryHtml} inSplit variant={variant} heading={heading} /></div>
-      </div>
-    )
-  }
-
-  // 3장 텍스트 없음 → 2-up + 1장 단독
-  if (count === 3) {
-    return (
-      <>
-        <div className="v4-grid2">{figures.slice(0, 2).map(img)}</div>
-        {img(figures[2], 2)}
-      </>
-    )
-  }
-
-  // 4장+ → 2×2 (혹은 2-col) grid + 텍스트 아래
+  // 항상 [사진 먼저 — 폭 전체] → [문구 아래] 로 간다.
+  // 예전엔 장수에 따라 좌 사진 / 우 텍스트로 갈라 붙였는데, 사진이 반쪽으로 줄어
+  // 구내 사진처럼 자세히 봐야 하는 것은 알아보기 어려웠다.
+  // 여러 장이면 2열로 늘어놓되, 텍스트는 어떤 경우에도 사진 아래에 온다.
   return (
     <>
-      <div className="v4-grid2">{figures.map(img)}</div>
+      {count === 1
+        ? <div style={S.figSolo}>{img(figures[0], 0)}</div>
+        : <div className="v4-grid2">{figures.map(img)}</div>}
       {hasSummary && <Summary html={summaryHtml} variant={variant} heading={heading} />}
     </>
   )
@@ -1021,10 +979,11 @@ function buildSummaryCards(sentences) {
     .map(k => ({ title: k, lines: groups.get(k) }))
 }
 
-function Summary({ html, inSplit, variant, heading }) {
+// 좁은 칸(좌우 분할)용 inSplit 분기는 제거됐다 — 소견은 항상 폭 전체로 나온다
+function Summary({ html, variant, heading }) {
   const { lead, points } = splitSummary(html)
   if (!lead && points.length === 0) return null
-  const wrapStyle = inSplit ? { ...S.summary, maxWidth: '100%', paddingTop: 12, marginTop: 0 } : S.summary
+  const wrapStyle = S.summary
 
   // 구간별 디자인 — 카드형 (소제목 + 설명)
   if (variant === 'cards') {
@@ -1049,7 +1008,7 @@ function Summary({ html, inSplit, variant, heading }) {
   // 섹션 머리말에 이미 제목이 있어 "Summary / 종합 소견" 라벨은 중복 — 표시하지 않는다
   return (
     <div style={wrapStyle}>
-      {lead && <p style={inSplit ? { ...S.sumLead, fontSize: FS.body } : S.sumLead}>{lead}</p>}
+      {lead && <p style={S.sumLead}>{lead}</p>}
 
       {points.length > 0 && (
         <ul style={S.sumList}>
