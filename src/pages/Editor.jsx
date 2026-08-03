@@ -652,9 +652,9 @@ export default function Editor() {
                 cases={selectedCases}
                 strengths={selectedStrengths}
                 mode="design"
+                allowMarking={false}
                 onUpdateCaption={handleUpdateCaption}
                 onUpdateNote={handleUpdateNote}
-                onOpenMarker={handleOpenMarker}
               />
             </div>
           </div>
