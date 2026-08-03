@@ -705,8 +705,10 @@ function StrengthsSection({ num, strengths }) {
 
 /** 강조 장점 — 레퍼런스처럼 아치형 사진 + 얇은 구분선 + 알약 버튼 */
 function StrengthCard({ card }) {
+  // 사진이 없으면 5:5 격자의 오른쪽 반이 비어 보인다 — 글이 폭을 다 쓰게 한 칸으로.
+  const style = card.photo_url ? S.strCard : { ...S.strCard, gridTemplateColumns: '1fr' }
   return (
-    <div style={S.strCard}>
+    <div style={style}>
       {card.photo_url && (
         <img src={card.photo_url} alt={card.title || ''} style={S.strImg} />
       )}
