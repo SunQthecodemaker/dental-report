@@ -555,7 +555,7 @@ export default function Editor() {
               <div style={infoBoxS.green}>
                 ✨ AI가 정리 소스와 환자 성향을 반영해 작성했습니다. 내용을 최종 확인·수정하세요.
               </div>
-              <ContentEditor original={refinedContent} edited={editedContent} onChange={setEditedContent} onUploadingChange={setIsUploadingPhoto} commitRef={editorCommitRef} markPatchRef={editorMarkPatchRef} />
+              <ContentEditor original={refinedContent} edited={editedContent} onChange={setEditedContent} onUploadingChange={setIsUploadingPhoto} commitRef={editorCommitRef} markPatchRef={editorMarkPatchRef} onOpenMarker={handleOpenMarker} />
               <button
                 onClick={() => changeStep(4)}
                 disabled={isUploadingPhoto}

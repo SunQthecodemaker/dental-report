@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { generateImageCaption } from '../lib/gemini'
+import { parseMarkingsAttr } from '../lib/markings'
 
 /**
  * ContentEditor — AI 작성 단계: 하나의 워드 문서형 편집기
@@ -21,12 +22,28 @@ function detectPhotoType(caption) {
   return 'other'
 }
 
-export default function ContentEditor({ original, edited, onChange, onUploadingChange, commitRef, markPatchRef }) {
+export default function ContentEditor({ original, edited, onChange, onUploadingChange, commitRef, markPatchRef, onOpenMarker }) {
   const editorRef = useRef(null)
   const inputTimerRef = useRef(null)
   const [uploading, setUploading] = useState(false)
   const [noteDraft, setNoteDraft] = useState(edited?.personalNote || '')
   const bodyInitialized = useRef(false)
+
+  // 편집 영역에서 사진 위에 올렸을 때만 마킹 버튼을 띄운다
+  const [markBtn, setMarkBtn] = useState(null)   // { top, left, src, markings }
+  const handleEditorHover = (e) => {
+    const img = e.target
+    if (!img || img.tagName !== 'IMG' || !editorRef.current) { return }
+    const box = editorRef.current.getBoundingClientRect()
+    const r = img.getBoundingClientRect()
+    setMarkBtn({
+      // 래퍼 기준 좌표 (편집 영역이 스크롤돼도 사진을 따라간다)
+      top: r.top - box.top + editorRef.current.scrollTop + 8,
+      left: r.right - box.left - 78,
+      src: img.getAttribute('src') || '',
+      markings: parseMarkingsAttr(img.getAttribute('data-markings')),
+    })
+  }
 
   // 업로드 상태를 상위(Editor)에 전파 → 단계 전환 잠금에 사용
   useEffect(() => {
@@ -308,19 +325,34 @@ export default function ContentEditor({ original, edited, onChange, onUploadingC
           {uploading && <span style={S.uploading}>📤 업로드 중...</span>}
         </div>
 
-        {/* 편집 영역 */}
-        <div
-          ref={editorRef}
-          contentEditable
-          suppressContentEditableWarning
-          onInput={handleInput}
-          onBlur={commitBody}
-          onPaste={handlePaste}
-          onDrop={handleDrop}
-          onDragOver={(e) => e.preventDefault()}
-          style={S.editor}
-          data-placeholder="여기에 내용을 작성하거나 사진을 붙여넣으세요..."
-        />
+        {/* 편집 영역 — 사진 위에 마킹 버튼을 겹쳐 띄우기 위해 relative 래퍼로 감싼다.
+            버튼을 contentEditable 안에 넣으면 편집·저장 때 같이 섞여 들어가므로 바깥에 둔다. */}
+        <div style={{ position: 'relative' }} onMouseLeave={() => setMarkBtn(null)}>
+          <div
+            ref={editorRef}
+            contentEditable
+            suppressContentEditableWarning
+            onInput={handleInput}
+            onBlur={commitBody}
+            onPaste={handlePaste}
+            onDrop={handleDrop}
+            onDragOver={(e) => e.preventDefault()}
+            onMouseOver={handleEditorHover}
+            style={S.editor}
+            data-placeholder="여기에 내용을 작성하거나 사진을 붙여넣으세요..."
+          />
+          {markBtn && onOpenMarker && (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}   /* 편집 포커스 유지 */
+              onClick={() => onOpenMarker(markBtn.src, markBtn.markings)}
+              style={{ ...S.markBtn, top: markBtn.top, left: markBtn.left }}
+              title="이 사진에 마킹"
+            >
+              {markBtn.markings.length > 0 ? `📍 ${markBtn.markings.length}` : '📍 마킹'}
+            </button>
+          )}
+        </div>
 
         {/* 맞춤 안내 (personalNote) */}
         <div style={{ marginTop: '20px' }}>
@@ -368,6 +400,15 @@ const S = {
   },
   uploading: { marginLeft: 'auto', fontSize: '12px', color: '#b5976a', fontWeight: 600 },
 
+  // 사진 위에 겹쳐 뜨는 마킹 버튼 (편집 영역 바깥에 그린다)
+  markBtn: {
+    position: 'absolute', zIndex: 5,
+    padding: '4px 10px',
+    background: 'rgba(26,26,24,0.88)', color: '#d4c8b4',
+    border: '1px solid rgba(181,151,106,0.5)', borderRadius: '6px',
+    fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+    fontFamily: "'Pretendard', sans-serif",
+  },
   editor: {
     minHeight: '360px',
     padding: '20px 24px',
