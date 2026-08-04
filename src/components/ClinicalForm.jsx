@@ -813,12 +813,13 @@ function ExtQuadCell({ plan, idx, quad, field, label, alignH, borderSide, toggle
 
 function ExtractionQuadrant({ plan, idx, togglePlanArray }) {
   return (
+    <div style={{ overflowX: 'auto' }}>
     <div style={{
       display: 'grid',
-      gridTemplateColumns: '1fr auto 1fr',
+      gridTemplateColumns: 'auto auto auto',
       gridTemplateRows: 'auto auto',
       gap: '0',
-      maxWidth: '640px',
+      width: 'max-content',
       margin: '0 auto',
     }}>
       <ExtQuadCell plan={plan} idx={idx} quad="10" field="ext_10" label="#10" alignH="right" borderSide="bottom" togglePlanArray={togglePlanArray} />
@@ -827,6 +828,7 @@ function ExtractionQuadrant({ plan, idx, togglePlanArray }) {
       <ExtQuadCell plan={plan} idx={idx} quad="40" field="ext_40" label="#40" alignH="right" borderSide="top" togglePlanArray={togglePlanArray} />
       <div style={{ borderTop: '2px solid #9ca3af', width: '2px', background: '#9ca3af' }} />
       <ExtQuadCell plan={plan} idx={idx} quad="30" field="ext_30" label="#30" alignH="left" borderSide="top" togglePlanArray={togglePlanArray} />
+    </div>
     </div>
   )
 }
