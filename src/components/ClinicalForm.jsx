@@ -24,8 +24,9 @@ function getEmptyTxOption() {
     primary: [],
     // 2차
     ext_10: [], ext_20: [], ext_30: [], ext_40: [],  // 사분면별 선택된 치아 위치(1~8) 배열
+    distalQuads: [],   // 구치 후방이동 사분면 ('10'|'20'|'30'|'40')
     expansion: '',
-    distalization: false,
+    distalization: false,  // 레거시(사분면 없이 '필요'만 표시하던 구 리포트)
     distalExtraction: '',
     stripping: false,
     // 기타
@@ -95,6 +96,14 @@ function sectionToText(section, clinicalForm) {
   return lines.join('\n')
 }
 
+const QUAD_ORDER = ['10', '20', '30', '40']
+
+// distalQuads 를 항상 #10 → #20 → #30 → #40 순서로 정규화 (레거시/비배열 방어 포함)
+function sortQuads(quads) {
+  const arr = Array.isArray(quads) ? quads : []
+  return QUAD_ORDER.filter(q => arr.includes(q))
+}
+
 function planToText(plan) {
   const lines = []
   if (plan.goal) lines.push(`목표: ${plan.goal}`)
@@ -108,7 +117,11 @@ function planToText(plan) {
   })
   if (ext.length > 0) lines.push(`발치: ${ext.join(', ')}`)
   if (plan.expansion) lines.push(`악궁확장: ${plan.expansion}`)
-  if (plan.distalization) lines.push(`후방이동: 필요${plan.distalExtraction ? ` (${plan.distalExtraction})` : ''}`)
+  const distalQuads = sortQuads(plan.distalQuads)
+  if (distalQuads.length > 0 || plan.distalization) {
+    const where = distalQuads.length > 0 ? distalQuads.map(q => `#${q}`).join(', ') : '필요'
+    lines.push(`후방이동: ${where}${plan.distalExtraction ? ` (${plan.distalExtraction})` : ''}`)
+  }
   if (plan.stripping) lines.push(`치간삭제: 필요`)
   if ((plan.txEtc || []).length > 0) lines.push(`기타: ${plan.txEtc.join(', ')}`)
   if (plan.duration) lines.push(`예상 기간: ${plan.duration}`)
@@ -451,8 +464,8 @@ export default function ClinicalForm({
 
                       {/* 발치 사분면 */}
                       <div style={{ marginBottom: '16px' }}>
-                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>발치 부위</div>
-                        <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>선택하지 않은 부위 = 비발치</div>
+                        <div style={{ fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '6px' }}>발치 부위 · 구치 후방이동</div>
+                        <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '8px' }}>선택하지 않은 부위 = 비발치 · 8번 바깥쪽 후방 버튼 = 그 사분면 구치 후방이동</div>
                         <ExtractionQuadrant plan={plan} idx={idx} togglePlanArray={togglePlanArray} />
                       </div>
 
@@ -466,22 +479,34 @@ export default function ClinicalForm({
                         </div>
                       </div>
 
-                      {/* 후방이동 */}
-                      <div style={itemRowStyle}>
-                        <div style={{ ...labelStyle, width: '120px' }}>후방이동</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-                          <button onClick={() => updatePlan(idx, 'distalization', !plan.distalization)} style={chipStyle(plan.distalization, '#2563eb')}>필요</button>
-                          {plan.distalization && (
-                            <input
-                              type="text"
-                              value={plan.distalExtraction || ''}
-                              onChange={e => updatePlan(idx, 'distalExtraction', e.target.value)}
-                              placeholder="#7/#8 발치 여부"
-                              style={{ ...textInputStyle, minWidth: '140px', maxWidth: '200px' }}
-                            />
-                          )}
-                        </div>
-                      </div>
+                      {/* 후방이동 — 위 치식 표의 '후방' 버튼으로 사분면 선택 */}
+                      {(() => {
+                        const dq = sortQuads(plan.distalQuads)
+                        const on = dq.length > 0 || plan.distalization
+                        return (
+                          <div style={itemRowStyle}>
+                            <div style={{ ...labelStyle, width: '120px' }}>후방이동</div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                              {on ? (
+                                <>
+                                  <span style={{ fontSize: '13px', fontWeight: '600', color: '#2563eb' }}>
+                                    {dq.length > 0 ? dq.map(q => `#${q}`).join(', ') : '필요'}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    value={plan.distalExtraction || ''}
+                                    onChange={e => updatePlan(idx, 'distalExtraction', e.target.value)}
+                                    placeholder="#7/#8 발치 여부"
+                                    style={{ ...textInputStyle, minWidth: '140px', maxWidth: '200px' }}
+                                  />
+                                </>
+                              ) : (
+                                <span style={{ fontSize: '12px', color: '#9ca3af' }}>위 치식 표의 후방 버튼으로 사분면 선택</span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })()}
 
                       {/* 치간삭제 */}
                       <div style={itemRowStyle}>
@@ -753,15 +778,26 @@ function FieldRow({ label, children }) {
   )
 }
 
-function ExtQuadCell({ plan, idx, field, label, alignH, borderSide, togglePlanArray }) {
+function ExtQuadCell({ plan, idx, quad, field, label, alignH, borderSide, togglePlanArray }) {
   const selected = Array.isArray(plan[field]) ? plan[field] : []
+  const distalOn = (Array.isArray(plan.distalQuads) ? plan.distalQuads : []).includes(quad)
   // 오른쪽 사분면(#10·#40)은 1번이 정중선(안쪽)에 오도록 역순 배치
   const nums = ['1', '2', '3', '4', '5', '6', '7', '8']
   const order = alignH === 'right' ? [...nums].reverse() : nums
+  // 후방이동 버튼은 항상 8번 바깥(원심) 쪽 — 역순인 오른쪽 사분면에서는 맨 앞
+  const distalBtn = (
+    <button
+      key="distal"
+      onClick={() => togglePlanArray(idx, 'distalQuads', quad)}
+      style={quadDistalBtn(distalOn)}
+      title={`#${quad} 구치 후방이동`}
+    >후방</button>
+  )
   return (
     <div style={quadCellStyle(alignH, borderSide)}>
       <div style={quadLabel}>{label}</div>
-      <div style={{ display: 'flex', flexWrap: 'nowrap', gap: '4px' }}>
+      <div style={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', gap: '4px' }}>
+        {alignH === 'right' && distalBtn}
         {order.map(n => (
           <button
             key={n}
@@ -769,6 +805,7 @@ function ExtQuadCell({ plan, idx, field, label, alignH, borderSide, togglePlanAr
             style={quadToothBtn(selected.includes(n))}
           >{n}</button>
         ))}
+        {alignH === 'left' && distalBtn}
       </div>
     </div>
   )
@@ -784,12 +821,12 @@ function ExtractionQuadrant({ plan, idx, togglePlanArray }) {
       maxWidth: '640px',
       margin: '0 auto',
     }}>
-      <ExtQuadCell plan={plan} idx={idx} field="ext_10" label="#10" alignH="right" borderSide="bottom" togglePlanArray={togglePlanArray} />
+      <ExtQuadCell plan={plan} idx={idx} quad="10" field="ext_10" label="#10" alignH="right" borderSide="bottom" togglePlanArray={togglePlanArray} />
       <div style={{ borderBottom: '2px solid #9ca3af', width: '2px', background: '#9ca3af' }} />
-      <ExtQuadCell plan={plan} idx={idx} field="ext_20" label="#20" alignH="left" borderSide="bottom" togglePlanArray={togglePlanArray} />
-      <ExtQuadCell plan={plan} idx={idx} field="ext_40" label="#40" alignH="right" borderSide="top" togglePlanArray={togglePlanArray} />
+      <ExtQuadCell plan={plan} idx={idx} quad="20" field="ext_20" label="#20" alignH="left" borderSide="bottom" togglePlanArray={togglePlanArray} />
+      <ExtQuadCell plan={plan} idx={idx} quad="40" field="ext_40" label="#40" alignH="right" borderSide="top" togglePlanArray={togglePlanArray} />
       <div style={{ borderTop: '2px solid #9ca3af', width: '2px', background: '#9ca3af' }} />
-      <ExtQuadCell plan={plan} idx={idx} field="ext_30" label="#30" alignH="left" borderSide="top" togglePlanArray={togglePlanArray} />
+      <ExtQuadCell plan={plan} idx={idx} quad="30" field="ext_30" label="#30" alignH="left" borderSide="top" togglePlanArray={togglePlanArray} />
     </div>
   )
 }
@@ -1002,6 +1039,23 @@ const quadToothBtn = (active) => ({
   color: active ? '#fff' : '#6b7280',
   fontSize: '13px',
   fontWeight: active ? '700' : '500',
+  cursor: 'pointer',
+  outline: 'none',
+})
+
+// 후방이동 버튼 — 치아 번호(빨강)와 구분되도록 파랑 + 점선 테두리
+const quadDistalBtn = (active) => ({
+  height: '30px',
+  padding: '0 7px',
+  marginLeft: '2px',
+  marginRight: '2px',
+  borderRadius: '6px',
+  border: active ? '2px solid #2563eb' : '1px dashed #cbd5e1',
+  background: active ? '#2563eb' : '#fff',
+  color: active ? '#fff' : '#94a3b8',
+  fontSize: '11px',
+  fontWeight: active ? '700' : '500',
+  whiteSpace: 'nowrap',
   cursor: 'pointer',
   outline: 'none',
 })
