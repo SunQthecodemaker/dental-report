@@ -26,8 +26,8 @@ function getEmptyTxOption() {
     ext_10: [], ext_20: [], ext_30: [], ext_40: [],  // 사분면별 선택된 치아 위치(1~8) 배열
     distalQuads: [],   // 구치 후방이동 사분면 ('10'|'20'|'30'|'40')
     expansion: '',
-    distalization: false,  // 레거시(사분면 없이 '필요'만 표시하던 구 리포트)
-    distalExtraction: '',
+    distalization: false,   // 레거시 — 구 리포트 읽기 전용 (입력 UI 없음)
+    distalExtraction: '',   // 레거시 — 구 리포트 읽기 전용 (입력 UI 없음)
     stripping: false,
     // 기타
     txEtc: [],
@@ -119,8 +119,15 @@ function planToText(plan) {
   if (plan.expansion) lines.push(`악궁확장: ${plan.expansion}`)
   const distalQuads = sortQuads(plan.distalQuads)
   if (distalQuads.length > 0 || plan.distalization) {
-    const where = distalQuads.length > 0 ? distalQuads.map(q => `#${q}`).join(', ') : '필요'
-    lines.push(`후방이동: ${where}${plan.distalExtraction ? ` (${plan.distalExtraction})` : ''}`)
+    // 같은 사분면에서 사랑니(8번)를 발치하면 "사랑니 발치 후" 를 붙여 인과를 명시.
+    // AI 가 발치 줄과 후방이동 줄을 스스로 연결하지 않아도 되게 함.
+    const where = distalQuads.length > 0
+      ? distalQuads.map(q => {
+          const wisdomOut = (Array.isArray(plan[`ext_${q}`]) ? plan[`ext_${q}`] : []).includes('8')
+          return `#${q}${wisdomOut ? ' (사랑니 발치 후)' : ''}`
+        }).join(', ')
+      : '필요'
+    lines.push(`구치(어금니) 후방이동: ${where}${plan.distalExtraction ? ` (${plan.distalExtraction})` : ''}`)
   }
   if (plan.stripping) lines.push(`치간삭제: 필요`)
   if ((plan.txEtc || []).length > 0) lines.push(`기타: ${plan.txEtc.join(', ')}`)
@@ -478,35 +485,6 @@ export default function ClinicalForm({
                           ))}
                         </div>
                       </div>
-
-                      {/* 후방이동 — 위 치식 표의 '후방' 버튼으로 사분면 선택 */}
-                      {(() => {
-                        const dq = sortQuads(plan.distalQuads)
-                        const on = dq.length > 0 || plan.distalization
-                        return (
-                          <div style={itemRowStyle}>
-                            <div style={{ ...labelStyle, width: '120px' }}>후방이동</div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
-                              {on ? (
-                                <>
-                                  <span style={{ fontSize: '13px', fontWeight: '600', color: '#2563eb' }}>
-                                    {dq.length > 0 ? dq.map(q => `#${q}`).join(', ') : '필요'}
-                                  </span>
-                                  <input
-                                    type="text"
-                                    value={plan.distalExtraction || ''}
-                                    onChange={e => updatePlan(idx, 'distalExtraction', e.target.value)}
-                                    placeholder="#7/#8 발치 여부"
-                                    style={{ ...textInputStyle, minWidth: '140px', maxWidth: '200px' }}
-                                  />
-                                </>
-                              ) : (
-                                <span style={{ fontSize: '12px', color: '#9ca3af' }}>위 치식 표의 후방 버튼으로 사분면 선택</span>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })()}
 
                       {/* 치간삭제 */}
                       <div style={itemRowStyle}>
