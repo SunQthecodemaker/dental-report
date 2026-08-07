@@ -6,7 +6,7 @@ import ContentEditor from '../components/ContentEditor'
 import BrochurePreview from '../components/BrochurePreview'
 import PhotoMarkerModal from '../components/PhotoMarkerModal'
 import { serializeMarkings } from '../lib/markings'
-import { loadStrengthCards, normalizeTags } from '../lib/library'
+import { loadStrengthCards, loadTreatmentCases, normalizeTags } from '../lib/library'
 import { loadCasesFromSheet } from '../lib/caseSheet'
 import CaseStrengthSelector from '../components/CaseStrengthSelector'
 import { composeReport, buildComposePrompt, postProcessComposeResult, getEmptyDraft, migrateToNewFormat, extractImagesBySection, reinsertImagesBySection, suggestTags } from '../lib/gemini'
@@ -107,9 +107,17 @@ export default function Editor() {
       setTagSuggestions(data.tag_suggestions || null)
       hydratedRef.current = true
     }).catch(err => { if (mounted) setLoadError(err.message) })
-    // 라이브러리 + 폼 설정 병렬 로드
-    Promise.all([loadCasesFromSheet(), loadStrengthCards()])
-      .then(([c, s]) => { if (mounted) { setAllCases(c); setAllStrengths(s) } })
+    // 라이브러리 + 폼 설정 병렬 로드.
+    // 케이스는 두 곳에서 온다 — 구글시트(홈페이지와 공용)와 설정 › 유사 케이스.
+    // 시트를 거치지 않고 앱에서만 추가한 케이스도 골라야 해서 합친다.
+    // ReportView 도 같은 순서로 합치므로(뒤가 이김) 고른 케이스가 진단서에서 그대로 풀린다.
+    Promise.all([loadCasesFromSheet(), loadTreatmentCases(), loadStrengthCards()])
+      .then(([sheetCases, ownCases, s]) => {
+        if (!mounted) return
+        const byId = new Map([...ownCases, ...sheetCases].map(c => [c.id, c]))
+        setAllCases([...byId.values()])
+        setAllStrengths(s)
+      })
       .catch(() => {})
     loadClinicalFormConfig()
       .then((cfg) => { if (mounted) setFormConfig(cfg) })
