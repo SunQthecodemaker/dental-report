@@ -498,7 +498,6 @@ export default function Editor() {
           <span style={{ padding: '2px 8px', borderRadius: '10px', background: stage.color, color: '#fff', fontSize: '11px', fontWeight: 600 }}>
             {stage.label}
           </span>
-          <SaveBadge state={saveState} at={lastSavedAt} />
         </div>
 
         <div style={headerS.steps}>
@@ -677,6 +676,8 @@ export default function Editor() {
           onClose={() => setMarkerTarget(null)}
         />
       )}
+
+      <SaveBadge state={saveState} at={lastSavedAt} />
     </div>
   )
 }
@@ -736,14 +737,24 @@ function SaveBadge({ state, at }) {
     state === 'saved' && at ? `💾 자동 저장됨 · ${timeAgo(at)}` :
     ''
   if (!label) return null
+  // 헤더 안에 두면 배지가 나타났다 사라질 때 헤더 높이가 변해 본문이 밀린다.
+  // 레이아웃 흐름 밖(fixed)에 띄워 어떤 상태에서도 페이지가 움직이지 않게 한다.
   return (
-    <span style={{
-      fontSize: '11px',
-      color: state === 'saving' ? '#b5976a' : '#6b7280',
-      background: '#f3f4f6',
-      padding: '3px 8px',
-      borderRadius: '6px',
-    }}>{label}</span>
+    <div style={{
+      position: 'fixed',
+      right: '16px',
+      bottom: '16px',
+      zIndex: 60,
+      pointerEvents: 'none',
+      fontSize: '12px',
+      color: state === 'saving' ? '#8a6d3b' : '#4b5563',
+      background: 'rgba(255,255,255,0.95)',
+      border: '1px solid #e5e7eb',
+      padding: '6px 12px',
+      borderRadius: '999px',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+      whiteSpace: 'nowrap',
+    }}>{label}</div>
   )
 }
 
