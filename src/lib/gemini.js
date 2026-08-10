@@ -903,8 +903,13 @@ export function extractImagesBySection(html) {
     for (const node of Array.from(root.childNodes)) {
       if (node.nodeType === 1 && node.tagName === 'H2') {
         pushIf()
+        // 제목 줄에 커서를 두고 넣은 사진은 <h2> 안에 갇힌다 — 꺼내지 않으면
+        // "디자인하기"로 본문을 새로 만들 때 그 사진만 통째로 사라진다.
+        const trapped = Array.from(node.querySelectorAll('figure, img'))
+          .filter(el => el.tagName === 'FIGURE' || !el.closest('figure'))
+          .map(el => el.outerHTML)
         curTitle = node.textContent.trim()
-        curItems = []
+        curItems = trapped
         continue
       }
       if (node.nodeType !== 1) continue

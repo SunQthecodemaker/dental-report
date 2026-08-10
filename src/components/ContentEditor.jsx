@@ -207,17 +207,26 @@ export default function ContentEditor({ original, edited, onChange, onUploadingC
     fig.appendChild(cap)
 
     const sel = window.getSelection()
+    const root = editorRef.current
     let range = null
-    if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
+    if (sel && sel.rangeCount > 0 && root?.contains(sel.anchorNode)) {
       range = sel.getRangeAt(0)
-      // ⚠️ 중첩 방지: 커서가 figure/figcaption 안에 있으면 figure 뒤로 이동
       const anchor = sel.anchorNode
       const anchorEl = anchor?.nodeType === 1 ? anchor : anchor?.parentElement
-      const enclosingFigure = anchorEl?.closest?.('figure')
-      if (enclosingFigure) {
+
+      /**
+       * figure 는 반드시 편집 영역의 최상위 형제로 들어가야 한다.
+       * 커서가 있던 자리에 그냥 꽂으면 제목 안(<h2>사진</h2>)이나 figure 안으로 들어가는데,
+       * 미리보기는 <h2> 를 제목으로만 읽고 안을 뒤지지 않아 사진이 통째로 사라진다.
+       * (편집 화면은 DOM 을 그대로 그리므로 멀쩡해 보여 알아채기 어렵다.)
+       * 그래서 커서가 담긴 최상위 블록을 찾아 그 "뒤"에 넣는다.
+       */
+      let block = anchorEl
+      while (block && block !== root && block.parentElement !== root) block = block.parentElement
+      if (block && block !== root && block.parentElement === root) {
         range = document.createRange()
-        range.setStartAfter(enclosingFigure)
-        range.setEndAfter(enclosingFigure)
+        range.setStartAfter(block)
+        range.setEndAfter(block)
       } else {
         range.deleteContents()
       }

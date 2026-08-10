@@ -129,12 +129,30 @@ function parseSections(bodyHtml) {
     for (const node of Array.from(root.childNodes)) {
       if (node.nodeType === 1 && node.tagName === 'H2') {
         if (cur.title || cur.nodes.length) raw.push(cur)
-        cur = { title: node.textContent.trim(), nodes: [] }
+        // 🛡 제목 줄에 커서를 두고 사진을 넣으면 figure 가 <h2> 안에 들어간다.
+        //    그대로 두면 제목으로만 읽혀 사진이 통째로 사라지고(편집 화면엔 보인다)
+        //    figcaption 글자가 제목에 섞인다. 꺼내서 이 제목이 여는 구간의 앞 사진으로.
+        const trapped = Array.from(node.querySelectorAll('figure, img'))
+          .filter(el => el.tagName === 'FIGURE' || !el.closest('figure'))
+        trapped.forEach(el => el.remove())
+        cur = { title: node.textContent.trim(), nodes: trapped }
       } else {
         cur.nodes.push(node)
       }
     }
     if (cur.title || cur.nodes.length) raw.push(cur)
+
+    // 🛡 첫 제목보다 앞에 놓인 사진(본문 맨 위에 붙여넣기)도 아래 filter 에서 통째로 버려진다.
+    //    사진이 있을 때만 첫 구간으로 넘겨 살린다.
+    if (raw.length > 1 && !raw[0].title) {
+      const lead = raw[0]
+      const leadFigures = lead.nodes.filter(n =>
+        n.nodeType === 1 && (n.tagName === 'FIGURE' || n.tagName === 'IMG' || n.querySelector?.('figure, img')))
+      if (leadFigures.length) {
+        raw.shift()
+        raw[0].nodes = [...leadFigures, ...raw[0].nodes]
+      }
+    }
 
     return raw
       .filter(s => s.title)
