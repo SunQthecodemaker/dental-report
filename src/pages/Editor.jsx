@@ -56,6 +56,11 @@ export default function Editor() {
   const [photos, setPhotos] = useState([])
   const [step, setStep] = useState(1)
 
+  // 본문 스크롤 영역 — 단계/탭이 바뀌면 맨 위로.
+  // 안 그러면 이전 화면의 스크롤 위치가 남아, 긴 '진단' 탭 하단에서 '다음'을 누르면
+  // 짧은 '치료 계획' 탭의 맨 아래(추가사항)부터 보여 정리 탭으로 건너뛴 것처럼 보인다.
+  const contentRef = useRef(null)
+
   // 라이브러리(전체) + 선택된 id
   const [allCases, setAllCases] = useState([])
   const [allStrengths, setAllStrengths] = useState([])
@@ -124,6 +129,11 @@ export default function Editor() {
       .catch(() => {})
     return () => { mounted = false }
   }, [chartNumber])
+
+  // 단계 / 진단 탭 전환 시 본문을 맨 위로 되돌린다
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0 })
+  }, [step, clinicalPage])
 
   useEffect(() => {
     if (!report?.id) return
@@ -522,7 +532,7 @@ export default function Editor() {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflow: 'auto', background: step === 5 ? '#1a1a18' : '#fafafa' }}>
+      <div ref={contentRef} style={{ flex: 1, overflow: 'auto', background: step === 5 ? '#1a1a18' : '#fafafa' }}>
 
         {step === 1 && (
           <div style={{ maxWidth: '860px', margin: '0 auto', padding: '24px' }}>
