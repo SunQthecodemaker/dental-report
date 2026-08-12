@@ -142,16 +142,12 @@ function parseSections(bodyHtml) {
     }
     if (cur.title || cur.nodes.length) raw.push(cur)
 
-    // 🛡 첫 제목보다 앞에 놓인 사진(본문 맨 위에 붙여넣기)도 아래 filter 에서 통째로 버려진다.
-    //    사진이 있을 때만 첫 구간으로 넘겨 살린다.
-    if (raw.length > 1 && !raw[0].title) {
-      const lead = raw[0]
-      const leadFigures = lead.nodes.filter(n =>
-        n.nodeType === 1 && (n.tagName === 'FIGURE' || n.tagName === 'IMG' || n.querySelector?.('figure, img')))
-      if (leadFigures.length) {
-        raw.shift()
-        raw[0].nodes = [...leadFigures, ...raw[0].nodes]
-      }
+    // 🛡 첫 제목(h2)보다 앞에 놓인 것은 소속 섹션이 없어 아래 filter 에서 통째로 버려진다.
+    //    맨 위에 붙여넣은 사진뿐 아니라 맨 위에 쓴 글도 마찬가지라서 —
+    //    편집기·미리보기엔 보이는데 진단서에만 안 나온다 — 통째로 첫 섹션 앞머리로 넘긴다.
+    if (raw.length > 1 && !raw[0].title && raw[0].nodes.length) {
+      raw[1].nodes = [...raw[0].nodes, ...raw[1].nodes]
+      raw.shift()
     }
 
     return raw

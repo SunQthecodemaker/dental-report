@@ -101,7 +101,10 @@ export default function Editor() {
       setStaffForm({ ...INITIAL_STAFF_FORM, ...(data.staff_form || {}) })
       if (data.sections && Object.keys(data.sections).length > 0) {
         const migrated = migrateToNewFormat(data.sections)
-        setRefinedContent(migrated)
+        // 왼쪽 "AI 초안" 패널과 학습 로그의 기준은 AI 원본(aiDraftBody)이다.
+        // 예전엔 편집본을 그대로 초안으로도 썼기 때문에, 새로고침만 하면
+        // 초안 == 편집본이 되어 diff 가 0 → 학습 기록이 한 건도 안 쌓였다.
+        setRefinedContent({ ...migrated, body: migrated.aiDraftBody || migrated.body })
         setEditedContent(JSON.parse(JSON.stringify(migrated)))
       }
       setPhotos(data.photos || [])
@@ -239,20 +242,57 @@ export default function Editor() {
     return postProcessComposeResult(raw)
   }
 
+  // 손으로 고친 본문이 있는지 — AI 재생성은 이걸 통째로 날리므로 항상 먼저 확인한다
+  const hasEditedBody = !!(editedContent?.body && editedContent.body.replace(/<[^>]+>/g, '').trim())
+
+  const confirmOverwriteEdits = () => {
+    if (!hasEditedBody) return true
+    return confirm(
+      '지금까지 편집한 본문이 AI 가 새로 쓴 본문으로 완전히 교체됩니다.\n' +
+      '(삽입한 사진은 유지되지만, 고쳐 쓴 문장은 되돌릴 수 없습니다)\n\n' +
+      '그래도 새로 작성할까요?'
+    )
+  }
+
+  // AI 초안 ↔ 사용자 편집본 차이를 누적한다 (설정 › 학습 탭 [패턴 분석] 의 재료).
+  // 같은 내용을 중복 적재하지 않도록 마지막으로 넣은 본문을 기억해 둔다.
+  const lastLoggedBodyRef = useRef('')
+  const flushLearningLog = (bodyOverride) => {
+    const draftBody = refinedContent?.aiDraftBody || refinedContent?.body
+    const editedBody = typeof bodyOverride === 'string' ? bodyOverride : editedContent?.body
+    if (!report?.id || !draftBody || !editedBody) return
+    if (editedBody === draftBody) return                  // 손 안 댐
+    if (editedBody === lastLoggedBodyRef.current) return   // 이미 적재함
+    lastLoggedBodyRef.current = editedBody
+    saveEditLearningLog({
+      reportId: report.id,
+      clinicalForm,
+      staffForm,
+      draftBody,
+      editedBody,
+    }).catch(() => {})
+  }
+
+  // AI 결과를 초안·편집본 양쪽에 세팅.
+  // 초안 원본(aiDraftBody)은 편집본 안에 같이 들어가 자동저장으로 DB(sections)까지 따라간다.
+  const applyComposeResult = (result) => {
+    // 기존 body에 삽입된 사진을 섹션별로 보존 (AI 재호출 시 분실 방지)
+    const preservedImages = extractImagesBySection(editedContent?.body || '')
+    const mergedBody = reinsertImagesBySection(result.body || '', preservedImages)
+    const merged = { ...result, body: mergedBody, aiDraftBody: mergedBody }
+    setRefinedContent(merged)
+    setEditedContent(JSON.parse(JSON.stringify(merged)))
+    lastLoggedBodyRef.current = ''
+  }
+
   const handleComposeAndNext = async () => {
+    if (!confirmOverwriteEdits()) return
     setIsComposing(true)
     try {
-      // 기존 body에 삽입된 사진을 섹션별로 보존 (AI 재호출 시 분실 방지)
-      const preservedImages = extractImagesBySection(editedContent?.body || '')
-
+      // 갈아엎기 전에 지금까지의 수정 내역을 학습 기록으로 남긴다
+      flushLearningLog()
       const result = await composeViaWorkerOrFallback()
-
-      // 새 body에 이전 섹션별 사진 재삽입
-      const mergedBody = reinsertImagesBySection(result.body || '', preservedImages)
-      const merged = { ...result, body: mergedBody }
-
-      setRefinedContent(merged)
-      setEditedContent(JSON.parse(JSON.stringify(merged)))
+      applyComposeResult(result)
       setStep(3)
     } catch (err) {
       alert('AI 작성 실패: ' + err.message)
@@ -276,15 +316,7 @@ export default function Editor() {
         }
       }
       // 학습 로그 백그라운드 적재 — AI 초안과 사용자 수정본 차이 누적
-      if (refinedContent?.body && editedContent?.body && report?.id) {
-        saveEditLearningLog({
-          reportId: report.id,
-          clinicalForm,
-          staffForm,
-          draftBody: refinedContent.body,
-          editedBody: editedContent.body,
-        }).catch(() => {})
-      }
+      flushLearningLog()
       const expiresAt = new Date(); expiresAt.setDate(expiresAt.getDate() + 90)
       await updateReport(report.id, {
         sections: editedContent,
@@ -396,14 +428,12 @@ export default function Editor() {
   // 기존 body의 섹션별 사진은 보존, 텍스트와 섹션 구조는 새로 생성.
   // 헤더 탭 클릭은 그냥 changeStep(5)로 이동만 (재생성 없음).
   const handleRedesign = async () => {
+    if (!confirmOverwriteEdits()) return
     setIsComposing(true)
     try {
-      const preservedImages = extractImagesBySection(editedContent?.body || '')
+      flushLearningLog()
       const result = await composeViaWorkerOrFallback()
-      const mergedBody = reinsertImagesBySection(result.body || '', preservedImages)
-      const merged = { ...result, body: mergedBody }
-      setRefinedContent(merged)
-      setEditedContent(JSON.parse(JSON.stringify(merged)))
+      applyComposeResult(result)
       setDesignerKey(k => k + 1)
       setStep(5)
     } catch (err) {
@@ -457,9 +487,16 @@ export default function Editor() {
       try { document.activeElement.blur() } catch { /* noop */ }
     }
     // ContentEditor의 최신 innerHTML을 강제로 state에 밀어넣음
+    let latestBody = editedContent?.body
     if (editorCommitRef.current) {
-      try { editorCommitRef.current() } catch { /* noop */ }
+      try {
+        const html = editorCommitRef.current()
+        if (typeof html === 'string') latestBody = html
+      } catch { /* noop */ }
     }
+    // 3단계(초안 편집)를 떠나는 순간이 "수정이 끝난 시점" — 이때 학습 기록을 남긴다.
+    // 예전엔 5단계 [저장 + 링크 생성] 에서만 남겨서 사실상 한 건도 안 쌓였다.
+    if (step === 3) flushLearningLog(latestBody)
     // 디자이너(→5)로 이동이면 브로셔 강제 remount
     if (num === 5) {
       setDesignerKey(k => k + 1)
@@ -560,9 +597,20 @@ export default function Editor() {
             <div style={{ background: '#fff', borderRadius: '12px', padding: '24px', border: '1px solid #e5e7eb' }}>
               <StaffForm value={staffForm} onChange={setStaffForm} />
             </div>
-            <button onClick={handleComposeAndNext} disabled={isComposing} style={{ ...btnStyle('#b5976a'), width: '100%', padding: '16px', fontSize: '16px', fontWeight: 700, marginTop: '16px' }}>
-              {isComposing ? 'AI 작성 중...' : '다음: AI 작성 →'}
-            </button>
+            {hasEditedBody ? (
+              <>
+                <button onClick={() => changeStep(3)} style={{ ...btnStyle('#b5976a'), width: '100%', padding: '16px', fontSize: '16px', fontWeight: 700, marginTop: '16px' }}>
+                  다음: 초안 →
+                </button>
+                <button onClick={handleComposeAndNext} disabled={isComposing} style={regenBtnS}>
+                  {isComposing ? '🤖 AI 작성 중…' : '🪄 AI 로 초안 새로 쓰기 (편집한 본문은 사라집니다)'}
+                </button>
+              </>
+            ) : (
+              <button onClick={handleComposeAndNext} disabled={isComposing} style={{ ...btnStyle('#b5976a'), width: '100%', padding: '16px', fontSize: '16px', fontWeight: 700, marginTop: '16px' }}>
+                {isComposing ? 'AI 작성 중...' : '다음: AI 작성 →'}
+              </button>
+            )}
           </div>
         )}
 
@@ -625,7 +673,7 @@ export default function Editor() {
                 isSuggesting={isSuggestingTags}
               />
               <button
-                onClick={handleRedesign}
+                onClick={() => changeStep(5)}
                 disabled={isComposing}
                 style={{
                   ...btnStyle('#c45c5c'),
@@ -634,11 +682,14 @@ export default function Editor() {
                   cursor: isComposing ? 'not-allowed' : 'pointer',
                 }}
               >
-                {isComposing ? '🤖 AI가 디자인 재생성 중…' : '디자인하기 🪄 (AI 재생성)'}
+                다음: 진단서 디자이너 →
+              </button>
+              <button onClick={handleRedesign} disabled={isComposing} style={regenBtnS}>
+                {isComposing ? '🤖 AI가 본문 재생성 중…' : '🪄 AI 로 본문 새로 쓰기 (편집한 본문은 사라집니다)'}
               </button>
               <div style={{ fontSize: 12, color: '#9ca3af', textAlign: 'center', marginTop: 8 }}>
-                버튼 클릭 시 AI가 누락된 섹션 확인하고 레이아웃 새로 생성. 기존 삽입 사진은 섹션별로 보존.<br />
-                이미 디자인된 결과를 다시 보려면 위 헤더의 <strong>"진단서 디자이너"</strong> 탭을 클릭하세요.
+                편집한 초안이 그대로 진단서가 됩니다. 위 버튼은 이동만 하고 본문을 건드리지 않습니다.<br />
+                아래 <strong>AI 로 본문 새로 쓰기</strong> 는 본문을 처음부터 다시 만듭니다 (사진은 섹션별로 보존).
               </div>
             </div>
             <div style={{ width: '420px', background: '#1a1a18', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '24px', overflow: 'auto', flexShrink: 0 }}>
@@ -766,6 +817,15 @@ function SaveBadge({ state, at }) {
       whiteSpace: 'nowrap',
     }}>{label}</div>
   )
+}
+
+// AI 재생성처럼 "되돌릴 수 없는" 보조 동작 — 기본 버튼보다 눈에 덜 띄게
+const regenBtnS = {
+  width: '100%', padding: '9px', marginTop: '8px',
+  background: '#fff', color: '#8a6d3b',
+  border: '1px dashed #d4c8b4', borderRadius: '8px',
+  fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+  fontFamily: 'inherit',
 }
 
 const btnStyle = (color) => ({

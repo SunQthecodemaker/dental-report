@@ -1040,6 +1040,9 @@ export function migrateToNewFormat(obj) {
       body: obj.body || '',
       personalNote: obj.personalNote || '',
       appealPoints: obj.appealPoints || [],
+      // AI 가 처음 써 준 본문 원본. 편집본(body)과 따로 보관해야
+      // 새로고침 뒤에도 "AI 초안 ↔ 사용자 수정" 비교(학습 로그)가 가능하다.
+      ...(typeof obj.aiDraftBody === 'string' ? { aiDraftBody: obj.aiDraftBody } : {}),
     }
   }
 
