@@ -14,7 +14,8 @@ import { runJobWithFallback } from '../lib/aiJobs'
 import { saveEditLearningLog } from '../lib/learning'
 import { supabase } from '../lib/supabase'
 import { loadClinicalFormConfig } from '../lib/formConfig'
-import { getByChartNumber, updateReport, acquireLock, releaseLock, isOtherPcEditing, PROGRESS_STAGES, STEP_TO_STAGE } from '../lib/reports'
+import { getByChartNumber, updateReport, acquireLock, releaseLock, isOtherPcEditing, PROGRESS_STAGES } from '../lib/reports'
+import { getStepStatuses, STATUS_TONE, deriveStage, maxStage } from '../lib/progress'
 import { getPcLabel } from '../lib/session'
 
 const INITIAL_STAFF_FORM = {
@@ -22,14 +23,6 @@ const INITIAL_STAFF_FORM = {
   willingness: 3, understanding: 3,
   specialCircumstances: '', memo: '',
 }
-
-const STEP_LABELS = [
-  { num: 1, label: '진단 & 치료 계획' },
-  { num: 2, label: '상담 관리' },
-  { num: 3, label: '초안' },
-  { num: 4, label: '케이스 · 어필포인트' },
-  { num: 5, label: '진단서 디자이너' },
-]
 
 function timeAgo(date) {
   if (!date) return ''
@@ -168,7 +161,20 @@ export default function Editor() {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     setSaveState('pending')
     saveTimerRef.current = setTimeout(async () => {
-      const progress = STEP_TO_STAGE[step] || report.progress_stage || 'diagnosis'
+      // 진행 단계는 "지금 보고 있는 화면 번호"가 아니라 채워진 데이터에서 계산한다.
+      // 예전엔 화면 번호를 그대로 썼기 때문에, 3단계까지 끝난 환자를 발송자가 열어
+      // 1단계를 잠깐 보기만 해도 진행도가 뒤로 물러난 채 저장됐다.
+      const statuses = getStepStatuses({
+        ...report,
+        clinical_form: clinicalForm,
+        staff_form: staffForm,
+        sections: editedContent,
+        selected_case_ids: selectedCaseIds,
+        selected_strength_ids: selectedStrengthIds,
+        tag_suggestions: tagSuggestions,
+        photos,
+      })
+      const progress = maxStage(report.progress_stage || 'registered', deriveStage(statuses))
       const patch = {
         clinical_form: clinicalForm,
         staff_form: staffForm,
@@ -191,9 +197,24 @@ export default function Editor() {
       }
     }, 1500)
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current) }
-  }, [clinicalForm, staffForm, editedContent, selectedCaseIds, selectedStrengthIds, selectedCaseTags, selectedStrengthTags, tagSuggestions, step, report?.id])
+  }, [clinicalForm, staffForm, editedContent, selectedCaseIds, selectedStrengthIds, selectedCaseTags, selectedStrengthTags, tagSuggestions, photos, step, report?.id])
 
   const otherPcEditing = useMemo(() => isOtherPcEditing(report, `step${step}`), [report, step])
+
+  // 진행 표시용 스냅샷 — DB 에 저장된 행 위에 아직 저장 전인 로컬 입력을 덮어 씌운다.
+  // 주치의·상담자·발송자가 서로 다른 PC 에서 열기 때문에, 진행도는 화면 위치가 아니라
+  // 이 데이터에서 나와야 한다 (판정 규칙은 lib/progress.js).
+  const liveReport = useMemo(() => ({
+    ...report,
+    clinical_form: clinicalForm,
+    staff_form: staffForm,
+    sections: editedContent,
+    selected_case_ids: selectedCaseIds,
+    selected_strength_ids: selectedStrengthIds,
+    tag_suggestions: tagSuggestions,
+    photos,
+  }), [report, clinicalForm, staffForm, editedContent, selectedCaseIds, selectedStrengthIds, tagSuggestions, photos])
+  const stepStatuses = useMemo(() => getStepStatuses(liveReport), [liveReport])
 
   // 선택된 id → 실제 객체 배열 (순서 유지)
   const selectedCases = useMemo(() => {
@@ -548,17 +569,34 @@ export default function Editor() {
         </div>
 
         <div style={headerS.steps}>
-          {STEP_LABELS.map(({ num, label }) => (
-            <div key={num} onClick={() => changeStep(num)} style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: num === step ? 1 : 0.5, cursor: isUploadingPhoto ? 'not-allowed' : 'pointer' }}>
-              <div style={{
-                width: '22px', height: '22px', borderRadius: '50%',
-                background: num === step ? '#b5976a' : num < step ? '#6a9b7a' : '#d1d5db',
-                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700,
-              }}>{num < step ? '✓' : num}</div>
-              <span style={{ fontSize: '13px', fontWeight: num === step ? 600 : 400, color: num === step ? '#1a1a18' : '#9ca3af' }}>{label}</span>
-              {num < STEP_LABELS.length && <span style={{ color: '#d1d5db', margin: '0 2px' }}>→</span>}
-            </div>
-          ))}
+          {stepStatuses.map(({ num, label, status }, i) => {
+            const tone = STATUS_TONE[status]
+            const isCurrent = num === step
+            return (
+              <div
+                key={num}
+                onClick={() => changeStep(num)}
+                title={`${num}. ${label} — ${tone.text}`}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: isCurrent ? 1 : tone.opacity, cursor: isUploadingPhoto ? 'not-allowed' : 'pointer' }}
+              >
+                <div style={{
+                  width: '22px', height: '22px', borderRadius: '50%',
+                  background: tone.color,
+                  color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700,
+                  // 지금 보고 있는 단계는 색이 아니라 테두리로 표시한다.
+                  // 색까지 겸하면 '내 위치'와 '완료됨'이 섞여 진행도를 못 읽는다.
+                  outline: isCurrent ? '2px solid #b5976a' : 'none',
+                  outlineOffset: '2px',
+                }}>{status === 'done' ? '✓' : num}</div>
+                <span style={{
+                  fontSize: '13px',
+                  fontWeight: isCurrent || status === 'done' ? 600 : 400,
+                  color: isCurrent ? '#1a1a18' : status === 'empty' ? '#9ca3af' : '#4b5563',
+                }}>{label}</span>
+                {i < stepStatuses.length - 1 && <span style={{ color: '#d1d5db', margin: '0 2px' }}>→</span>}
+              </div>
+            )
+          })}
         </div>
 
         <div style={headerS.right}>

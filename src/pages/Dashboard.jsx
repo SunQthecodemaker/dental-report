@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { createPatient, listReports, deleteReport, isOtherPcEditing, isLockStale, PROGRESS_STAGES, todayYMD } from '../lib/reports'
 import { findAvailableChartNumber, makeBaseChartNumber, isChartNumberTaken, normalizeBirth } from '../lib/chartNumber'
 import { getSessionId, getPcName, setPcName, getPcLabel } from '../lib/session'
+import { getStepStatuses, STATUS_TONE, describeProgress, getNextStep } from '../lib/progress'
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -260,6 +261,10 @@ function ReportCard({ report, onOpen, onDelete }) {
   const stage = PROGRESS_STAGES[report.progress_stage] || PROGRESS_STAGES.registered
   const otherPc = isOtherPcEditing(report, null)
   const updatedAgo = timeAgo(report.updated_at)
+  // 주치의·상담자·발송자가 서로 다른 PC 에서 열기 때문에,
+  // 목록에서 바로 "어디까지 됐나"를 읽힐 수 있어야 한다.
+  const statuses = getStepStatuses(report)
+  const next = getNextStep(statuses)
 
   return (
     <div style={styles.cardWrap}>
@@ -268,9 +273,26 @@ function ReportCard({ report, onOpen, onDelete }) {
           <strong style={{ fontSize: '13px' }}>{report.patient_name}</strong>
           <span style={{ color: '#9ca3af', fontSize: '11px', marginLeft: '6px' }}>{report.chart_number}</span>
         </div>
+        <div style={styles.progressRow} title={describeProgress(statuses)}>
+          {statuses.map(s => {
+            const tone = STATUS_TONE[s.status]
+            return (
+              <div key={s.num} style={styles.progressCell}>
+                <span style={{
+                  ...styles.progressLabel,
+                  color: s.status === 'empty' ? '#c9ced6' : '#4b5563',
+                  fontWeight: s.status === 'done' ? 700 : 400,
+                }}>{s.short}</span>
+                <div style={{ ...styles.progressBar, background: tone.color, opacity: tone.opacity }} />
+              </div>
+            )
+          })}
+        </div>
         <div style={styles.cardLine2}>
           <span style={{ ...styles.stageBadge, background: stage.color }}>{stage.label}</span>
-          <span style={styles.cardMeta}>{updatedAgo}{otherPc && ' · 🔴'}</span>
+          <span style={styles.cardMeta}>
+            {next ? `다음: ${next.short}` : '발송 준비 완료'} · {updatedAgo}{otherPc && ' · 🔴'}
+          </span>
         </div>
       </button>
       <button
@@ -372,9 +394,14 @@ const styles = {
     color: '#c4c4c4', fontSize: '15px', lineHeight: 1, cursor: 'pointer',
   },
   cardLine1: { marginBottom: '4px' },
+  // 진행 막대 — 끝난 단계는 진하게, 안 된 단계는 흐릿하게
+  progressRow: { display: 'flex', gap: '3px', marginBottom: '6px' },
+  progressCell: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', minWidth: 0 },
+  progressLabel: { fontSize: '9px', lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' },
+  progressBar: { width: '100%', height: '4px', borderRadius: '2px' },
   cardLine2: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' },
   stageBadge: { display: 'inline-block', padding: '2px 7px', borderRadius: '8px', color: '#fff', fontSize: '10px', fontWeight: 600 },
-  cardMeta: { fontSize: '11px', color: '#9ca3af' },
+  cardMeta: { fontSize: '11px', color: '#9ca3af', textAlign: 'right' },
   liveDot: { color: '#dc2626', fontWeight: 600 },
   inlineRow: { display: 'flex', gap: '12px', marginBottom: '20px' },
   ccGroup: { marginBottom: '20px' },
