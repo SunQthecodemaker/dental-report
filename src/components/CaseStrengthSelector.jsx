@@ -128,6 +128,16 @@ export default function CaseStrengthSelector({
           totalLabel={caseTags.length ? '추천' : (caseCategory === '전체' ? '전체' : caseCategory)}
         />
         <TagActions onSuggest={onSuggestTags} isSuggesting={isSuggesting} />
+        {/*
+          한 케이스는 태그 수만큼 여러 폴더에 나온다(대부분 2~3곳).
+          그래서 하나만 골라도 폴더 머리의 "선택" 표시가 2~3개 동시에 붙어
+          여러 건이 선택된 것처럼 보이고, 하나를 풀면 그게 한꺼번에 사라진다.
+          실제로 몇 건이 담겼는지는 이 줄이 정본이다.
+        */}
+        <SelectedCases
+          items={selectedCaseIds.map(id => (cases || []).find(c => c.id === id)).filter(Boolean)}
+          onRemove={(id) => onChangeCases(selectedCaseIds.filter(x => x !== id))}
+        />
         {cases.length === 0 ? (
           <Empty hint="공용 케이스 시트를 불러오지 못했습니다. 잠시 후 다시 시도해주세요." />
         ) : caseFolders.length === 0 ? (
@@ -178,6 +188,15 @@ export default function CaseStrengthSelector({
                               <Thumb url={firstPair.after_url} label="After" />
                             </div>
                             <div style={S.cardTitle}>{c.title || '(제목 없음)'}</div>
+                            {/* 이 케이스가 어느 폴더들에 함께 들어가 있는지 — 같은 케이스를
+                                다른 태그에서 다시 만났을 때 헷갈리지 않게 */}
+                            {(c.tags || []).length > 1 && (
+                              <div style={S.cardTags}>
+                                {c.tags.map(t => (
+                                  <span key={t} style={t.toLowerCase() === f.tag.toLowerCase() ? S.cardTagOn : S.cardTag}>#{t}</span>
+                                ))}
+                              </div>
+                            )}
                             {c.description && <div style={S.cardDesc}>{c.description}</div>}
                             <Checkmark active={active} />
                           </button>
@@ -364,6 +383,33 @@ function SectionHead({ label, count, total, totalLabel = '전체', suffix }) {
   )
 }
 
+/**
+ * 지금 담긴 케이스만 모아 보여 준다 — 이게 선택의 정본이다.
+ * 폴더 머리의 "선택" 표시는 같은 케이스가 여러 태그에 걸쳐 여러 번 뜨므로
+ * 건수를 세는 용도로 쓰면 안 된다.
+ */
+function SelectedCases({ items, onRemove }) {
+  if (!items.length) return null
+  return (
+    <div style={S.picked}>
+      <div style={S.pickedHead}>담은 사례 {items.length}건</div>
+      <div style={S.pickedList}>
+        {items.map(c => (
+          <button
+            key={c.id} type="button"
+            onClick={() => onRemove(c.id)}
+            title="빼기"
+            style={S.pickedChip}
+          >
+            <span>{c.title || '(제목 없음)'}</span>
+            <span style={S.pickedX}>×</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function Empty({ hint }) {
   return (
     <div style={{ padding: '28px', background: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: 10, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
@@ -418,6 +464,27 @@ const S = {
   folderRec: { padding: '2px 7px', borderRadius: 8, background: '#b5976a', color: '#fff', fontSize: 10, fontWeight: 700 },
   folderCount: { marginLeft: 'auto', fontSize: 12, color: '#9ca3af' },
   folderPicked: { padding: '2px 7px', borderRadius: 8, background: '#6a9b7a', color: '#fff', fontSize: 10, fontWeight: 700 },
+  /* 담은 사례 — 선택의 정본 */
+  picked: {
+    marginBottom: 12, padding: '10px 12px',
+    border: '1px solid #cfe0d6', borderRadius: 8, background: '#f4f9f6',
+  },
+  pickedHead: { fontSize: 12, fontWeight: 700, color: '#3f6b52', marginBottom: 8 },
+  pickedList: { display: 'flex', flexWrap: 'wrap', gap: 6 },
+  pickedChip: {
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    padding: '5px 8px 5px 10px', borderRadius: 14,
+    border: '1px solid #6a9b7a', background: '#fff',
+    color: '#2f5c43', fontSize: 12, fontWeight: 600,
+    cursor: 'pointer', fontFamily: 'inherit',
+  },
+  pickedX: { color: '#9ca3af', fontSize: 14, lineHeight: 1 },
+
+  /* 카드에 붙는 태그 — 이 케이스가 어느 폴더들에 함께 들어가 있는지 */
+  cardTags: { display: 'flex', flexWrap: 'wrap', gap: 4 },
+  cardTag: { fontSize: 10, color: '#9ca3af', fontWeight: 600 },
+  cardTagOn: { fontSize: 10, color: '#b5976a', fontWeight: 700 },
+
   folderMore: {
     display: 'block', width: '100%', padding: '10px 14px',
     border: 'none', borderTop: '1px solid #f3f4f6', background: '#fafafa',
