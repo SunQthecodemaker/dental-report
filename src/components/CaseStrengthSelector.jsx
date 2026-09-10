@@ -104,14 +104,22 @@ export default function CaseStrengthSelector({
         (b.cases.length - a.cases.length))
   }, [catCases, caseTags, selectedCaseIds])
 
+  /**
+   * 어필포인트는 하나도 숨기지 않는다. AI 추천 태그와 겹치는 것만 위로 올린다.
+   * 예전엔 겹치는 태그가 0개인 카드를 목록에서 빼 버려서, 환자마다 몇 장밖에 안 보이고
+   * 새로 등록한 카드도 AI 가 그 태그를 고르지 않으면 고를 수조차 없었다.
+   */
   const sortedStrengths = useMemo(() => {
     if (!strengthTags.length) return strengths
     return [...strengths]
-      .map(s => ({ s, n: matchCount(s, strengthTags) }))
-      .filter(x => x.n > 0)
-      .sort((a, b) => b.n - a.n)
+      .map((s, order) => ({ s, n: matchCount(s, strengthTags), order }))
+      .sort((a, b) => (b.n - a.n) || (a.order - b.order))
       .map(x => x.s)
   }, [strengths, strengthTags])
+  const matchedStrengthCount = useMemo(
+    () => (strengthTags.length ? strengths.filter(s => matchCount(s, strengthTags) > 0).length : 0),
+    [strengths, strengthTags],
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -232,7 +240,11 @@ export default function CaseStrengthSelector({
       </section>
 
       <section>
-        <SectionHead label="어필포인트" count={selectedStrengthIds.length} total={sortedStrengths.length} totalLabel={strengthTags.length ? '매칭됨' : '전체'} />
+        <SectionHead
+          label="어필포인트"
+          suffix={<>선택 <strong style={{ color: '#b5976a' }}>{selectedStrengthIds.length}</strong>
+            {strengthTags.length ? <> · 추천 {matchedStrengthCount}</> : null} / 전체 {strengths.length}</>}
+        />
         {strengths.length === 0 ? (
           <Empty hint="Settings → 어필포인트 탭에서 등록해주세요." />
         ) : sortedStrengths.length === 0 ? (
