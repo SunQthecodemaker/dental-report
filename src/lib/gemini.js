@@ -1043,6 +1043,9 @@ export function migrateToNewFormat(obj) {
       // AI 가 처음 써 준 본문 원본. 편집본(body)과 따로 보관해야
       // 새로고침 뒤에도 "AI 초안 ↔ 사용자 수정" 비교(학습 로그)가 가능하다.
       ...(typeof obj.aiDraftBody === 'string' ? { aiDraftBody: obj.aiDraftBody } : {}),
+      // 이 진단서에서만 바꾼 케이스 제목 { [caseId]: '치아 벌어짐 케이스' }.
+      // 여기서 안 넘기면 불러오는 순간 사라진다.
+      ...(obj.caseTitles && typeof obj.caseTitles === 'object' ? { caseTitles: obj.caseTitles } : {}),
     }
   }
 

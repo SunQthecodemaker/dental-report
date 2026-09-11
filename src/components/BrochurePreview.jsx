@@ -44,7 +44,7 @@ const EN_LABEL = {
   '추가 사항': 'Additional Notes',
 }
 
-export default function BrochurePreview({ patientName, consultDate, content, photos = [], mode = 'preview', allowMarking, onUpdateCaption, onUpdateNote, onOpenMarker, cases = [], strengths = [] }) {
+export default function BrochurePreview({ patientName, consultDate, content, photos = [], mode = 'preview', allowMarking, onUpdateCaption, onUpdateNote, onOpenMarker, onUpdateCaseTitle, cases = [], strengths = [] }) {
   const v = mode === 'view' || mode === 'design'
   const design = mode === 'design'
   const bodyHtml = content?.body || ''
@@ -87,7 +87,7 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
   let n = 0
   const blocks = []
   for (const sec of secBefore) { n++; blocks.push(renderSection(sec, n)) }
-  if (hasCases)     { n++; blocks.push(<CasesSection    key={`cases-${n}`}     num={String(n).padStart(2, '0')} cases={cases} tone={toneOf(n)} />) }
+  if (hasCases)     { n++; blocks.push(<CasesSection    key={`cases-${n}`}     num={String(n).padStart(2, '0')} cases={cases} tone={toneOf(n)} caseTitles={content?.caseTitles} onUpdateCaseTitle={onUpdateCaseTitle} />) }
   if (hasStrengths) { n++; blocks.push(<StrengthsSection key={`strengths-${n}`} num={String(n).padStart(2, '0')} strengths={strengths} />) }
   for (const sec of secAfter)  { n++; blocks.push(renderSection(sec, n)) }
 
@@ -574,14 +574,21 @@ function IntraoralGroup({ figures, summaryHtml, design, allowMarking, onUpdateCa
   )
 }
 
-function CasesSection({ num, cases, tone }) {
+function CasesSection({ num, cases, tone, caseTitles, onUpdateCaseTitle }) {
   if (!cases?.length) return null
+  const editable = typeof onUpdateCaseTitle === 'function'
   return (
     <div style={{ ...S.secPlan, ...toneStyle(tone) }}>
       <SecHead num={num} en="Similar Cases" kr="유사 치료 사례" center />
-      {cases.map((c, i) => (
+      {cases.map((c, i) => {
+        // 이 진단서에서만 바꾼 제목이 있으면 그걸 쓴다 (라이브러리 원본은 그대로)
+        const custom = String(caseTitles?.[c.id] || '').trim()
+        const title = custom || c.title
+        return (
         <div key={c.id || i} style={{ ...S.planBlock, ...(i > 0 ? S.planBlockDivider : {}) }}>
-          {c.title && <h3 style={S.planTitle}>{c.title}</h3>}
+          {editable
+            ? <CaseTitleEditor c={c} custom={custom} onUpdate={onUpdateCaseTitle} />
+            : title && <h3 style={S.planTitle}>{title}</h3>}
           <CaseSlider pairs={c.pairs || []} />
           {c.description && (
             <div style={S.caseDesc}>{c.description}</div>
@@ -593,7 +600,51 @@ function CasesSection({ num, cases, tone }) {
             <span style={S.moreArrow} aria-hidden="true">&rarr;</span>
           </a>
         </div>
-      ))}
+        )
+      })}
+    </div>
+  )
+}
+
+/** "돌출입교정" → "돌출입 케이스", "치아 벌어짐" → "치아 벌어짐 케이스" */
+function tagToCaseTitle(tag) {
+  const t = String(tag || '').trim().replace(/교정$/, '').trim()
+  return t ? `${t} 케이스` : ''
+}
+
+/**
+ * 편집 화면에서만 뜨는 케이스 제목 편집기.
+ * 한 케이스가 여러 태그에 걸쳐 있으면(예: 치아 벌어짐 + 돌출입) 원래 제목이 이 환자에게 안 맞을 수 있다.
+ * 제목을 눌러 직접 고치거나, 아래 태그 버튼으로 바로 바꾼다. 이 진단서에만 적용된다.
+ */
+function CaseTitleEditor({ c, custom, onUpdate }) {
+  const title = custom || c.title || ''
+  const options = [...new Set((c.tags || []).map(tagToCaseTitle))].filter(o => o && o !== title)
+  return (
+    <div style={S.caseTitleEdit}>
+      <h3
+        // 버튼으로 바꿨을 때 편집 가능한 글자가 새 제목으로 다시 그려지도록 key 를 제목에 묶는다
+        key={title}
+        style={{ ...S.planTitle, ...S.caseTitleEditable }}
+        contentEditable
+        suppressContentEditableWarning
+        title="눌러서 제목 고치기"
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() } }}
+        onBlur={(e) => {
+          const next = e.currentTarget.textContent.trim()
+          if (next !== title) onUpdate(c.id, next)
+        }}
+      >{title}</h3>
+      {(options.length > 0 || custom) && (
+        <div style={S.caseTitleChips}>
+          {options.map(o => (
+            <button key={o} type="button" style={S.caseTitleChip} onClick={() => onUpdate(c.id, o)}>{o}</button>
+          ))}
+          {custom && (
+            <button type="button" style={S.caseTitleReset} onClick={() => onUpdate(c.id, '')}>원래대로</button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -1358,6 +1409,21 @@ const S = {
   // 유사 치료 사례 제목 — 가운데 정렬, 굵은 고딕 + 진한 브라운
   // (치료 계획 제목은 planName 을 따로 쓴다)
   planTitle: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: FS.planTitle, lineHeight: 1.45, color: C.brownDeep, letterSpacing: '-0.01em', margin: '0 auto clamp(18px, 4vw, 32px)', maxWidth: 640, textAlign: 'center' },
+  // 케이스 제목 편집기 (편집 화면에서만) — 점선 밑줄로 "누르면 고칠 수 있음"을 보여 준다
+  caseTitleEdit: { textAlign: 'center', margin: '0 auto clamp(18px, 4vw, 32px)', maxWidth: 640 },
+  caseTitleEditable: {
+    margin: '0 auto 10px', outline: 'none', cursor: 'text',
+    textDecoration: 'underline dashed rgba(181,151,106,0.6)', textUnderlineOffset: 6, textDecorationThickness: 1,
+  },
+  caseTitleChips: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 6 },
+  caseTitleChip: {
+    padding: '4px 10px', borderRadius: 999, border: '1px solid rgba(181,151,106,0.55)',
+    background: '#fff', color: C.brownDeep, fontFamily: FONTS.sans, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+  },
+  caseTitleReset: {
+    padding: '4px 10px', borderRadius: 999, border: '1px solid #d1d5db',
+    background: 'transparent', color: '#9ca3af', fontFamily: FONTS.sans, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+  },
   // 치료 계획 구간은 어두운 판 (참고 화면)
   secDark: { background: '#1c1a18' },
   // 1안·2안 소제목 — 밝은 베이지 (검은 판 대비 9.17:1)

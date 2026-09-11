@@ -300,7 +300,11 @@ export default function Editor() {
     // 기존 body에 삽입된 사진을 섹션별로 보존 (AI 재호출 시 분실 방지)
     const preservedImages = extractImagesBySection(editedContent?.body || '')
     const mergedBody = reinsertImagesBySection(result.body || '', preservedImages)
-    const merged = { ...result, body: mergedBody, aiDraftBody: mergedBody }
+    // 본문을 새로 써도 이 진단서에서 바꿔 둔 케이스 제목은 유지한다
+    const merged = {
+      ...result, body: mergedBody, aiDraftBody: mergedBody,
+      ...(editedContent?.caseTitles ? { caseTitles: editedContent.caseTitles } : {}),
+    }
     setRefinedContent(merged)
     setEditedContent(JSON.parse(JSON.stringify(merged)))
     lastLoggedBodyRef.current = ''
@@ -437,6 +441,25 @@ export default function Editor() {
       })
       if (changed) setEditedContent({ ...editedContent, body: root.innerHTML })
     } catch (err) { console.warn('caption update failed', err) }
+  }
+
+  /**
+   * 케이스 제목을 이 진단서에서만 바꾼다 — 라이브러리 원본은 두고 sections.caseTitles 에만 적는다.
+   * 한 케이스가 여러 태그에 걸쳐 있어(예: 치아 벌어짐 + 돌출입) 원래 제목이 이 환자에게 안 맞을 때 쓴다.
+   * 비우거나 원래 제목과 같게 되돌리면 덮어쓴 값을 지운다.
+   * 함수형 업데이트: 연달아 고쳐도 앞선 수정이 옛 상태에 덮이지 않게.
+   */
+  const handleUpdateCaseTitle = (caseId, title) => {
+    if (!caseId) return
+    const original = String(allCases.find(c => c.id === caseId)?.title || '').trim()
+    const next = String(title || '').trim()
+    setEditedContent(prev => {
+      if (!prev) return prev
+      const map = { ...(prev.caseTitles || {}) }
+      if (!next || next === original) delete map[caseId]
+      else map[caseId] = next
+      return { ...prev, caseTitles: map }
+    })
   }
 
   // 진단서 디자이너에서 맞춤 안내 편집
@@ -679,7 +702,7 @@ export default function Editor() {
                   consultDate={report.consult_date}
                   content={editedContent}
                   photos={photos}
-                  cases={selectedCases}
+                  cases={selectedCases} onUpdateCaseTitle={handleUpdateCaseTitle}
                   strengths={selectedStrengths}
                   mode="preview"
                   allowMarking
@@ -737,7 +760,7 @@ export default function Editor() {
                   consultDate={report.consult_date}
                   content={editedContent}
                   photos={photos}
-                  cases={selectedCases}
+                  cases={selectedCases} onUpdateCaseTitle={handleUpdateCaseTitle}
                   strengths={selectedStrengths}
                   mode="preview"
                 />
@@ -755,7 +778,7 @@ export default function Editor() {
                 consultDate={report.consult_date}
                 content={editedContent}
                 photos={photos}
-                cases={selectedCases}
+                cases={selectedCases} onUpdateCaseTitle={handleUpdateCaseTitle}
                 strengths={selectedStrengths}
                 mode="design"
                 allowMarking={false}
