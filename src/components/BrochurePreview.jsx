@@ -1312,11 +1312,12 @@ const S = {
   // 어두운 판이라 밝은 글씨 — 제목은 베이지, 본문은 연한 흰색
   strTitle: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: 'clamp(16px, 4.2vw, 19px)', color: C.goldL, lineHeight: 1.45, marginBottom: 10, wordBreak: 'keep-all' },
   strDesc: { fontSize: FS.body, lineHeight: 1.8, color: 'rgba(255,255,255,0.66)', whiteSpace: 'pre-wrap', marginBottom: 14, wordBreak: 'keep-all' },
-  // 사진:문구 5:5 라 글 칸이 좁다(폰에서 100px 안팎) — 줄바꿈을 막지 않으면 "자세히 보 / 기 →" 로 쪼개진다.
-  // 한 줄로 고정하되 칸 밖으로 넘치지 않게 자간·좌우 여백을 줄였다.
+  // 사진:문구 5:5 라 글 칸이 좁다. 특히 편집기 미리보기는 vw 가 PC 창 폭 기준이라 여백이 전부 최댓값이 되어
+  // 375px 폰 틀 안 글 칸이 127px 까지 줄고, 좌우 여백 24px 짜리 버튼이 "자세히 보 / 기 →" 로 쪼개졌다.
+  // 좌우 여백을 vw 대신 12px 로 고정하면 Pretendard 104px · 맑은 고딕 117px 로 칸 안에 한 줄로 들어간다.
   strLink: {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap', maxWidth: '100%',
-    padding: 'clamp(8px, 2vw, 11px) clamp(12px, 3vw, 24px)',
+    padding: 'clamp(8px, 2vw, 11px) 12px',
     border: `1px solid rgba(181,151,106,0.55)`, borderRadius: 999,
     fontFamily: FONTS.sans, fontSize: 'clamp(12px, 3.2vw, 13px)', fontWeight: 600,
     letterSpacing: '0.04em', color: C.goldL, textDecoration: 'none', background: 'transparent',
