@@ -675,6 +675,27 @@ export default function Editor() {
           </div>
         )}
 
+        {/*
+          초안(본문)이 아직 없는데 단계 탭으로 3·5단계에 들어온 경우.
+          두 단계 모두 본문이 있을 때만 그리게 되어 있어, 예전엔 아무것도 안 그려져
+          5단계는 검은 배경만, 3단계는 빈 화면만 남았다.
+        */}
+        {(step === 3 || step === 5) && !editedContent && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 24px' }}>
+            <div style={{ maxWidth: 480, width: '100%', background: '#fff', borderRadius: 16, padding: '32px 28px', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}>
+              <div style={{ fontSize: 17, fontWeight: 700, color: '#1a1a18', marginBottom: 12 }}>아직 AI 초안이 없습니다</div>
+              <div style={{ fontSize: 14, lineHeight: 1.8, color: '#5a5a55', marginBottom: 24, wordBreak: 'keep-all' }}>
+                {step === 5 ? '진단서 디자이너' : '초안 편집'}은 AI가 쓴 본문이 있어야 열립니다.<br />
+                <strong>2단계 상담 관리</strong>에서 환자 성향을 확인한 뒤 <strong>다음: AI 작성</strong>을 눌러 주세요.<br />
+                고르신 케이스·어필포인트는 그대로 남아 있습니다.
+              </div>
+              <button onClick={() => changeStep(2)} style={{ ...btnStyle('#b5976a'), width: '100%', padding: '14px', fontSize: 15, fontWeight: 700 }}>
+                ← 2단계 상담 관리로 가기
+              </button>
+            </div>
+          </div>
+        )}
+
         {step === 3 && editedContent && (
           <div style={{ display: 'flex', height: 'calc(100vh - 60px)' }}>
             <div style={{ flex: 1, overflow: 'auto', padding: '24px', borderRight: '1px solid #e5e7eb' }}>
