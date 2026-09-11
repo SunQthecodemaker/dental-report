@@ -606,20 +606,14 @@ function CasesSection({ num, cases, tone, caseTitles, onUpdateCaseTitle }) {
   )
 }
 
-/** "돌출입교정" → "돌출입 케이스", "치아 벌어짐" → "치아 벌어짐 케이스" */
-function tagToCaseTitle(tag) {
-  const t = String(tag || '').trim().replace(/교정$/, '').trim()
-  return t ? `${t} 케이스` : ''
-}
-
 /**
  * 편집 화면에서만 뜨는 케이스 제목 편집기.
  * 한 케이스가 여러 태그에 걸쳐 있으면(예: 치아 벌어짐 + 돌출입) 원래 제목이 이 환자에게 안 맞을 수 있다.
- * 제목을 눌러 직접 고치거나, 아래 태그 버튼으로 바로 바꾼다. 이 진단서에만 적용된다.
+ * 제목을 눌러 직접 고친다. 비우고 확정하면 원래 제목으로 돌아간다. 이 진단서에만 적용된다.
+ * (태그로 만든 제목 버튼은 미리보기를 어지럽혀 뺐다)
  */
 function CaseTitleEditor({ c, custom, onUpdate }) {
   const title = custom || c.title || ''
-  const options = [...new Set((c.tags || []).map(tagToCaseTitle))].filter(o => o && o !== title)
   return (
     <div style={S.caseTitleEdit}>
       <h3
@@ -635,14 +629,9 @@ function CaseTitleEditor({ c, custom, onUpdate }) {
           if (next !== title) onUpdate(c.id, next)
         }}
       >{title}</h3>
-      {(options.length > 0 || custom) && (
+      {custom && (
         <div style={S.caseTitleChips}>
-          {options.map(o => (
-            <button key={o} type="button" style={S.caseTitleChip} onClick={() => onUpdate(c.id, o)}>{o}</button>
-          ))}
-          {custom && (
-            <button type="button" style={S.caseTitleReset} onClick={() => onUpdate(c.id, '')}>원래대로</button>
-          )}
+          <button type="button" style={S.caseTitleReset} onClick={() => onUpdate(c.id, '')}>원래대로</button>
         </div>
       )}
     </div>
@@ -1416,10 +1405,6 @@ const S = {
     textDecoration: 'underline dashed rgba(181,151,106,0.6)', textUnderlineOffset: 6, textDecorationThickness: 1,
   },
   caseTitleChips: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 6 },
-  caseTitleChip: {
-    padding: '4px 10px', borderRadius: 999, border: '1px solid rgba(181,151,106,0.55)',
-    background: '#fff', color: C.brownDeep, fontFamily: FONTS.sans, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-  },
   caseTitleReset: {
     padding: '4px 10px', borderRadius: 999, border: '1px solid #d1d5db',
     background: 'transparent', color: '#9ca3af', fontFamily: FONTS.sans, fontSize: 12, fontWeight: 600, cursor: 'pointer',
