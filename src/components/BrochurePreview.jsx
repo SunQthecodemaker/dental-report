@@ -1312,12 +1312,14 @@ const S = {
   // 어두운 판이라 밝은 글씨 — 제목은 베이지, 본문은 연한 흰색
   strTitle: { fontFamily: FONTS.sans, fontWeight: 700, fontSize: 'clamp(16px, 4.2vw, 19px)', color: C.goldL, lineHeight: 1.45, marginBottom: 10, wordBreak: 'keep-all' },
   strDesc: { fontSize: FS.body, lineHeight: 1.8, color: 'rgba(255,255,255,0.66)', whiteSpace: 'pre-wrap', marginBottom: 14, wordBreak: 'keep-all' },
+  // 사진:문구 5:5 라 글 칸이 좁다(폰에서 100px 안팎) — 줄바꿈을 막지 않으면 "자세히 보 / 기 →" 로 쪼개진다.
+  // 한 줄로 고정하되 칸 밖으로 넘치지 않게 자간·좌우 여백을 줄였다.
   strLink: {
-    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-    padding: 'clamp(8px, 2vw, 11px) clamp(16px, 4vw, 24px)',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap', maxWidth: '100%',
+    padding: 'clamp(8px, 2vw, 11px) clamp(12px, 3vw, 24px)',
     border: `1px solid rgba(181,151,106,0.55)`, borderRadius: 999,
     fontFamily: FONTS.sans, fontSize: 'clamp(12px, 3.2vw, 13px)', fontWeight: 600,
-    letterSpacing: '0.1em', color: C.goldL, textDecoration: 'none', background: 'transparent',
+    letterSpacing: '0.04em', color: C.goldL, textDecoration: 'none', background: 'transparent',
   },
 
   /* 유사 치료 사례 설명 — 밝은 바탕이므로 어두운 글씨.
