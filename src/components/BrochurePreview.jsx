@@ -389,7 +389,7 @@ function Cover({ patientName, consultDate, v }) {
       <div style={S.coverDisplay}>Consultation Report</div>
       <div style={S.coverShortRule} />
       <div className="brochure-cover-name" style={S.coverName}>{patientName || '○○○'} 님</div>
-      <div style={S.coverSub}>교정 상담 결과서</div>
+      <div style={S.coverSub}>교정 상담 리포트</div>
       <div style={S.coverDate}>{formatCoverDate(consultDate)}</div>
     </div>
   )
