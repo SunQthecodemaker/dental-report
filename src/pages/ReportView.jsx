@@ -85,6 +85,7 @@ export default function ReportView() {
         <BrochurePreview
           patientName={report.patient_name}
           consultDate={report.consult_date}
+          expiresAt={report.expires_at}
           content={content}
           photos={report.photos || []}
           cases={selectedCases}

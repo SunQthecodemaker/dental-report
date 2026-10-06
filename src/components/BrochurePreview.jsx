@@ -44,7 +44,7 @@ const EN_LABEL = {
   '추가 사항': 'Additional Notes',
 }
 
-export default function BrochurePreview({ patientName, consultDate, content, photos = [], mode = 'preview', allowMarking, onUpdateCaption, onUpdateNote, onOpenMarker, onUpdateCaseTitle, cases = [], strengths = [] }) {
+export default function BrochurePreview({ patientName, consultDate, expiresAt, content, photos = [], mode = 'preview', allowMarking, onUpdateCaption, onUpdateNote, onOpenMarker, onUpdateCaseTitle, cases = [], strengths = [] }) {
   const v = mode === 'view' || mode === 'design'
   const design = mode === 'design'
   const bodyHtml = content?.body || ''
@@ -99,7 +99,7 @@ export default function BrochurePreview({ patientName, consultDate, content, pho
       {blocks}
 
       {/* 푸터 */}
-      <Footer v={v} />
+      <Footer v={v} expiresAt={expiresAt} />
     </div>
   )
 }
@@ -1094,7 +1094,15 @@ const LINKS = {
   home: 'http://primes.co.kr',
 }
 
-function Footer({ v }) {
+// 환자 링크는 90일 뒤 막힌다(ReportView) — 미리 알려 둔다. 날짜를 모르면(편집 미리보기) 기간만 쓴다.
+function expiryNotice(expiresAt) {
+  const d = expiresAt ? new Date(expiresAt) : null
+  if (!d || isNaN(d)) return '이 진단서는 발송일로부터 90일간 열람하실 수 있습니다.'
+  const ymd = d.toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'long', day: 'numeric' })
+  return `이 진단서는 ${ymd}까지 열람하실 수 있습니다.`
+}
+
+function Footer({ v, expiresAt }) {
   return (
     <div style={S.footer}>
       <div style={S.footerBrand}>Prime S</div>
@@ -1110,6 +1118,7 @@ function Footer({ v }) {
         <a href={LINKS.home} target="_blank" rel="noopener noreferrer"
            style={{ ...S.ctaBtn, background: C.gold, color: '#2e2418' }}>홈페이지</a>
       </div>
+      <div style={S.expiry}>{expiryNotice(expiresAt)}<br />이후에는 병원으로 문의해 주세요.</div>
       <div style={S.copy}>© Prime S Dental · 2026</div>
     </div>
   )
@@ -1437,6 +1446,7 @@ const S = {
   footer: { padding: SP.footerPad, background: '#0e0e0c', color: '#fff', textAlign: 'center' },
   footerBrand: { fontFamily: FONTS.serif, fontSize: FS.footerBrand, letterSpacing: '0.1em', marginBottom: 4 },
   footerTag: { fontFamily: FONTS.serif, fontWeight: 500, fontSize: FS.secEn, letterSpacing: LS.looseWide, color: C.gold, textTransform: 'uppercase', marginBottom: 20 },
+  expiry: { fontFamily: FONTS.sans, fontSize: FS.caption, lineHeight: 1.8, color: 'rgba(255,255,255,0.6)', margin: '0 auto 16px', wordBreak: 'keep-all' },
   footerInfo: { fontFamily: FONTS.sans, fontSize: FS.caption, lineHeight: 1.9, color: 'rgba(255,255,255,0.5)', marginBottom: 20 },
   // 버튼 3개가 한 줄에 균등하게. 폭이 모자라면 2개 → 1개로 자동으로 접힌다.
   cta: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 8, maxWidth: 460, margin: '0 auto 20px' },
