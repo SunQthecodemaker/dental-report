@@ -10,11 +10,15 @@ export default function Dashboard() {
   const navigate = useNavigate()
 
   const [reports, setReports] = useState([])
+  const reportsRef = useRef(reports)
+  reportsRef.current = reports
   const [loading, setLoading] = useState(true)
 
   const [search, setSearch] = useState('')
   const [dateRange, setDateRange] = useState('all')
   const [hideCompleted, setHideCompleted] = useState(false)
+  const hideCompletedRef = useRef(hideCompleted)
+  hideCompletedRef.current = hideCompleted
 
   const [form, setForm] = useState({ name: '', birth: '', chartNumber: '', cc: '', consultDate: todayYMD() })
   const [chartManual, setChartManual] = useState(false)
@@ -64,7 +68,22 @@ export default function Dashboard() {
   useEffect(() => {
     const channel = supabase
       .channel('dental_reports_dashboard')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'dental_reports' }, () => {
+      // 변경 1건마다 목록 200건을 다시 받으면 전송량이 크게 늘어난다 (편집 중 잠금 갱신이 1분마다 옴).
+      // 이벤트에 실린 행으로 그 줄만 갈아끼우고, 목록에 없던 행일 때만 다시 불러온다.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'dental_reports' }, (payload) => {
+        if (payload.eventType === 'DELETE') {
+          setReports(prev => prev.filter(r => r.id !== payload.old?.id))
+          return
+        }
+        const row = payload.new
+        if (payload.eventType === 'UPDATE' && row?.id && reportsRef.current.some(r => r.id === row.id)) {
+          setReports(prev => {
+            const rest = prev.filter(r => r.id !== row.id)
+            if (hideCompletedRef.current && row.progress_stage === 'done') return rest
+            return [{ ...prev.find(r => r.id === row.id), ...row }, ...rest] // 최근 수정순 유지
+          })
+          return
+        }
         scheduleReload()
       })
       .subscribe()

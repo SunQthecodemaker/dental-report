@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { generateImageCaption } from '../lib/gemini'
 import { parseMarkingsAttr } from '../lib/markings'
+import { compressImage, IMAGE_CACHE_CONTROL } from '../lib/imageCompress'
 
 /**
  * ContentEditor — AI 작성 단계: 하나의 워드 문서형 편집기
@@ -158,11 +159,12 @@ export default function ContentEditor({ original, edited, onChange, onUploadingC
   }
 
   // 이미지 업로드: Supabase Storage "dental-reports/content/" 경로
-  const uploadImage = async (file) => {
+  const uploadImage = async (original) => {
+    const file = await compressImage(original)
     const ext = (file.type.split('/')[1] || 'png').toLowerCase().replace('jpeg', 'jpg')
     const name = `content/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
     const { error } = await supabase.storage.from('dental-reports').upload(name, file, {
-      contentType: file.type, cacheControl: '3600', upsert: false,
+      contentType: file.type, cacheControl: IMAGE_CACHE_CONTROL, upsert: false,
     })
     if (error) throw error
     const { data } = supabase.storage.from('dental-reports').getPublicUrl(name)

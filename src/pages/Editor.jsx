@@ -13,6 +13,7 @@ import { composeReport, buildComposePrompt, postProcessComposeResult, getEmptyDr
 import { runJobWithFallback } from '../lib/aiJobs'
 import { saveEditLearningLog } from '../lib/learning'
 import { supabase } from '../lib/supabase'
+import { compressImage, IMAGE_CACHE_CONTROL } from '../lib/imageCompress'
 import { loadClinicalFormConfig } from '../lib/formConfig'
 import { getByChartNumber, updateReport, acquireLock, releaseLock, isOtherPcEditing, PROGRESS_STAGES } from '../lib/reports'
 import { getStepStatuses, STATUS_TONE, deriveStage, maxStage } from '../lib/progress'
@@ -332,7 +333,8 @@ export default function Editor() {
       for (const photo of photos) {
         if (photo?.file) {
           const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`
-          const { error } = await supabase.storage.from('dental-reports').upload(fileName, photo.file, { contentType: photo.file.type })
+          const file = await compressImage(photo.file)
+          const { error } = await supabase.storage.from('dental-reports').upload(fileName, file, { contentType: file.type, cacheControl: IMAGE_CACHE_CONTROL })
           if (error) throw error
           const { data: urlData } = supabase.storage.from('dental-reports').getPublicUrl(fileName)
           uploadedPhotos.push({ ...photo, file: undefined, preview: undefined, url: urlData.publicUrl })

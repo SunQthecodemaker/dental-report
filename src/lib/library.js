@@ -5,6 +5,7 @@
  *   strength_cards   → { id, title, description, tags: string[], photo_url, detail_url }
  */
 import { supabase } from './supabase'
+import { compressImage, IMAGE_CACHE_CONTROL } from './imageCompress'
 
 /** 태그 정규화: 앞뒤 공백 제거, # 제거, 내부 연속 공백 1칸, 빈 문자열 제외 */
 export function normalizeTag(raw) {
@@ -81,11 +82,12 @@ export const loadStrengthCards = () => loadSetting(STRENGTH_CARDS_KEY)
 export const saveStrengthCards = (items) => saveSetting(STRENGTH_CARDS_KEY, items)
 
 /** 라이브러리 사진 업로드 (Supabase Storage "dental-reports/library/{prefix}/") */
-export async function uploadLibraryPhoto(file, prefix) {
+export async function uploadLibraryPhoto(original, prefix) {
+  const file = await compressImage(original)
   const ext = (file.type.split('/')[1] || 'jpg').toLowerCase().replace('jpeg', 'jpg')
   const name = `library/${prefix}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
   const { error } = await supabase.storage.from('dental-reports').upload(name, file, {
-    contentType: file.type, cacheControl: '3600', upsert: false,
+    contentType: file.type, cacheControl: IMAGE_CACHE_CONTROL, upsert: false,
   })
   if (error) throw error
   const { data } = supabase.storage.from('dental-reports').getPublicUrl(name)
