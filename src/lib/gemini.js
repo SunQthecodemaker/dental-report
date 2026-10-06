@@ -630,7 +630,7 @@ export async function composeReport({ summary, staffForm, returnPromptOnly = fal
       }).join('\n')}`
     : ''
 
-  const systemPrompt = `당신은 한국 치과 진단서를 환자가 한 번에 읽고 자기 상황을 이해할 수 있도록 작성하는 AI입니다.
+  const systemPrompt = `당신은 한국 치과 상담 리포트를 환자가 한 번에 읽고 자기 상황을 이해할 수 있도록 작성하는 AI입니다.
 
 핵심 원칙은 두 축:
 1. **환자별 사실 환각 금지** — 입력에 없는 부위·치료옵션·심도는 단 한 단어도 추가하지 않음

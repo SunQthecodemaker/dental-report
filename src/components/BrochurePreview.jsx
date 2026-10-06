@@ -1095,11 +1095,12 @@ const LINKS = {
 }
 
 // 환자 링크는 90일 뒤 막힌다(ReportView) — 미리 알려 둔다. 날짜를 모르면(편집 미리보기) 기간만 쓴다.
+// 환자에게 보이는 글에는 '진단서' 대신 '상담 리포트' — 진단서는 의료법상 별도 문서라 민감하다.
 function expiryNotice(expiresAt) {
   const d = expiresAt ? new Date(expiresAt) : null
-  if (!d || isNaN(d)) return '이 진단서는 발송일로부터 90일간 열람하실 수 있습니다.'
+  if (!d || isNaN(d)) return '이 상담 리포트는 발송일로부터 90일간 열람하실 수 있습니다.'
   const ymd = d.toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', year: 'numeric', month: 'long', day: 'numeric' })
-  return `이 진단서는 ${ymd}까지 열람하실 수 있습니다.`
+  return `이 상담 리포트는 ${ymd}까지 열람하실 수 있습니다.`
 }
 
 function Footer({ v, expiresAt }) {
@@ -1118,7 +1119,7 @@ function Footer({ v, expiresAt }) {
         <a href={LINKS.home} target="_blank" rel="noopener noreferrer"
            style={{ ...S.ctaBtn, background: C.gold, color: '#2e2418' }}>홈페이지</a>
       </div>
-      <div style={S.expiry}>{expiryNotice(expiresAt)}<br />이후에는 병원으로 문의해 주세요.</div>
+      <div style={S.expiry}>{expiryNotice(expiresAt)}<br />이후에는 치과로 문의해 주세요.</div>
       <div style={S.copy}>© Prime S Dental · 2026</div>
     </div>
   )

@@ -29,7 +29,7 @@ export default function ReportView() {
       if (fetchError) throw fetchError
 
       if (new Date(data.expires_at) < new Date()) {
-        setError('이 진단서 링크는 만료되었습니다.')
+        setError('열람 기간(90일)이 지나 더 이상 볼 수 없습니다. 치과로 문의해 주세요.')
         return
       }
 
@@ -52,7 +52,7 @@ export default function ReportView() {
         setSelectedStrengths(strengthIds.map(id => strengthMap.get(id)).filter(Boolean))
       }
     } catch {
-      setError('진단서를 찾을 수 없습니다.')
+      setError('상담 리포트를 찾을 수 없습니다.')
     } finally {
       setLoading(false)
     }
