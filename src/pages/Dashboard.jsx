@@ -13,6 +13,7 @@ export default function Dashboard() {
   const reportsRef = useRef(reports)
   reportsRef.current = reports
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
   const [search, setSearch] = useState('')
   const [dateRange, setDateRange] = useState('all')
@@ -53,13 +54,21 @@ export default function Dashboard() {
     reloadTimer.current = setTimeout(() => reload(), 200)
   }
 
+  /**
+   * 목록 불러오기.
+   * 예전엔 실패를 console 로만 찍어 화면에는 빈 목록이 그대로 떴다.
+   * 서버가 막히면(예: Supabase 전송량 초과로 402) 환자가 전부 사라진 것처럼 보여,
+   * 실패 사유를 화면에 띄우고 직전에 받아둔 목록은 지우지 않는다.
+   */
   async function reload() {
     setLoading(true)
     try {
       const data = await listReports({ search, dateRange, hideCompleted })
       setReports(data)
+      setLoadError('')
     } catch (err) {
       console.error(err)
+      setLoadError(err?.message || '목록을 불러오지 못했습니다.')
     } finally { setLoading(false) }
   }
 
@@ -168,6 +177,15 @@ export default function Dashboard() {
               완료 숨김
             </label>
           </div>
+
+          {loadError && (
+            <div style={styles.loadError}>
+              <strong>환자 목록을 불러오지 못했습니다.</strong><br />
+              저장된 환자 자료가 지워진 것이 아니라, 서버에서 받아오지 못한 상태입니다.
+              잠시 뒤 새로고침해 보시고 계속 같으면 알려주세요.
+              <div style={styles.loadErrorDetail}>{loadError}</div>
+            </div>
+          )}
 
           <div style={styles.listCount}>
             {loading ? '불러오는 중…' : `${filteredReports.length}건`}
@@ -399,6 +417,9 @@ const styles = {
   searchInput: { width: '100%', padding: '8px 10px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '13px', boxSizing: 'border-box' },
   dateSelect: { padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '12px', background: '#fff' },
   toggleLabel: { display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#4b5563', whiteSpace: 'nowrap' },
+  // 목록을 못 불러왔을 때 — 빈 목록만 보이면 환자가 사라진 줄 알게 되므로 사유를 적어 둔다
+  loadError: { background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: '12px 14px', borderRadius: '8px', fontSize: '13px', lineHeight: 1.7, marginBottom: '10px', wordBreak: 'keep-all' },
+  loadErrorDetail: { marginTop: '8px', color: '#b91c1c', fontSize: '11px', wordBreak: 'break-all' },
   listCount: { fontSize: '11px', color: '#6b7280', marginBottom: '6px' },
   list: { flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' },
   empty: { padding: '30px 10px', textAlign: 'center', color: '#9ca3af', fontSize: '13px' },
