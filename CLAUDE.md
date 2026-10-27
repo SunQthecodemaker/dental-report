@@ -52,7 +52,7 @@ dental-report 가 쓰는 테이블만 건드릴 것:
 |---|---|
 | `dental_reports` | 환자 1명 = 1행. 진단서 본문·사진·설정 전부 여기 JSON 컬럼에 |
 | `clinic_settings` | **id 기반 key-value JSON 설정 저장소** (아래 참고) |
-| `ai_jobs` | AI 작업 큐 (브라우저 INSERT → PC2 워커가 처리) |
+| `ai_jobs` | AI 작업 큐 (브라우저 INSERT → VPS 워커가 처리) |
 | `charting_corrections`, `edit_learning_logs` | 학습용 수정 이력 |
 
 `clinic_settings` 는 id 하나가 설정 묶음 하나다:
@@ -66,14 +66,14 @@ DB row 가 없으면 코드의 `DEFAULT_*` 상수로 폴백한다 ([formConfig.j
 ```
 브라우저: ai_jobs INSERT (status=pending)
    ↓ Supabase Realtime
-PC2 워커 (worker/): Claude Agent SDK, Max 구독 OAuth → status=done/error
+VPS 워커 (worker/): Claude Code CLI(Max 구독) → 실패 시 Codex CLI(ChatGPT 구독) → status=done/error
    ↓ Realtime
 브라우저: 결과 수신
-   └─ 60초 타임아웃 또는 error → Gemini 폴백 (Edge Function `generate-text`)
+   └─ 타임아웃(작성 3분) 또는 error → Gemini 폴백 (Edge Function `generate-text`)
 ```
 
 - 큐 클라이언트: [src/lib/aiJobs.js](src/lib/aiJobs.js) — `runJobWithFallback(type, payload, {fallback})`
-- 워커: [worker/index.js](worker/index.js) — pm2 로 PC2 에서 24/7. atomic claim, stuck 복구(5분), 2분마다 적체 청소
+- 워커: [worker/index.js](worker/index.js) — VPS(ssh `hermes`) `/root/dental-worker` 에서 systemd 상주. atomic claim, stuck 복구(5분), 2분마다 적체 청소, 4분 넘은 잡은 expired 처리. 배포 = `bash worker/deploy/deploy-vps.sh`. 장애 시 텔레그램 알림(워커 내부 + 10분 감시 타이머)
 - 폴백: [src/lib/gemini.js](src/lib/gemini.js) → Supabase Edge Function `generate-text`
 
 **중요 — 워커에는 도메인 로직이 없다.** 순수 Claude 호출 프록시일 뿐이고
@@ -81,8 +81,9 @@ PC2 워커 (worker/): Claude Agent SDK, Max 구독 OAuth → status=done/error
 **모든 시스템 프롬프트·병원 룰은 dental-report 프론트 코드(주로 `gemini.js`)에 있다.**
 AI 출력 품질을 고치려면 워커가 아니라 `gemini.js` 의 프롬프트 빌더를 봐야 한다.
 
-잡 타입: `compose`(진단서 본문), `analyze_patterns`(학습 분석), `image_caption`,
-`suggest_tags`, `validate_guideline`, `cleanup_guidelines`.
+잡 타입: `compose`(진단서 본문), `analyze_patterns`(학습 분석), `suggest_tags`, `validate_guideline`,
+`cleanup_guidelines`, `suggest_tone_rules`. 텍스트 AI 는 전부 `gemini.js` 의 `aiJson()` 을 거친다 (워커 1순위 → Gemini).
+`image_caption`(사진 캡션)만 이미지 입력이라 Gemini 직접 호출 — Gemini 크레딧이 떨어지면 이것만 멈춘다.
 
 ---
 

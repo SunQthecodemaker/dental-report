@@ -1,0 +1,15 @@
+[Unit]
+Description=모바일진단서 AI 워커 (Supabase ai_jobs → Claude/Codex CLI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/root/dental-worker
+ExecStart=/usr/bin/env node index.js
+EnvironmentFile=/root/dental-worker/.env
+Environment=PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,32 +1,38 @@
 /**
- * 모바일진단서 PC2 워커
+ * 모바일진단서 AI 워커 (VPS, systemd 상주)
  * ─────────────────────────────────────────────
- * 역할: Supabase ai_jobs 테이블의 pending 잡을 받아 Claude Agent SDK (Max 구독) 로 처리.
+ * 역할: Supabase ai_jobs 테이블의 pending 잡을 받아 구독 CLI 로 처리.
+ *   1순위 Claude Code CLI (Max 구독) → 실패 시 2순위 Codex CLI (ChatGPT 구독)
+ *   둘 다 실패하거나 워커가 응답 못 하면 dental-report 브라우저가 Gemini 로 폴백.
  *
- * 워커는 **도메인 로직 없음** — 순수 Claude 호출 프록시.
+ * 워커는 **도메인 로직 없음** — 순수 LLM 호출 프록시.
  *   payload = { systemPrompt, userMessage, expectJson?, model? }
  *   result   = { text }              (expectJson=false)
  *           또는 직접 파싱된 객체  (expectJson=true)
  *
  * 모든 시스템 프롬프트·도메인 룰은 dental-report 측 코드에 있음.
- * 워커가 죽거나 응답 안 주면 dental-report 가 60초 후 Gemini 폴백.
  *
- * 운영:
- *   pm2 start index.js --name dental-worker --time
- *   pm2 logs dental-worker
+ * 운영: systemctl status|restart dental-worker · journalctl -u dental-worker -f
  */
 
 import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 import { callClaude, parseJsonReply } from './lib/claude.js'
+import { callCodex, isCodexReady } from './lib/codex.js'
+import { notify } from './lib/notify.js'
 
 const {
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
-  WORKER_ID = 'pc2-unknown',
-  COMPOSE_MODEL = 'claude-sonnet-4-6',
-  ANALYZE_MODEL = 'claude-sonnet-4-6',
+  WORKER_ID = 'vps',
+  COMPOSE_MODEL = 'sonnet',
+  ANALYZE_MODEL = 'sonnet',
+  CODEX_MODEL,
 } = process.env
+
+// 브라우저는 최대 3분 기다리고 Gemini 로 넘어간다. 그보다 오래된 pending 은 이미 버려진 요청이라
+// 처리하면 구독 한도만 쓴다 → expired 로 닫는다. (2026-10: PC2 가 며칠 묵은 잡을 몰아 처리한 사례)
+const STALE_MS = 4 * 60 * 1000
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error('[worker] FATAL: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 환경변수 필수')
@@ -45,6 +51,38 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 function pickModel(type) {
   if (type === 'analyze_patterns') return ANALYZE_MODEL
   return COMPOSE_MODEL
+}
+
+/**
+ * Claude → Codex 순으로 시도. 각 단계 실패는 텔레그램으로 알린다.
+ * @returns {Promise<{ text: string, provider: string }>}
+ */
+async function generate({ type, systemPrompt, userMessage, expectJson, model }) {
+  const attempts = []
+
+  try {
+    const text = await callClaude({ systemPrompt, userMessage, expectJson, model })
+    if (expectJson) parseJsonReply(text) // JSON 이 깨졌으면 여기서 실패 처리해 Codex 로 넘긴다
+    return { text, provider: 'claude' }
+  } catch (err) {
+    attempts.push(`claude: ${err.message}`)
+    notify('claude-fail', `Claude 실패 → Codex 로 넘김 (${type})\n${err.message.slice(0, 300)}`)
+  }
+
+  if (isCodexReady()) {
+    try {
+      const text = await callCodex({ systemPrompt, userMessage, expectJson, model: CODEX_MODEL })
+      if (expectJson) parseJsonReply(text)
+      return { text, provider: 'codex' }
+    } catch (err) {
+      attempts.push(`codex: ${err.message}`)
+    }
+  } else {
+    attempts.push('codex: 로그인 안 됨 (건너뜀)')
+  }
+
+  notify('all-fail', `워커 전 단계 실패 → 브라우저 Gemini 폴백 (${type})\n${attempts.join('\n').slice(0, 500)}`)
+  throw new Error(attempts.join(' | '))
 }
 
 /**
@@ -71,6 +109,15 @@ async function processJob(jobId) {
   }
   if (!claimed) return // 다른 워커가 먼저 잡음 또는 이미 처리됨
 
+  if (Date.now() - new Date(claimed.created_at).getTime() > STALE_MS) {
+    await supabase
+      .from('ai_jobs')
+      .update({ status: 'error', error: 'expired — 브라우저가 이미 폴백함', completed_at: new Date().toISOString() })
+      .eq('id', jobId)
+    console.log(`[worker] ⏭ ${claimed.type} ${jobId.slice(0, 8)} expired`)
+    return
+  }
+
   const startMs = Date.now()
   console.log(`[worker] ▶ ${claimed.type} ${jobId.slice(0, 8)}…`)
 
@@ -81,17 +128,8 @@ async function processJob(jobId) {
     }
 
     const model = payloadModel || pickModel(claimed.type)
-    const text = await callClaude({ systemPrompt, userMessage, model, expectJson })
-
-    let result
-    if (expectJson) {
-      try { result = parseJsonReply(text) }
-      catch (err) {
-        throw new Error(`JSON 파싱 실패: ${err.message}\n원본: ${text.slice(0, 400)}`)
-      }
-    } else {
-      result = { text }
-    }
+    const { text, provider } = await generate({ type: claimed.type, systemPrompt, userMessage, expectJson, model })
+    const result = expectJson ? parseJsonReply(text) : { text }
 
     const ms = Date.now() - startMs
     const { error: updErr } = await supabase
@@ -104,7 +142,7 @@ async function processJob(jobId) {
       .eq('id', jobId)
     if (updErr) throw new Error(`결과 저장 실패: ${updErr.message}`)
 
-    console.log(`[worker] ✓ ${claimed.type} ${jobId.slice(0, 8)} (${(ms / 1000).toFixed(1)}s)`)
+    console.log(`[worker] ✓ ${claimed.type} ${jobId.slice(0, 8)} via ${provider} (${(ms / 1000).toFixed(1)}s)`)
   } catch (err) {
     const ms = Date.now() - startMs
     console.error(`[worker] ✗ ${claimed.type} ${jobId.slice(0, 8)} (${(ms / 1000).toFixed(1)}s):`, err.message)
@@ -190,7 +228,7 @@ function startRealtime() {
 // 부트
 // ─────────────────────────────────────────────
 
-console.log(`[worker] start id=${WORKER_ID} compose=${COMPOSE_MODEL} analyze=${ANALYZE_MODEL}`)
+console.log(`[worker] start id=${WORKER_ID} compose=${COMPOSE_MODEL} analyze=${ANALYZE_MODEL} codex=${isCodexReady() ? 'ready' : 'off'}`)
 
 await recoverStuck()
 await drainPending()

@@ -803,7 +803,7 @@ function GuidelineListEditor({ items, onChange }) {
 //
 // 새 구조:
 //   ① 학습 지시사항 (clinic_settings.ai_instructions) — 자연어 사고 룰, 매 composeReport 시스템 프롬프트에 박힘
-//   ② 누적 수정 기록 N건 + [패턴 분석] 버튼 (PC2 Claude 가 후보 룰 제안)
+//   ② 누적 수정 기록 N건 + [패턴 분석] 버튼 (AI 가 후보 룰 제안)
 //   ③ (보존만, 신규 promote 없음) 용어 사전 + 누적 교정 기록 — 옛 시스템 데이터 열람용
 function LearningTab({ terms, onTermsChange, corrections, onReloadCorrections }) {
   const [instructions, setInstructions] = useState([])
@@ -863,7 +863,7 @@ function LearningTab({ terms, onTermsChange, corrections, onReloadCorrections })
       setCandidates(Array.isArray(result?.candidates) ? result.candidates : [])
       setAnalyzeSummary(result?.summary || '')
     } catch (err) {
-      alert('패턴 분석 실패: ' + err.message + '\n\nPC2 워커가 가동 중인지 확인하세요. (PC2 → pm2 status dental-worker)')
+      alert('패턴 분석 실패: ' + err.message + '\n\nAI 워커가 가동 중인지 확인하세요. (VPS → systemctl status dental-worker)')
     } finally {
       setIsAnalyzing(false)
     }
@@ -892,7 +892,7 @@ function LearningTab({ terms, onTermsChange, corrections, onReloadCorrections })
     <>
       <p style={S.desc}>
         AI 가 진단서를 작성할 때 따라야 할 <strong>사고 룰</strong>을 자연어로 누적합니다.
-        매 저장마다 입력+수정 데이터가 백그라운드로 쌓이고, [패턴 분석] 버튼으로 PC2 Claude 가 룰 후보를 제안해 줍니다.
+        매 저장마다 입력+수정 데이터가 백그라운드로 쌓이고, [패턴 분석] 버튼으로 AI 가 룰 후보를 제안해 줍니다.
       </p>
 
       {/* ① 학습 지시사항 (자연어 사고 룰) */}
@@ -944,12 +944,12 @@ function LearningTab({ terms, onTermsChange, corrections, onReloadCorrections })
             cursor: (isAnalyzing || logCount === 0) ? 'not-allowed' : 'pointer',
           }}
         >
-          {isAnalyzing ? '🤖 PC2 Claude 분석 중… (1~3분)' : '🔍 패턴 분석'}
+          {isAnalyzing ? '🤖 AI 분석 중… (1~3분)' : '🔍 패턴 분석'}
         </button>
       </h3>
       <div style={{ ...S.desc, marginBottom: 12 }}>
         진단서 작성 → 수정 → 저장 시 입력 + AI 초안 + 사용자 수정본이 자동으로 쌓입니다.
-        [패턴 분석]을 누르면 PC2 의 Claude 가 최근 50건을 보고 새 사고 룰 후보를 제안합니다.
+        [패턴 분석]을 누르면 AI 가 최근 50건을 보고 새 사고 룰 후보를 제안합니다.
       </div>
 
       {analyzeSummary && (

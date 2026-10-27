@@ -250,13 +250,14 @@ export default function Editor() {
     const prompt = await buildComposePrompt({ summary, staffForm })
     if (!prompt) return getEmptyDraft()
 
-    // PC2 Claude 워커 1순위, 60초 안에 응답 없으면 Gemini 폴백
+    // VPS 워커(Claude → Codex 구독) 1순위, 3분 안에 응답 없으면 Gemini 폴백
+    // (평소 30~40초. Claude 가 실패해 Codex 로 넘어가는 경우까지 기다리도록 넉넉히)
     const raw = await runJobWithFallback(
       'compose',
       { systemPrompt: prompt.systemPrompt, userMessage: prompt.userMessage, expectJson: true },
       {
         reportId: report?.id,
-        timeoutMs: 60_000,
+        timeoutMs: 180_000,
         fallback: () => composeReport({ summary, staffForm }),
       }
     )

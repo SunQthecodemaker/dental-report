@@ -167,7 +167,7 @@ export async function loadRecentLearningLogs(limit = 50) {
 }
 
 // ───────────────────────────────────────────
-// 패턴 분석 프롬프트 빌더 — PC2 Claude 워커에 전달
+// 패턴 분석 프롬프트 빌더 — VPS 워커에 전달
 // ───────────────────────────────────────────
 
 function summarizeClinicalForm(cf) {

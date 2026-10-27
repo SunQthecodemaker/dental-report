@@ -1,0 +1,7 @@
+[Unit]
+Description=모바일진단서 AI 워커 감시 (멈춘 잡 텔레그램 알림)
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/dental-worker
+ExecStart=/usr/bin/env node watchdog.js

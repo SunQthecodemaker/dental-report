@@ -5,11 +5,11 @@ import { supabase } from './supabase'
  *
  * 동작:
  *   브라우저 → ai_jobs INSERT (status='pending')
- *   PC2 워커 → Realtime 으로 받아 처리 → status='done'/'error' UPDATE
+ *   VPS 워커(Claude → Codex 구독) → Realtime 으로 받아 처리 → status='done'/'error' UPDATE
  *   브라우저 → Realtime 으로 결과 받음
  *
  * 폴백:
- *   timeoutMs 안에 PC2 워커가 응답 안 주면 fallbackFn() 호출 (Gemini 등)
+ *   timeoutMs 안에 워커가 응답 안 주면 fallbackFn() 호출 (Gemini 등)
  *   에러로 끝난 경우도 fallbackFn() 호출
  */
 

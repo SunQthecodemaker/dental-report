@@ -1,9 +1,47 @@
 import { supabase } from './supabase'
 import { summaryWithKoreanTeeth } from './toothCode'
 import { loadStaffFormConfig, ruleMatchesStaffForm, DEFAULT_STAFF_FORM_CONFIG } from './staffFormConfig'
+import { runJobWithFallback } from './aiJobs'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/generate-text`
+
+/**
+ * Gemini 직접 호출 → JSON 객체. 워커 폴백 전용.
+ */
+async function geminiJson(systemPrompt, userMessage, generationConfig) {
+  const response = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ parts: [{ text: userMessage }] }],
+      generationConfig: { responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: 0 }, ...generationConfig },
+    }),
+  })
+  const data = await response.json()
+  if (data.error) throw new Error(data.error.message || 'Gemini API 호출 실패')
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text
+  if (!text) throw new Error('AI 응답이 비어있습니다.')
+  try { return JSON.parse(text) }
+  catch {
+    const m = text.match(/\{[\s\S]*\}/)
+    if (m) return JSON.parse(m[0])
+    throw new Error('AI 응답 JSON 파싱 실패')
+  }
+}
+
+/**
+ * 텍스트 AI 공용 진입점 — VPS 워커(Claude → Codex 구독) 1순위, 실패·타임아웃 시 Gemini.
+ * 반환: 파싱된 JSON 객체
+ */
+async function aiJson(type, { systemPrompt, userMessage, generationConfig = {}, timeoutMs = 90_000 }) {
+  return runJobWithFallback(
+    type,
+    { systemPrompt, userMessage, expectJson: true },
+    { timeoutMs, fallback: () => geminiJson(systemPrompt, userMessage, generationConfig) }
+  )
+}
 
 async function loadClinicSettings() {
   const [settingsRes, staffCfg] = await Promise.all([
@@ -191,26 +229,12 @@ ${existing.map((g, i) => `${i}. ${g}`).join('\n')}
 "${text}"`
 
   try {
-    const response = await fetch(EDGE_FUNCTION_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ parts: [{ text: userMessage }] }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 400,
-          responseMimeType: 'application/json',
-          thinkingConfig: { thinkingBudget: 0 },
-        },
-      }),
+    const parsed = await aiJson('validate_guideline', {
+      systemPrompt, userMessage,
+      generationConfig: { temperature: 0.1, maxOutputTokens: 400 },
+      timeoutMs: 60_000,
     })
-    const data = await response.json()
-    if (data.error) return { status: 'ok', reason: '' }
-    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text
-    if (!raw) return { status: 'ok', reason: '' }
-    const parsed = JSON.parse(raw)
-    if (!['ok', 'duplicate', 'conflict', 'similar'].includes(parsed.status)) {
+    if (!parsed || !['ok', 'duplicate', 'conflict', 'similar'].includes(parsed.status)) {
       return { status: 'ok', reason: '' }
     }
     return parsed
@@ -244,25 +268,11 @@ export async function cleanupGuidelines(existing) {
 ${items.map((g, i) => `${i + 1}. ${g}`).join('\n')}`
 
   try {
-    const response = await fetch(EDGE_FUNCTION_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ parts: [{ text: userMessage }] }],
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 2000,
-          responseMimeType: 'application/json',
-          thinkingConfig: { thinkingBudget: 0 },
-        },
-      }),
+    const parsed = await aiJson('cleanup_guidelines', {
+      systemPrompt, userMessage,
+      generationConfig: { temperature: 0.2, maxOutputTokens: 2000 },
+      timeoutMs: 180_000,
     })
-    const data = await response.json()
-    if (data.error) throw new Error(data.error.message)
-    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text
-    if (!raw) throw new Error('AI 응답 비어있음')
-    const parsed = JSON.parse(raw)
     const cleaned = Array.isArray(parsed.cleaned)
       ? parsed.cleaned.map(s => String(s || '').trim()).filter(Boolean)
       : items
@@ -380,32 +390,10 @@ ${combined || overall || '(없음)'}
 
 위 내용에 근거해 위 두 태그 풀에서만 골라 JSON으로 반환하시오.`
 
-  const response = await fetch(EDGE_FUNCTION_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ parts: [{ text: userMessage }] }],
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens: 1000,
-        responseMimeType: 'application/json',
-        thinkingConfig: { thinkingBudget: 0 },
-      },
-    }),
-  })
-
-  const data = await response.json()
-  if (data.error) throw new Error(data.error.message || 'AI 태그 추천 실패')
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text
-  if (!text) return { caseTags: [], strengthTags: [] }
-
-  let parsed
-  try { parsed = JSON.parse(text) }
-  catch {
-    const m = text.match(/\{[\s\S]*\}/)
-    parsed = m ? JSON.parse(m[0]) : {}
-  }
+  const parsed = (await aiJson('suggest_tags', {
+    systemPrompt, userMessage,
+    generationConfig: { temperature: 0.2, maxOutputTokens: 1000 },
+  })) || {}
 
   // 풀 안에 있는 항목만 통과시킴 (대소문자 무시) — 환각 방어
   const lcCase = new Set(cp.map(t => t.toLowerCase()))
@@ -508,32 +496,11 @@ ${legacyBlock}
 
 위 카테고리·슬라이더의 옵션 단위로 적절한 톤 규칙을 JSON 으로 제안하시오. 옵션마다 1개씩, 의미가 약한 옵션은 건너뛰어도 됨.`
 
-  const response = await fetch(EDGE_FUNCTION_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ parts: [{ text: userMessage }] }],
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 4000,
-        responseMimeType: 'application/json',
-        thinkingConfig: { thinkingBudget: 0 },
-      },
-    }),
-  })
-
-  const data = await response.json()
-  if (data.error) throw new Error(data.error.message || 'AI 톤 규칙 추천 실패')
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text
-  if (!text) return { rules: [] }
-
-  let parsed
-  try { parsed = JSON.parse(text) }
-  catch {
-    const m = text.match(/\{[\s\S]*\}/)
-    parsed = m ? JSON.parse(m[0]) : {}
-  }
+  const parsed = (await aiJson('suggest_tone_rules', {
+    systemPrompt, userMessage,
+    generationConfig: { temperature: 0.3, maxOutputTokens: 4000 },
+    timeoutMs: 180_000,
+  })) || {}
 
   // 검증: 입력 categories/sliders 키 + options 안에서만 통과 (환각 방어)
   const catKeySet = new Set(catEntries.map(([k]) => k))
@@ -558,7 +525,7 @@ ${legacyBlock}
 }
 
 /**
- * composeReport 의 시스템 프롬프트 + user 메시지만 생성 (PC2 Claude 워커 전송용).
+ * composeReport 의 시스템 프롬프트 + user 메시지만 생성 (VPS 워커 전송용).
  * 빈 입력이면 null 반환 (호출 측이 getEmptyDraft 처리).
  *
  * 출력: { systemPrompt, userMessage } | null
@@ -582,7 +549,7 @@ export function postProcessComposeResult(raw) {
  * 출력: { body: HTML, personalNote, appealPoints }
  *   body 섹션 순서: 구외 소견(p) → 구내 소견(p) → 치료 계획(p) → 종합 안내(p)
  *
- * 폴백 경로 — PC2 워커가 응답 안 줄 때 dental-report 가 직접 Gemini 호출.
+ * 폴백 경로 — 워커가 응답 안 줄 때 dental-report 가 직접 Gemini 호출.
  */
 export async function composeReport({ summary, staffForm, returnPromptOnly = false }) {
   if (summaryIsEmpty(summary)) {
@@ -843,7 +810,7 @@ ${staffForm?.specialCircumstances || '(없음)'}
 - 각 치료 계획에서 그 계획의 [목표]와 연관된 [구외/구내 진단 항목]을 함께 묶어 산문화 (의무).
 - 종합 안내는 [전체 추가 메모] + [전신질환]을 연결한 한 단락 (2~5문장) 산문.`
 
-  // PC2 워커 (Claude) 가 부를 때는 시스템 프롬프트 + 유저 메시지만 반환
+  // 워커가 부를 때는 시스템 프롬프트 + 유저 메시지만 반환
   if (returnPromptOnly) return { systemPrompt, userMessage }
 
   const response = await fetch(EDGE_FUNCTION_URL, {

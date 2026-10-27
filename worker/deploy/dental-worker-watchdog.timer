@@ -1,0 +1,9 @@
+[Unit]
+Description=모바일진단서 AI 워커 감시 — 10분마다
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target
