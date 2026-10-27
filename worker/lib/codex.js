@@ -6,7 +6,7 @@
  * 로그인 파일이 없으면 isCodexReady() = false → 워커가 이 단계를 건너뛴다.
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -23,7 +23,7 @@ export function isCodexReady() {
 /**
  * @returns {Promise<string>} 마지막 assistant 메시지 텍스트
  */
-export async function callCodex({ systemPrompt, userMessage, expectJson = false, model, timeoutMs = 80_000 }) {
+export async function callCodex({ systemPrompt, userMessage, expectJson = false, model, timeoutMs = 80_000, image }) {
   const cwd = mkdtempSync(join(tmpdir(), 'dental-codex-'))
   const outFile = join(cwd, 'last.txt')
   try {
@@ -38,6 +38,12 @@ export async function callCodex({ systemPrompt, userMessage, expectJson = false,
       '-o', outFile,
     ]
     if (model) args.push('-m', model)
+    if (image) {
+      const ext = (image.mimeType.split('/')[1] || 'png').replace('jpeg', 'jpg')
+      const imgFile = join(cwd, `image.${ext}`)
+      writeFileSync(imgFile, Buffer.from(image.base64, 'base64'))
+      args.push('-i', imgFile)
+    }
     args.push('-') // 프롬프트는 stdin
     await runCli(CODEX_BIN, args, { input: prompt, timeoutMs, cwd, env: { CODEX_HOME } })
 

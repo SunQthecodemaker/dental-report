@@ -71,24 +71,37 @@ function stripHtml(html) {
 }
 
 /**
- * Gemini Vision — 치과 사진을 보고 한국어 한 줄 캡션 자동 생성
+ * 이미지 File → 긴 변 maxSide 이하 JPEG base64.
+ * 사진 분류엔 원본 해상도가 필요 없고, ai_jobs 행·워커 전송 크기를 수백 KB 로 묶어 두기 위함.
+ */
+async function imageToBase64Jpeg(file, maxSide = 1280) {
+  const bitmap = await createImageBitmap(file)
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height))
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.round(bitmap.width * scale)
+  canvas.height = Math.round(bitmap.height * scale)
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  bitmap.close?.()
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+  return dataUrl.slice(dataUrl.indexOf(',') + 1)
+}
+
+/**
+ * 사진 캡션 — 치과 사진을 보고 한국어 한 줄 분류 라벨 자동 생성
+ * VPS 워커(Claude → Codex 구독, 이미지 입력) 1순위, 실패 시 Gemini Vision.
  * 입력: File 객체 (이미지)
- * 출력: 문자열 (예: "파노라마 방사선 — 16번 임플란트", "구내 사진 · 상악 교합면")
+ * 출력: 문자열 (예: "파노라마 방사선", "구내 사진 · 상악 교합면")
  */
 export async function generateImageCaption(file) {
   if (!file || !file.type?.startsWith('image/')) return ''
 
-  // File → base64
-  const base64 = await new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      const s = reader.result || ''
-      const comma = s.indexOf(',')
-      resolve(comma >= 0 ? s.slice(comma + 1) : '')
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(file)
-  })
+  let base64
+  try { base64 = await imageToBase64Jpeg(file) }
+  catch (err) {
+    console.warn('image resize failed:', err)
+    return ''
+  }
+  const mimeType = 'image/jpeg'
 
   const systemPrompt = `당신은 치과 상담 사진을 보고 **사진 종류만** 한 줄 한국어 라벨로 분류하는 도우미입니다.
 
@@ -134,7 +147,9 @@ export async function generateImageCaption(file) {
 - 분류가 애매하면 상위 카테고리 ("구내 사진", "방사선 사진", "기타 치과 사진")
 - 설명·소견·진단 일절 금지`
 
-  try {
+  const userMessage = '이 사진의 한 줄 캡션:'
+
+  const viaGemini = async () => {
     const response = await fetch(EDGE_FUNCTION_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -142,8 +157,8 @@ export async function generateImageCaption(file) {
         system_instruction: { parts: [{ text: systemPrompt }] },
         contents: [{
           parts: [
-            { text: '이 사진의 한 줄 캡션:' },
-            { inline_data: { mime_type: file.type || 'image/png', data: base64 } },
+            { text: userMessage },
+            { inline_data: { mime_type: mimeType, data: base64 } },
           ],
         }],
         generationConfig: {
@@ -156,8 +171,16 @@ export async function generateImageCaption(file) {
       }),
     })
     const data = await response.json()
-    if (data.error) return ''
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text
+    if (data.error) throw new Error(data.error.message || 'Gemini API 호출 실패')
+    return { text: data.candidates?.[0]?.content?.parts?.[0]?.text || '' }
+  }
+
+  try {
+    const { text } = await runJobWithFallback(
+      'image_caption',
+      { systemPrompt, userMessage, expectJson: false, image: { mimeType, base64 } },
+      { timeoutMs: 90_000, fallback: viaGemini }
+    )
     if (!text) return ''
     let cleaned = text.trim().replace(/^["'`]+|["'`]+$/g, '').split('\n')[0].trim()
     // 방어선: 프롬프트에서 금지했지만 모델이 혹시 " — 소견" / " : 소견" 부연을 붙여올 경우 잘라냄

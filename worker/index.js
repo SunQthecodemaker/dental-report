@@ -54,24 +54,24 @@ function pickModel(type) {
 }
 
 /**
- * Claude → Codex 순으로 시도. 각 단계 실패는 텔레그램으로 알린다.
+ * Claude → Codex 순으로 시도. 각 단계 실패는 디스코드로 알린다.
  * @returns {Promise<{ text: string, provider: string }>}
  */
-async function generate({ type, systemPrompt, userMessage, expectJson, model }) {
+async function generate({ type, systemPrompt, userMessage, expectJson, model, image }) {
   const attempts = []
 
   try {
-    const text = await callClaude({ systemPrompt, userMessage, expectJson, model })
+    const text = await callClaude({ systemPrompt, userMessage, expectJson, model, image })
     if (expectJson) parseJsonReply(text) // JSON 이 깨졌으면 여기서 실패 처리해 Codex 로 넘긴다
     return { text, provider: 'claude' }
   } catch (err) {
     attempts.push(`claude: ${err.message}`)
-    notify('claude-fail', `Claude 실패 → Codex 로 넘김 (${type})\n${err.message.slice(0, 300)}`)
+    notify('claude-fail', `Claude 실패 → Codex 로 넘김 (${type})`, err.message.slice(0, 300))
   }
 
   if (isCodexReady()) {
     try {
-      const text = await callCodex({ systemPrompt, userMessage, expectJson, model: CODEX_MODEL })
+      const text = await callCodex({ systemPrompt, userMessage, expectJson, model: CODEX_MODEL, image })
       if (expectJson) parseJsonReply(text)
       return { text, provider: 'codex' }
     } catch (err) {
@@ -81,7 +81,7 @@ async function generate({ type, systemPrompt, userMessage, expectJson, model }) 
     attempts.push('codex: 로그인 안 됨 (건너뜀)')
   }
 
-  notify('all-fail', `워커 전 단계 실패 → 브라우저 Gemini 폴백 (${type})\n${attempts.join('\n').slice(0, 500)}`)
+  notify('all-fail', `워커 전 단계 실패 → 브라우저 Gemini 폴백 (${type})`, attempts.join('\n').slice(0, 500))
   throw new Error(attempts.join(' | '))
 }
 
@@ -122,13 +122,13 @@ async function processJob(jobId) {
   console.log(`[worker] ▶ ${claimed.type} ${jobId.slice(0, 8)}…`)
 
   try {
-    const { systemPrompt, userMessage, expectJson = true, model: payloadModel } = claimed.payload || {}
+    const { systemPrompt, userMessage, expectJson = true, model: payloadModel, image } = claimed.payload || {}
     if (!systemPrompt || !userMessage) {
       throw new Error('payload 에 systemPrompt 와 userMessage 가 필요합니다')
     }
 
     const model = payloadModel || pickModel(claimed.type)
-    const { text, provider } = await generate({ type: claimed.type, systemPrompt, userMessage, expectJson, model })
+    const { text, provider } = await generate({ type: claimed.type, systemPrompt, userMessage, expectJson, model, image })
     const result = expectJson ? parseJsonReply(text) : { text }
 
     const ms = Date.now() - startMs

@@ -13,7 +13,7 @@
 
 **왜 VPS 인가 (2026-10-27 이전)**: PC2 Windows + pm2 + Agent SDK 구조는 받은 잡의 26% 만 성공
 (`0xC0000409` 크래시 66건), 10-08 부터는 아예 멈췄는데 Gemini 폴백이 가려 3주간 몰랐다.
-→ 24시간 켜진 VPS 로 옮기고, Agent SDK 대신 공식 CLI 를 호출, 장애는 텔레그램으로 알린다.
+→ 24시간 켜진 VPS 로 옮기고, Agent SDK 대신 공식 CLI 를 호출, 장애는 디스코드로 알린다.
 
 ---
 
@@ -24,7 +24,7 @@ bash worker/deploy/deploy-vps.sh
 ```
 
 - 코드 전송 → `/root/dental-worker` (ssh 별칭 `hermes`)
-- `.env` 를 PC secrets 헬퍼 값으로 생성 (Supabase service role · Claude 1년 토큰 · 텔레그램)
+- `.env` 를 PC secrets 헬퍼 값으로 생성 (Supabase service role · Claude 1년 토큰 · 알림 채널)
 - `npm install` → systemd 유닛 설치 → `dental-worker` 재시작
 - 같은 명령을 다시 실행해도 안전
 
@@ -53,7 +53,9 @@ systemctl restart dental-worker
 systemctl list-timers dental-worker-watchdog.timer
 ```
 
-### 알림 (텔레그램)
+### 알림 (디스코드 #자동화작업)
+
+게시 = 같은 VPS 의 헤르메스 브릿지 래퍼 `/srv/shared/agents/bin/pc-call-lord --post` (채널 = `.env` `DISCORD_ALERT_CHANNEL`).
 
 | 상황 | 누가 알림 |
 |---|---|
@@ -77,6 +79,7 @@ group by 1, 2;
   그 뒤에 처리해 봐야 아무도 안 받는다 (옛 PC2 는 며칠 묵은 잡을 몰아 처리해 한도만 썼다).
 - 브라우저 대기 시간: 진단서 작성 3분, 지침 정리·톤 규칙·패턴 분석 3분, 태그 추천 90초, 지침 검수 60초.
 - 워커 내부 제한: Claude 100초 → Codex 80초.
+- 사진 캡션: payload `image: { mimeType, base64 }` → Claude 는 stream-json 이미지 블록, Codex 는 `-i <파일>`. 브라우저 대기 90초.
 - 모델: `.env` 의 `COMPOSE_MODEL`·`ANALYZE_MODEL` (기본 `sonnet` = 최신 Sonnet). payload 에 `model` 이 있으면 그걸 우선.
 
 ## 트러블슈팅

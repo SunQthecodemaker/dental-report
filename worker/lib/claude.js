@@ -54,26 +54,49 @@ export function withJsonDirective(userMessage, expectJson) {
  * @param {string} [params.model='sonnet']
  * @param {boolean} [params.expectJson=false]
  * @param {number} [params.timeoutMs=100000]
+ * @param {{ mimeType: string, base64: string }} [params.image] — 있으면 이미지+텍스트로 보낸다 (사진 캡션)
  * @returns {Promise<string>} assistant 의 텍스트 전체
  */
-export async function callClaude({ systemPrompt, userMessage, model = 'sonnet', expectJson = false, timeoutMs = 100_000 }) {
+export async function callClaude({ systemPrompt, userMessage, model = 'sonnet', expectJson = false, timeoutMs = 100_000, image }) {
   // 빈 작업 폴더에서 실행 — 어떤 CLAUDE.md·프로젝트 설정도 읽히지 않게
   const cwd = mkdtempSync(join(tmpdir(), 'dental-claude-'))
+  const prompt = withJsonDirective(userMessage, expectJson)
   try {
-    const stdout = await runCli(CLAUDE_BIN, [
+    const args = [
       '-p',
       '--model', model,
       '--system-prompt', systemPrompt,
-      '--output-format', 'json',
       '--tools', '',
       '--setting-sources', '',
       '--strict-mcp-config',
       '--no-session-persistence',
-    ], { input: withJsonDirective(userMessage, expectJson), timeoutMs, cwd })
+    ]
+    let input = prompt
+    if (image) {
+      // 이미지는 stream-json 입력으로만 넣을 수 있다 (출력도 stream-json 이어야 함)
+      args.push('--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose')
+      input = JSON.stringify({
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: image.mimeType, data: image.base64 } },
+            { type: 'text', text: prompt },
+          ],
+        },
+      }) + '\n'
+    } else {
+      args.push('--output-format', 'json')
+    }
+    const stdout = await runCli(CLAUDE_BIN, args, { input, timeoutMs, cwd })
 
     let envelope
-    try { envelope = JSON.parse(stdout) }
-    catch { throw new Error('claude 출력 파싱 실패: ' + stdout.slice(0, 200)) }
+    try {
+      envelope = image
+        ? stdout.split('\n').map(l => { try { return JSON.parse(l) } catch { return null } }).find(o => o?.type === 'result')
+        : JSON.parse(stdout)
+    } catch { /* 아래에서 처리 */ }
+    if (!envelope) throw new Error('claude 출력 파싱 실패: ' + stdout.slice(0, 200))
     if (envelope.is_error) throw new Error('claude 오류: ' + String(envelope.result || envelope.terminal_reason).slice(0, 300))
 
     const text = String(envelope.result || '').trim()

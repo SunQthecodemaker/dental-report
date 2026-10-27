@@ -4,6 +4,7 @@
 #
 # 1. worker/ 코드 전송 (node_modules·.env·.codex-home 제외)
 # 2. .env 를 이 PC 의 secrets 헬퍼 값으로 생성 (값은 화면·파일 로그에 안 남김, ssh stdin 으로만 전달)
+#    (.codex-home 의 Codex 로그인은 전송 대상이 아니라 VPS 에 그대로 남는다)
 # 3. npm install → systemd 유닛 설치 → 재시작
 set -euo pipefail
 
@@ -18,13 +19,11 @@ tar -C "$WORKER_DIR" --exclude=node_modules --exclude=.env --exclude=.codex-home
     --exclude=.watchdog-last-alert -czf - . | ssh "$HOST" "mkdir -p $DEST && tar -xzf - -C $DEST"
 
 echo "▶ .env 생성"
-CHAT_ID="$(get telegram.bot.allowed_user_ids | tr -d '[] "' | cut -d, -f1)"
 {
   echo "SUPABASE_URL=$(get supabase.projects.offapp.url)"
   echo "SUPABASE_SERVICE_ROLE_KEY=$(get supabase.projects.offapp.service_role_key)"
   echo "CLAUDE_CODE_OAUTH_TOKEN=$(get anthropic.claude_code.oauth_token_1y)"
-  echo "TELEGRAM_BOT_TOKEN=$(get telegram.bot.token)"
-  echo "TELEGRAM_CHAT_ID=$CHAT_ID"
+  echo "DISCORD_ALERT_CHANNEL=1522490071217995847"   # #자동화작업
   echo "WORKER_ID=vps"
   echo "COMPOSE_MODEL=sonnet"
   echo "ANALYZE_MODEL=sonnet"

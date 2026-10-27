@@ -73,7 +73,7 @@ VPS 워커 (worker/): Claude Code CLI(Max 구독) → 실패 시 Codex CLI(ChatG
 ```
 
 - 큐 클라이언트: [src/lib/aiJobs.js](src/lib/aiJobs.js) — `runJobWithFallback(type, payload, {fallback})`
-- 워커: [worker/index.js](worker/index.js) — VPS(ssh `hermes`) `/root/dental-worker` 에서 systemd 상주. atomic claim, stuck 복구(5분), 2분마다 적체 청소, 4분 넘은 잡은 expired 처리. 배포 = `bash worker/deploy/deploy-vps.sh`. 장애 시 텔레그램 알림(워커 내부 + 10분 감시 타이머)
+- 워커: [worker/index.js](worker/index.js) — VPS(ssh `hermes`) `/root/dental-worker` 에서 systemd 상주. atomic claim, stuck 복구(5분), 2분마다 적체 청소, 4분 넘은 잡은 expired 처리. 배포 = `bash worker/deploy/deploy-vps.sh`. 장애 시 디스코드 #자동화작업 알림(워커 내부 + 10분 감시 타이머)
 - 폴백: [src/lib/gemini.js](src/lib/gemini.js) → Supabase Edge Function `generate-text`
 
 **중요 — 워커에는 도메인 로직이 없다.** 순수 Claude 호출 프록시일 뿐이고
@@ -82,8 +82,9 @@ VPS 워커 (worker/): Claude Code CLI(Max 구독) → 실패 시 Codex CLI(ChatG
 AI 출력 품질을 고치려면 워커가 아니라 `gemini.js` 의 프롬프트 빌더를 봐야 한다.
 
 잡 타입: `compose`(진단서 본문), `analyze_patterns`(학습 분석), `suggest_tags`, `validate_guideline`,
-`cleanup_guidelines`, `suggest_tone_rules`. 텍스트 AI 는 전부 `gemini.js` 의 `aiJson()` 을 거친다 (워커 1순위 → Gemini).
-`image_caption`(사진 캡션)만 이미지 입력이라 Gemini 직접 호출 — Gemini 크레딧이 떨어지면 이것만 멈춘다.
+`cleanup_guidelines`, `suggest_tone_rules`, `image_caption`. 모든 AI 호출이 워커 1순위 → Gemini 폴백이다
+(텍스트는 `gemini.js` 의 `aiJson()`, 사진 캡션은 `generateImageCaption()` 이 1280px JPEG 로 줄여 payload.image 로 보냄).
+장애 알림 = 디스코드 #자동화작업 (헤르메스 브릿지 `pc-call-lord --post`).
 
 ---
 
