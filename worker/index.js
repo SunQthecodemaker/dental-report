@@ -158,8 +158,21 @@ async function processJob(jobId) {
 }
 
 // ─────────────────────────────────────────────
-// 큐 폴링 — 시작 시 적체된 pending 잡 청소
+// 큐 폴링 — Realtime 이 끊겨도 잡을 놓치지 않는 안전망
+// (2026-10-28~30: VPS 워커의 Realtime 이 조용히 끊겨 모든 잡이 2분 주기 청소로만 처리됨
+//  → 사진 캡션·초안 대기가 최대 2분씩 늘어남. 그래서 짧은 주기로 직접 확인한다)
 // ─────────────────────────────────────────────
+
+const POLL_MS = 3000
+const inFlight = new Set() // 이 워커가 이미 처리 중인 잡 — 폴링·Realtime 이 같은 잡을 두 번 붙잡지 않게
+
+function handleJob(jobId) {
+  if (inFlight.has(jobId)) return
+  inFlight.add(jobId)
+  processJob(jobId)
+    .catch(err => console.error('[worker] processJob unhandled:', err))
+    .finally(() => inFlight.delete(jobId))
+}
 
 async function drainPending() {
   const { data, error } = await supabase
@@ -172,11 +185,11 @@ async function drainPending() {
     console.warn('[worker] drainPending error:', error.message)
     return
   }
-  if (!data || data.length === 0) return
-  console.log(`[worker] 시작 시 적체 ${data.length}건 처리 시작`)
-  for (const row of data) {
-    await processJob(row.id)
-  }
+  const fresh = (data || []).filter(row => !inFlight.has(row.id))
+  if (fresh.length === 0) return
+  console.log(`[worker] 폴링으로 대기 잡 ${fresh.length}건 발견`)
+  // 기다리지 않고 동시에 시작 — 긴 초안 작성 뒤에 사진 캡션이 줄 서지 않게
+  for (const row of fresh) handleJob(row.id)
 }
 
 // ─────────────────────────────────────────────
@@ -205,8 +218,11 @@ async function recoverStuck() {
 // Realtime 구독 — 새 잡 INSERT 즉시 받기
 // ─────────────────────────────────────────────
 
+let channel = null
+let resubscribeTimer = null
+
 function startRealtime() {
-  const channel = supabase
+  channel = supabase
     .channel('ai_jobs_inserts')
     .on(
       'postgres_changes',
@@ -214,14 +230,23 @@ function startRealtime() {
       (payload) => {
         const job = payload.new
         if (!job || job.status !== 'pending') return
-        processJob(job.id).catch(err => console.error('[worker] processJob unhandled:', err))
+        handleJob(job.id)
       }
     )
-    .subscribe((status) => {
-      if (status === 'SUBSCRIBED') console.log('[worker] Realtime 구독 활성')
-      else if (status === 'CHANNEL_ERROR') console.error('[worker] Realtime 채널 오류')
+    .subscribe((status, err) => {
+      if (status === 'SUBSCRIBED') {
+        console.log('[worker] Realtime 구독 활성')
+        return
+      }
+      // CHANNEL_ERROR · TIMED_OUT · CLOSED — 예전엔 조용히 넘겨 끊긴 채로 며칠 돌았다. 채널을 새로 만든다.
+      console.error(`[worker] Realtime ${status}${err ? `: ${err.message}` : ''} — 10초 뒤 재구독`)
+      if (resubscribeTimer) return
+      resubscribeTimer = setTimeout(async () => {
+        resubscribeTimer = null
+        try { await supabase.removeChannel(channel) } catch { /* noop */ }
+        startRealtime()
+      }, 10_000)
     })
-  return channel
 }
 
 // ─────────────────────────────────────────────
@@ -232,18 +257,21 @@ console.log(`[worker] start id=${WORKER_ID} compose=${COMPOSE_MODEL} analyze=${A
 
 await recoverStuck()
 await drainPending()
-const ch = startRealtime()
+startRealtime()
 
-// 주기적 안전망: stuck 복구 + 적체 청소 매 2분
-setInterval(() => {
-  recoverStuck().catch(() => {})
-  drainPending().catch(() => {})
-}, 2 * 60 * 1000)
+// 안전망: 대기 잡 확인 3초마다 (Realtime 이 살아 있으면 대부분 빈 결과), stuck 복구 2분마다
+let polling = false
+setInterval(async () => {
+  if (polling) return
+  polling = true
+  try { await drainPending() } catch { /* noop */ } finally { polling = false }
+}, POLL_MS)
+setInterval(() => { recoverStuck().catch(() => {}) }, 2 * 60 * 1000)
 
 // graceful shutdown
 const shutdown = async (sig) => {
   console.log(`[worker] ${sig} — shutting down`)
-  try { await supabase.removeChannel(ch) } catch { /* noop */ }
+  try { await supabase.removeChannel(channel) } catch { /* noop */ }
   process.exit(0)
 }
 process.on('SIGINT', () => shutdown('SIGINT'))
