@@ -224,7 +224,7 @@ let channel = null
 let resubscribeTimer = null
 
 function startRealtime() {
-  channel = supabase
+  const ch = supabase
     .channel('ai_jobs_inserts')
     .on(
       'postgres_changes',
@@ -236,6 +236,9 @@ function startRealtime() {
       }
     )
     .subscribe((status, err) => {
+      // 재구독하며 치운 옛 채널도 CLOSED 를 보낸다 — 그걸 새 채널의 끊김으로 받으면
+      // 10초마다 멀쩡한 채널을 끊고 다시 만드는 반복이 생긴다 (2026-10-31 실제 발생)
+      if (ch !== channel) return
       if (status === 'SUBSCRIBED') {
         console.log('[worker] Realtime 구독 활성')
         return
@@ -245,10 +248,12 @@ function startRealtime() {
       if (resubscribeTimer) return
       resubscribeTimer = setTimeout(async () => {
         resubscribeTimer = null
-        try { await supabase.removeChannel(channel) } catch { /* noop */ }
+        channel = null
+        try { await supabase.removeChannel(ch) } catch { /* noop */ }
         startRealtime()
       }, 10_000)
     })
+  channel = ch
 }
 
 // ─────────────────────────────────────────────
