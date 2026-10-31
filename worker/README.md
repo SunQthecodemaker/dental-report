@@ -80,7 +80,7 @@ group by 1, 2;
 - 브라우저 대기 시간: 진단서 작성 3분, 지침 정리·톤 규칙·패턴 분석 3분, 태그 추천 90초, 지침 검수 60초.
 - 워커 내부 제한: Claude 100초 → Codex 80초.
 - 사진 캡션: payload `image: { mimeType, base64 }` → Claude 는 stream-json 이미지 블록, Codex 는 `-i <파일>`. 브라우저 대기 90초.
-- 모델: `.env` 의 `COMPOSE_MODEL`·`ANALYZE_MODEL` (기본 `sonnet` = 최신 Sonnet). payload 에 `model` 이 있으면 그걸 우선.
+- 모델: `.env` 의 `COMPOSE_MODEL`(진단서 본문, 기본 `opus`)·`ANALYZE_MODEL`(패턴 분석, `sonnet`)·`TASK_MODEL`(사진 캡션·태그 등, `sonnet`). 별칭은 최신 버전을 가리킨다. payload 에 `model` 이 있으면 그걸 우선.
 
 ## 트러블슈팅
 

@@ -25,8 +25,9 @@ const {
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
   WORKER_ID = 'vps',
-  COMPOSE_MODEL = 'sonnet',
+  COMPOSE_MODEL = 'opus',   // 진단서 본문 — 2026-10-31 벤치: Opus 28~30초, 문장 품질 최상
   ANALYZE_MODEL = 'sonnet',
+  TASK_MODEL = 'sonnet',    // 사진 캡션·태그 추천 등 짧은 작업 — 속도 우선
   CODEX_MODEL,
 } = process.env
 
@@ -49,8 +50,9 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 // ─────────────────────────────────────────────
 
 function pickModel(type) {
+  if (type === 'compose') return COMPOSE_MODEL
   if (type === 'analyze_patterns') return ANALYZE_MODEL
-  return COMPOSE_MODEL
+  return TASK_MODEL
 }
 
 /**
@@ -253,7 +255,7 @@ function startRealtime() {
 // 부트
 // ─────────────────────────────────────────────
 
-console.log(`[worker] start id=${WORKER_ID} compose=${COMPOSE_MODEL} analyze=${ANALYZE_MODEL} codex=${isCodexReady() ? 'ready' : 'off'}`)
+console.log(`[worker] start id=${WORKER_ID} compose=${COMPOSE_MODEL} analyze=${ANALYZE_MODEL} task=${TASK_MODEL} codex=${isCodexReady() ? 'ready' : 'off'}`)
 
 await recoverStuck()
 await drainPending()

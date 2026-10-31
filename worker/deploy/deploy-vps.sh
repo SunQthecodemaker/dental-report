@@ -25,8 +25,9 @@ echo "▶ .env 생성"
   echo "CLAUDE_CODE_OAUTH_TOKEN=$(get anthropic.claude_code.oauth_token_1y)"
   echo "DISCORD_ALERT_CHANNEL=1522490071217995847"   # #자동화작업
   echo "WORKER_ID=vps"
-  echo "COMPOSE_MODEL=sonnet"
+  echo "COMPOSE_MODEL=opus"
   echo "ANALYZE_MODEL=sonnet"
+  echo "TASK_MODEL=sonnet"
 } | ssh "$HOST" "umask 077 && cat > $DEST/.env"
 
 echo "▶ 설치·재시작"
