@@ -6,7 +6,7 @@
 ```
 1순위  Claude Code CLI  (`claude -p`, Max 구독 1년 토큰)
 2순위  Codex CLI        (`codex exec`, ChatGPT 구독 — 워커 전용 로그인)
-최후   브라우저가 직접 Gemini (Edge Function `generate-text`, 유료 선불 크레딧)
+둘 다 실패 → 브라우저에 "잠시 후 다시 시도" 안내 (Gemini 폴백은 2026-10-31 제거)
 ```
 
 > 도메인 로직 없음 — 순수 LLM 호출 프록시. 프롬프트는 전부 dental-report `src/lib/gemini.js`.
@@ -60,7 +60,7 @@ systemctl list-timers dental-worker-watchdog.timer
 | 상황 | 누가 알림 |
 |---|---|
 | Claude 실패 → Codex 로 넘김 | 워커 (30분에 1번) |
-| Claude·Codex 둘 다 실패 → 브라우저가 Gemini | 워커 (30분에 1번) |
+| Claude·Codex 둘 다 실패 → 브라우저에 실패 안내 | 워커 (30분에 1번) |
 | 워커 프로세스가 죽거나 멈춤 (3분 넘게 대기 잡) | `watchdog.js` — systemd 타이머 10분마다 (1시간에 1번) |
 
 ### 큐 상태 SQL
@@ -75,7 +75,7 @@ group by 1, 2;
 
 ## 동작 규칙
 
-- **4분 넘은 pending 은 처리하지 않고 `expired` 로 닫는다** — 브라우저는 최대 3분 기다리고 Gemini 로 넘어가므로
+- **4분 넘은 pending 은 처리하지 않고 `expired` 로 닫는다** — 브라우저는 최대 3분 기다리고 실패로 처리하므로
   그 뒤에 처리해 봐야 아무도 안 받는다 (옛 PC2 는 며칠 묵은 잡을 몰아 처리해 한도만 썼다).
 - 브라우저 대기 시간: 진단서 작성 3분, 지침 정리·톤 규칙·패턴 분석 3분, 태그 추천 90초, 지침 검수 60초.
 - 워커 내부 제한: Claude 100초 → Codex 80초.

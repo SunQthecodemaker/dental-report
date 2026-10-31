@@ -27,6 +27,7 @@ export default function ContentEditor({ original, edited, onChange, onUploadingC
   const editorRef = useRef(null)
   const inputTimerRef = useRef(null)
   const [uploading, setUploading] = useState(false)
+  const [pendingCaptions, setPendingCaptions] = useState(0) // 사진은 들어갔고 AI 캡션만 기다리는 수
   const [noteDraft, setNoteDraft] = useState(edited?.personalNote || '')
   const bodyInitialized = useRef(false)
 
@@ -47,9 +48,10 @@ export default function ContentEditor({ original, edited, onChange, onUploadingC
   }
 
   // 업로드 상태를 상위(Editor)에 전파 → 단계 전환 잠금에 사용
+  // 캡션 대기 중에도 잠근다 — 단계를 넘기면 늦게 온 캡션을 넣을 편집기가 사라진다
   useEffect(() => {
-    onUploadingChange?.(uploading)
-  }, [uploading, onUploadingChange])
+    onUploadingChange?.(uploading || pendingCaptions > 0)
+  }, [uploading, pendingCaptions, onUploadingChange])
 
   // 외부에서 commit 강제 호출 가능하도록 ref 노출 (디자인하기 버튼 flush용)
   useEffect(() => {
@@ -140,10 +142,14 @@ export default function ContentEditor({ original, edited, onChange, onUploadingC
     setNoteDraft(edited?.personalNote || '')
   }, [edited?.personalNote])
 
+  // 캡션은 사진을 넣고 몇 초 뒤에 도착한다 — 그 사이 바뀐 personalNote 등을 옛 값으로 덮지 않게 최신 값을 쓴다
+  const editedRef = useRef(edited)
+  useEffect(() => { editedRef.current = edited }, [edited])
+
   const commitBody = () => {
     if (!editorRef.current) return
     const html = editorRef.current.innerHTML
-    onChange({ ...edited, body: html })
+    onChange({ ...editedRef.current, body: html })
   }
 
   const handleInput = () => {
@@ -172,40 +178,34 @@ export default function ContentEditor({ original, edited, onChange, onUploadingC
   }
 
   // 이미지 종횡비로 orient 결정 (portrait / landscape / wide)
-  const detectOrient = (url) => new Promise((resolve) => {
+  // 올린 파일로 바로 판정 — 업로드된 사진을 다시 내려받지 않는다 (속도 + 전송량)
+  const detectOrient = (file) => new Promise((resolve) => {
+    const src = URL.createObjectURL(file)
     const probe = new Image()
+    const done = (orient) => { URL.revokeObjectURL(src); resolve(orient) }
     probe.onload = () => {
       const r = probe.naturalWidth / probe.naturalHeight
-      if (r > 2) resolve('wide')
-      else if (r > 1.2) resolve('landscape')
-      else if (r < 0.85) resolve('portrait')
-      else resolve('square')
+      if (r > 2) done('wide')
+      else if (r > 1.2) done('landscape')
+      else if (r < 0.85) done('portrait')
+      else done('square')
     }
-    probe.onerror = () => resolve('landscape')
-    probe.src = url
+    probe.onerror = () => done('landscape')
+    probe.src = src
   })
 
-  // figure + img + figcaption 묶음 삽입 (AI Vision 자동 캡션 + 타입 포함)
-  const insertImageAtCaret = async (url, initialCaption = '') => {
-    const orient = await detectOrient(url)
-    const phototype = detectPhotoType(initialCaption)
-
+  // figure + img + figcaption 묶음 삽입. 캡션은 비워 두고 AI 캡션이 오면 applyCaption 이 채운다
+  const insertImageAtCaret = (url, orient) => {
     const fig = document.createElement('figure')
     fig.setAttribute('data-orient', orient)
-    if (phototype) fig.setAttribute('data-phototype', phototype)
 
     const img = document.createElement('img')
     img.src = url
     img.setAttribute('data-orient', orient)
-    if (phototype) img.setAttribute('data-phototype', phototype)
     fig.appendChild(img)
 
     const cap = document.createElement('figcaption')
-    if (initialCaption) {
-      cap.textContent = initialCaption
-    } else {
-      cap.setAttribute('data-placeholder', '사진 설명 입력...')
-    }
+    cap.setAttribute('data-placeholder', '사진 종류 확인 중...')
     fig.appendChild(cap)
 
     const sel = window.getSelection()
@@ -244,28 +244,62 @@ export default function ContentEditor({ original, edited, onChange, onUploadingC
     commitBody()
   }
 
+  // 늦게 도착한 AI 캡션(사진 종류)을 해당 사진에 채운다
+  const applyCaption = (url, caption) => {
+    const img = editorRef.current?.querySelector(`img[src="${url}"]`)
+    const fig = img?.closest('figure')
+    const cap = fig?.querySelector('figcaption')
+    if (!cap) return                       // 그새 사진을 지웠다
+    cap.setAttribute('data-placeholder', '사진 설명 입력...')
+    if (caption && !cap.textContent.trim()) { // 그새 직원이 직접 적었으면 그대로 둔다
+      cap.textContent = caption
+      const phototype = detectPhotoType(caption)
+      if (phototype) {
+        fig.setAttribute('data-phototype', phototype)
+        img.setAttribute('data-phototype', phototype)
+      }
+    }
+    commitBody()
+  }
+
+  /**
+   * 사진 여러 장을 한꺼번에 처리 — 업로드·캡션을 전부 동시에 시작하고,
+   * 사진은 업로드되는 대로(약 1초) 고른 순서대로 넣는다. 캡션은 몇 초 뒤 따로 채워진다.
+   * (예전엔 캡션이 나올 때까지 사진을 안 넣고, 여러 장이면 한 장씩 차례로 기다렸다)
+   */
+  const addImages = async (files) => {
+    if (files.length === 0) return
+    setUploading(true)
+    setPendingCaptions(n => n + files.length)
+    const jobs = files.map(file => {
+      const url = uploadImage(file)
+      url.catch(() => {}) // 실패는 아래 순서대로 꺼낼 때 알린다 (먼저 실패해도 "처리 안 된 에러"로 안 뜨게)
+      return {
+        orient: detectOrient(file),
+        url,
+        caption: generateImageCaption(file).finally(() => setPendingCaptions(n => n - 1)),
+      }
+    })
+    try {
+      for (const job of jobs) {
+        let url
+        try { url = await job.url }
+        catch (err) { alert('이미지 업로드 실패: ' + err.message); continue }
+        insertImageAtCaret(url, await job.orient)
+        job.caption.then(caption => applyCaption(url, caption))
+      }
+    } finally {
+      setUploading(false)
+    }
+  }
+
   const handlePaste = async (e) => {
     const items = e.clipboardData?.items || []
     const imageItems = Array.from(items).filter(it => it.type?.startsWith('image/'))
 
     if (imageItems.length > 0) {
       e.preventDefault()
-      setUploading(true)
-      try {
-        for (const item of imageItems) {
-          const file = item.getAsFile()
-          if (!file) continue
-          const [url, caption] = await Promise.all([
-            uploadImage(file),
-            generateImageCaption(file),
-          ])
-          await insertImageAtCaret(url, caption)
-        }
-      } catch (err) {
-        alert('이미지 업로드 실패: ' + err.message)
-      } finally {
-        setUploading(false)
-      }
+      await addImages(imageItems.map(item => item.getAsFile()).filter(Boolean))
       return
     }
 
@@ -282,21 +316,9 @@ export default function ContentEditor({ original, edited, onChange, onUploadingC
     const files = Array.from(e.dataTransfer?.files || []).filter(f => f.type.startsWith('image/'))
     if (files.length === 0) return
     e.preventDefault()
-    setUploading(true)
-    try {
-      for (const file of files) {
-        const [url, caption] = await Promise.all([
-          uploadImage(file),
-          generateImageCaption(file),
-        ])
-        await insertImageAtCaret(url, caption)
-      }
-    } catch (err) {
-      alert('이미지 업로드 실패: ' + err.message)
-    } finally {
-      setUploading(false)
-    }
+    await addImages(files)
   }
+
 
   // 헤딩 삽입 단축 버튼
   const insertHeading = (text) => {
@@ -333,7 +355,8 @@ export default function ContentEditor({ original, edited, onChange, onUploadingC
           <button style={S.toolBtn} onClick={() => insertHeading('구내 소견')}>구내 소견</button>
           <button style={S.toolBtn} onClick={() => insertHeading('치료 계획')}>치료 계획</button>
           <button style={S.toolBtn} onClick={() => insertHeading('종합 안내')}>종합 안내</button>
-          {uploading && <span style={S.uploading}>📤 업로드 중...</span>}
+          {uploading ? <span style={S.uploading}>📤 업로드 중...</span>
+            : pendingCaptions > 0 && <span style={S.uploading}>🏷 사진 종류 확인 중...</span>}
         </div>
 
         {/* 편집 영역 — 사진 위에 마킹 버튼을 겹쳐 띄우기 위해 relative 래퍼로 감싼다.

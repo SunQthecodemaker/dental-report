@@ -3,44 +3,13 @@ import { summaryWithKoreanTeeth } from './toothCode'
 import { loadStaffFormConfig, ruleMatchesStaffForm, DEFAULT_STAFF_FORM_CONFIG } from './staffFormConfig'
 import { runJobWithFallback } from './aiJobs'
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
-const EDGE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/generate-text`
-
 /**
- * Gemini 직접 호출 → JSON 객체. 워커 폴백 전용.
- */
-async function geminiJson(systemPrompt, userMessage, generationConfig) {
-  const response = await fetch(EDGE_FUNCTION_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ parts: [{ text: userMessage }] }],
-      generationConfig: { responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: 0 }, ...generationConfig },
-    }),
-  })
-  const data = await response.json()
-  if (data.error) throw new Error(data.error.message || 'Gemini API 호출 실패')
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text
-  if (!text) throw new Error('AI 응답이 비어있습니다.')
-  try { return JSON.parse(text) }
-  catch {
-    const m = text.match(/\{[\s\S]*\}/)
-    if (m) return JSON.parse(m[0])
-    throw new Error('AI 응답 JSON 파싱 실패')
-  }
-}
-
-/**
- * 텍스트 AI 공용 진입점 — VPS 워커(Claude → Codex 구독) 1순위, 실패·타임아웃 시 Gemini.
+ * 텍스트 AI 공용 진입점 — VPS 워커(Claude → Codex 구독). 둘 다 실패하면 에러를 던진다.
+ * (Gemini 폴백은 2026-10-31 제거 — 사용 안 함)
  * 반환: 파싱된 JSON 객체
  */
-async function aiJson(type, { systemPrompt, userMessage, generationConfig = {}, timeoutMs = 90_000 }) {
-  return runJobWithFallback(
-    type,
-    { systemPrompt, userMessage, expectJson: true },
-    { timeoutMs, fallback: () => geminiJson(systemPrompt, userMessage, generationConfig) }
-  )
+async function aiJson(type, { systemPrompt, userMessage, timeoutMs = 90_000 }) {
+  return runJobWithFallback(type, { systemPrompt, userMessage, expectJson: true }, { timeoutMs })
 }
 
 async function loadClinicSettings() {
@@ -88,7 +57,7 @@ async function imageToBase64Jpeg(file, maxSide = 1280) {
 
 /**
  * 사진 캡션 — 치과 사진을 보고 한국어 한 줄 분류 라벨 자동 생성
- * VPS 워커(Claude → Codex 구독, 이미지 입력) 1순위, 실패 시 Gemini Vision.
+ * VPS 워커(Claude → Codex 구독, 이미지 입력). 실패하면 빈 캡션 (직원이 직접 입력).
  * 입력: File 객체 (이미지)
  * 출력: 문자열 (예: "파노라마 방사선", "구내 사진 · 상악 교합면")
  */
@@ -149,37 +118,11 @@ export async function generateImageCaption(file) {
 
   const userMessage = '이 사진의 한 줄 캡션:'
 
-  const viaGemini = async () => {
-    const response = await fetch(EDGE_FUNCTION_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemPrompt }] },
-        contents: [{
-          parts: [
-            { text: userMessage },
-            { inline_data: { mime_type: mimeType, data: base64 } },
-          ],
-        }],
-        generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 512,
-          // 좌/우 측방 판별은 공간추론이라 thinking 0 이면 한 방에 자주 틀림.
-          // 소량 thinking 부여해 정중선 위치 → 좌/우를 단계적으로 추론하게 함.
-          thinkingConfig: { thinkingBudget: 1024 },
-        },
-      }),
-    })
-    const data = await response.json()
-    if (data.error) throw new Error(data.error.message || 'Gemini API 호출 실패')
-    return { text: data.candidates?.[0]?.content?.parts?.[0]?.text || '' }
-  }
-
   try {
     const { text } = await runJobWithFallback(
       'image_caption',
       { systemPrompt, userMessage, expectJson: false, image: { mimeType, base64 } },
-      { timeoutMs: 90_000, fallback: viaGemini }
+      { timeoutMs: 90_000 }
     )
     if (!text) return ''
     let cleaned = text.trim().replace(/^["'`]+|["'`]+$/g, '').split('\n')[0].trim()
@@ -451,7 +394,7 @@ ${combined || overall || '(없음)'}
  * 입력: { staffFormConfig: { categories, sliders }, legacyRules: [{trait, rule}] }
  * 출력: { rules: [{ categoryKey, optionValue?, sliderCondition?, rule }] }
  *
- * 절대 규칙: 톤 규칙은 "문체·상세도·어조"만 조절. 내용 추가·환각 금지 (composeReport 시스템 프롬프트와 충돌 X).
+ * 절대 규칙: 톤 규칙은 "문체·상세도·어조"만 조절. 내용 추가·환각 금지 (buildComposePrompt 시스템 프롬프트와 충돌 X).
  */
 export async function suggestToneRules({ staffFormConfig, legacyRules = [] }) {
   const categories = staffFormConfig?.categories || {}
@@ -548,16 +491,6 @@ ${legacyBlock}
 }
 
 /**
- * composeReport 의 시스템 프롬프트 + user 메시지만 생성 (VPS 워커 전송용).
- * 빈 입력이면 null 반환 (호출 측이 getEmptyDraft 처리).
- *
- * 출력: { systemPrompt, userMessage } | null
- */
-export async function buildComposePrompt(args) {
-  return composeReport({ ...args, returnPromptOnly: true })
-}
-
-/**
  * 워커가 반환한 raw JSON 을 dental-report 출력 형식으로 후처리.
  *   - sanitize: 영어 병기 등 정리
  *   - migrateToNewFormat: 옛 구조 → 새 구조
@@ -569,15 +502,14 @@ export function postProcessComposeResult(raw) {
 }
 
 /**
- * 출력: { body: HTML, personalNote, appealPoints }
- *   body 섹션 순서: 구외 소견(p) → 구내 소견(p) → 치료 계획(p) → 종합 안내(p)
+ * 진단서 본문 작성 프롬프트 — VPS 워커로 보낼 시스템 프롬프트 + user 메시지.
+ * 빈 입력이면 null 반환 (호출 측이 getEmptyDraft 처리).
  *
- * 폴백 경로 — 워커가 응답 안 줄 때 dental-report 가 직접 Gemini 호출.
+ * AI 출력: { body: HTML, personalNote, appealPoints }
+ *   body 섹션 순서: 구외 소견(p) → 구내 소견(p) → 치료 계획(p) → 종합 안내(p)
  */
-export async function composeReport({ summary, staffForm, returnPromptOnly = false }) {
-  if (summaryIsEmpty(summary)) {
-    return returnPromptOnly ? null : getEmptyDraft()
-  }
+export async function buildComposePrompt({ summary, staffForm }) {
+  if (summaryIsEmpty(summary)) return null
 
   const koreanSummary = summaryWithKoreanTeeth(summary)
   const settings = await loadClinicSettings()
@@ -833,37 +765,7 @@ ${staffForm?.specialCircumstances || '(없음)'}
 - 각 치료 계획에서 그 계획의 [목표]와 연관된 [구외/구내 진단 항목]을 함께 묶어 산문화 (의무).
 - 종합 안내는 [전체 추가 메모] + [전신질환]을 연결한 한 단락 (2~5문장) 산문.`
 
-  // 워커가 부를 때는 시스템 프롬프트 + 유저 메시지만 반환
-  if (returnPromptOnly) return { systemPrompt, userMessage }
-
-  const response = await fetch(EDGE_FUNCTION_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: systemPrompt }] },
-      contents: [{ parts: [{ text: userMessage }] }],
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 8000,
-        responseMimeType: 'application/json',
-        thinkingConfig: { thinkingBudget: 0 },
-      },
-    }),
-  })
-
-  const data = await response.json()
-  if (data.error) throw new Error(data.error.message || 'Gemini API 호출 실패')
-
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text
-  if (!text) throw new Error('AI 응답이 비어있습니다.')
-
-  try {
-    return migrateToNewFormat(sanitize(JSON.parse(text)))
-  } catch {
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (jsonMatch) return migrateToNewFormat(sanitize(JSON.parse(jsonMatch[0])))
-    return getEmptyDraft()
-  }
+  return { systemPrompt, userMessage }
 }
 
 /**

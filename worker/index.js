@@ -3,7 +3,7 @@
  * ─────────────────────────────────────────────
  * 역할: Supabase ai_jobs 테이블의 pending 잡을 받아 구독 CLI 로 처리.
  *   1순위 Claude Code CLI (Max 구독) → 실패 시 2순위 Codex CLI (ChatGPT 구독)
- *   둘 다 실패하거나 워커가 응답 못 하면 dental-report 브라우저가 Gemini 로 폴백.
+ *   둘 다 실패하거나 워커가 응답 못 하면 dental-report 브라우저가 "잠시 후 다시 시도" 안내.
  *
  * 워커는 **도메인 로직 없음** — 순수 LLM 호출 프록시.
  *   payload = { systemPrompt, userMessage, expectJson?, model? }
@@ -31,7 +31,7 @@ const {
   CODEX_MODEL,
 } = process.env
 
-// 브라우저는 최대 3분 기다리고 Gemini 로 넘어간다. 그보다 오래된 pending 은 이미 버려진 요청이라
+// 브라우저는 최대 3분 기다리고 실패 처리한다. 그보다 오래된 pending 은 이미 버려진 요청이라
 // 처리하면 구독 한도만 쓴다 → expired 로 닫는다. (2026-10: PC2 가 며칠 묵은 잡을 몰아 처리한 사례)
 const STALE_MS = 4 * 60 * 1000
 
@@ -83,7 +83,7 @@ async function generate({ type, systemPrompt, userMessage, expectJson, model, im
     attempts.push('codex: 로그인 안 됨 (건너뜀)')
   }
 
-  notify('all-fail', `워커 전 단계 실패 → 브라우저 Gemini 폴백 (${type})`, attempts.join('\n').slice(0, 500))
+  notify('all-fail', `워커 전 단계 실패 — 직원 화면에 실패 안내 (${type})`, attempts.join('\n').slice(0, 500))
   throw new Error(attempts.join(' | '))
 }
 
@@ -114,7 +114,7 @@ async function processJob(jobId) {
   if (Date.now() - new Date(claimed.created_at).getTime() > STALE_MS) {
     await supabase
       .from('ai_jobs')
-      .update({ status: 'error', error: 'expired — 브라우저가 이미 폴백함', completed_at: new Date().toISOString() })
+      .update({ status: 'error', error: 'expired — 브라우저가 이미 실패 처리함', completed_at: new Date().toISOString() })
       .eq('id', jobId)
     console.log(`[worker] ⏭ ${claimed.type} ${jobId.slice(0, 8)} expired`)
     return

@@ -297,7 +297,7 @@ function AbsoluteRulesTab() {
         )
       })}
       <div style={{ ...S.desc, marginTop: 16, fontSize: 12 }}>
-        위치: <code>src/lib/gemini.js</code> · composeReport() systemPrompt
+        위치: <code>src/lib/gemini.js</code> · buildComposePrompt() systemPrompt
       </div>
     </>
   )
@@ -802,7 +802,7 @@ function GuidelineListEditor({ items, onChange }) {
 // ─── 학습 탭 ───
 //
 // 새 구조:
-//   ① 학습 지시사항 (clinic_settings.ai_instructions) — 자연어 사고 룰, 매 composeReport 시스템 프롬프트에 박힘
+//   ① 학습 지시사항 (clinic_settings.ai_instructions) — 자연어 사고 룰, 매 buildComposePrompt 시스템 프롬프트에 박힘
 //   ② 누적 수정 기록 N건 + [패턴 분석] 버튼 (AI 가 후보 룰 제안)
 //   ③ (보존만, 신규 promote 없음) 용어 사전 + 누적 교정 기록 — 옛 시스템 데이터 열람용
 function LearningTab({ terms, onTermsChange, corrections, onReloadCorrections }) {

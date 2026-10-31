@@ -69,12 +69,12 @@ DB row 가 없으면 코드의 `DEFAULT_*` 상수로 폴백한다 ([formConfig.j
 VPS 워커 (worker/): Claude Code CLI(Max 구독) → 실패 시 Codex CLI(ChatGPT 구독) → status=done/error
    ↓ Realtime
 브라우저: 결과 수신
-   └─ 타임아웃(작성 3분) 또는 error → Gemini 폴백 (Edge Function `generate-text`)
+   └─ 타임아웃(작성 3분) 또는 error → 화면에 "잠시 후 다시 시도" 안내 (Gemini 폴백은 2026-10-31 제거)
 ```
 
-- 큐 클라이언트: [src/lib/aiJobs.js](src/lib/aiJobs.js) — `runJobWithFallback(type, payload, {fallback})`
-- 워커: [worker/index.js](worker/index.js) — VPS(ssh `hermes`) `/root/dental-worker` 에서 systemd 상주. atomic claim, stuck 복구(5분), 2분마다 적체 청소, 4분 넘은 잡은 expired 처리. 배포 = `bash worker/deploy/deploy-vps.sh`. 장애 시 디스코드 #자동화작업 알림(워커 내부 + 10분 감시 타이머)
-- 폴백: [src/lib/gemini.js](src/lib/gemini.js) → Supabase Edge Function `generate-text`
+- 큐 클라이언트: [src/lib/aiJobs.js](src/lib/aiJobs.js) — `runJobWithFallback(type, payload, {timeoutMs})` (fallback 인자는 남아 있으나 넘기는 곳 없음)
+- 워커: [worker/index.js](worker/index.js) — VPS(ssh `hermes`) `/root/dental-worker` 에서 systemd 상주. atomic claim, stuck 복구(5분), 3초마다 대기 잡 폴링 + Realtime 끊기면 재구독, 4분 넘은 잡은 expired 처리. 배포 = `bash worker/deploy/deploy-vps.sh`. 장애 시 디스코드 #자동화작업 알림(워커 내부 + 10분 감시 타이머)
+- 모델: 진단서 본문 `compose` = Opus, 사진 캡션·태그 등 = Sonnet (`.env` `COMPOSE_MODEL`·`TASK_MODEL`). 2026-10-31 실측 — 본문 약 30초, 사진 캡션 약 4초
 
 **중요 — 워커에는 도메인 로직이 없다.** 순수 Claude 호출 프록시일 뿐이고
 (`payload = { systemPrompt, userMessage, expectJson, model }`),
@@ -82,7 +82,7 @@ VPS 워커 (worker/): Claude Code CLI(Max 구독) → 실패 시 Codex CLI(ChatG
 AI 출력 품질을 고치려면 워커가 아니라 `gemini.js` 의 프롬프트 빌더를 봐야 한다.
 
 잡 타입: `compose`(진단서 본문), `analyze_patterns`(학습 분석), `suggest_tags`, `validate_guideline`,
-`cleanup_guidelines`, `suggest_tone_rules`, `image_caption`. 모든 AI 호출이 워커 1순위 → Gemini 폴백이다
+`cleanup_guidelines`, `suggest_tone_rules`, `image_caption`. 모든 AI 호출은 워커 전용이다
 (텍스트는 `gemini.js` 의 `aiJson()`, 사진 캡션은 `generateImageCaption()` 이 1280px JPEG 로 줄여 payload.image 로 보냄).
 장애 알림 = 디스코드 #자동화작업 (헤르메스 브릿지 `pc-call-lord --post`).
 

@@ -6,7 +6,7 @@ import { supabase } from './supabase'
 
 // ───────────────────────────────────────────
 // 자연어 사고 룰 (clinic_settings.ai_instructions)
-// composeReport 시스템 프롬프트에 박힘
+// buildComposePrompt 시스템 프롬프트에 박힘
 // ───────────────────────────────────────────
 
 export async function loadAiInstructions() {

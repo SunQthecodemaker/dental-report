@@ -8,9 +8,9 @@ import { supabase } from './supabase'
  *   VPS 워커(Claude → Codex 구독) → Realtime 으로 받아 처리 → status='done'/'error' UPDATE
  *   브라우저 → Realtime 으로 결과 받음
  *
- * 폴백:
- *   timeoutMs 안에 워커가 응답 안 주면 fallbackFn() 호출 (Gemini 등)
- *   에러로 끝난 경우도 fallbackFn() 호출
+ * 실패:
+ *   timeoutMs 안에 워커가 응답 안 주거나 에러로 끝나면 fallbackFn() 이 있으면 호출, 없으면
+ *   직원이 읽을 수 있는 에러를 던진다. (Gemini 폴백은 2026-10-31 제거 — 지금은 넘기는 곳 없음)
  */
 
 const DEFAULT_TIMEOUT_MS = 60_000
@@ -40,21 +40,21 @@ export async function runJobWithFallback(type, payload, opts = {}) {
     if (error) throw error
     job = data
   } catch (err) {
-    console.warn(`[aiJobs] insert failed for type=${type}, falling back:`, err.message)
+    console.warn(`[aiJobs] insert failed for type=${type}:`, err.message)
     if (fallback) return await fallback()
-    throw err
+    throw new Error(`AI 작업 요청을 보내지 못했습니다 — 인터넷 연결을 확인하고 다시 시도해 주세요. (${err.message})`)
   }
 
   try {
     const result = await waitForResult(job.id, timeoutMs)
     return result
   } catch (err) {
-    console.warn(`[aiJobs] job ${job.id} (${type}) failed/timed out, falling back:`, err.message)
-    if (fallback) {
-      // 폴백 실행 중에도 워커가 늦게라도 처리하면 결과 누적됨 → 그대로 둠 (race 무해)
-      return await fallback()
-    }
-    throw err
+    console.warn(`[aiJobs] job ${job.id} (${type}) failed/timed out:`, err.message)
+    if (fallback) return await fallback()
+    const timedOut = /^timeout after/.test(err.message)
+    throw new Error(timedOut
+      ? 'AI 서버가 응답하지 않습니다 — 잠시 후 다시 시도해 주세요.'
+      : `AI 작성이 실패했습니다 — 잠시 후 다시 시도해 주세요. (${err.message.slice(0, 200)})`)
   }
 }
 

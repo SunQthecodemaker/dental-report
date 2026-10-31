@@ -9,7 +9,7 @@ import { serializeMarkings } from '../lib/markings'
 import { loadStrengthCards, loadTreatmentCases, normalizeTags } from '../lib/library'
 import { loadCasesFromSheet } from '../lib/caseSheet'
 import CaseStrengthSelector from '../components/CaseStrengthSelector'
-import { composeReport, buildComposePrompt, postProcessComposeResult, getEmptyDraft, migrateToNewFormat, extractImagesBySection, reinsertImagesBySection, suggestTags } from '../lib/gemini'
+import { buildComposePrompt, postProcessComposeResult, getEmptyDraft, migrateToNewFormat, extractImagesBySection, reinsertImagesBySection, suggestTags } from '../lib/gemini'
 import { runJobWithFallback } from '../lib/aiJobs'
 import { saveEditLearningLog } from '../lib/learning'
 import { supabase } from '../lib/supabase'
@@ -250,18 +250,13 @@ export default function Editor() {
     const prompt = await buildComposePrompt({ summary, staffForm })
     if (!prompt) return getEmptyDraft()
 
-    // VPS 워커(Claude → Codex 구독) 1순위, 3분 안에 응답 없으면 Gemini 폴백
-    // (평소 30~40초. Claude 가 실패해 Codex 로 넘어가는 경우까지 기다리도록 넉넉히)
+    // VPS 워커(Claude Opus → Codex 구독). 평소 30초 안팎.
+    // Claude 가 실패해 Codex 로 넘어가는 경우까지 기다리도록 3분.
     const raw = await runJobWithFallback(
       'compose',
       { systemPrompt: prompt.systemPrompt, userMessage: prompt.userMessage, expectJson: true },
-      {
-        reportId: report?.id,
-        timeoutMs: 180_000,
-        fallback: () => composeReport({ summary, staffForm }),
-      }
+      { reportId: report?.id, timeoutMs: 180_000 }
     )
-    // 후처리(sanitize + migrateToNewFormat) 는 멱등이라 양쪽 경로 모두 안전하게 적용
     return postProcessComposeResult(raw)
   }
 
